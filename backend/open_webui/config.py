@@ -1691,7 +1691,7 @@ ENABLE_CHANNELS = PersistentConfig(
 ENABLE_NOTES = PersistentConfig(
     "ENABLE_NOTES",
     "notes.enable",
-    os.environ.get("ENABLE_NOTES", "True").lower() == "true",
+    os.environ.get("ENABLE_NOTES", "False").lower() == "true",
 )
 
 ENABLE_USER_STATUS = PersistentConfig(

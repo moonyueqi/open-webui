@@ -71,7 +71,9 @@ code {
 }
 
 .font-secondary {
-	font-family: 'InstrumentSerif', sans-serif;
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+		'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+		'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .marked a {
@@ -119,7 +121,9 @@ textarea::placeholder {
 }
 
 .font-primary {
-	font-family: 'Archivo', 'Vazirmatn', sans-serif;
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+		'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+		'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .drag-region {
@@ -682,6 +686,9 @@ input[type='number'] {
 body {
 	background: #fff;
 	color: #000;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 }
 
 .dark body {
@@ -800,4 +807,20 @@ body {
 
 #note-content-container .ProseMirror {
 	padding-bottom: 2rem; /* space for the bottom toolbar */
+}
+
+#sidebar-chat-item.selected {
+	border-left: 2px solid oklch(0.65 0.15 240);
+}
+
+.dark #sidebar-chat-item.selected {
+	border-left: 2px solid oklch(0.55 0.12 240);
+}
+
+#message-input-container:focus-within {
+	box-shadow: none;
+}
+
+.dark #message-input-container:focus-within {
+	box-shadow: none;
 }

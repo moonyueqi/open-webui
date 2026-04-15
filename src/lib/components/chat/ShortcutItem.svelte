@@ -1,3 +1,5 @@
+<!-- ShortcutItem - disabled -->
+<!--
 <script lang="ts">
 	import { getContext, onMount } from 'svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -20,7 +22,6 @@
 	});
 
 	function formatKey(key: string): string {
-		// First, handle special modifier keys which are defined in lowercase
 		switch (key) {
 			case 'mod':
 				return isMac ? '⌘' : 'Ctrl';
@@ -30,14 +31,11 @@
 				return isMac ? '⌥' : 'Alt';
 		}
 
-		// Next, try to use the layout map with the raw KeyboardEvent.code (e.g., "Slash")
 		if (keyboardLayoutMap && keyboardLayoutMap.has(key)) {
 			const mappedKey = keyboardLayoutMap.get(key) ?? key;
-			// For single characters, make them uppercase. For others (like 'CapsLock'), leave as is.
 			return mappedKey.length === 1 ? mappedKey.toUpperCase() : mappedKey;
 		}
 
-		// Finally, provide a fallback for browsers without getLayoutMap or for keys not in the map
 		const lowerKey = key.toLowerCase();
 		switch (lowerKey) {
 			case 'backspace':
@@ -62,11 +60,9 @@
 			case 'semicolon':
 				return ';';
 			default:
-				// For 'KeyA', 'Digit1', etc., extract the last character.
 				if (lowerKey.startsWith('key') || lowerKey.startsWith('digit')) {
 					return key.slice(-1).toUpperCase();
 				}
-				// For anything else, just uppercase it.
 				return key.toUpperCase();
 		}
 	}
@@ -94,3 +90,4 @@
 		{/each}
 	</div>
 </div>
+-->

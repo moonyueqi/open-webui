@@ -476,10 +476,10 @@
 		<div class="w-full group">
 			<div
 				id="folder-{folderId}-button"
-				class="relative w-full py-1 px-1.5 rounded-xl flex items-center gap-1.5 hover:bg-gray-100 dark:hover:bg-gray-900 transition {$selectedFolder?.id ===
-				folderId
-					? 'bg-gray-100 dark:bg-gray-900 selected'
-					: ''}"
+			class="relative w-full py-1 px-1.5 rounded-lg flex items-center gap-1.5 hover:bg-sidebar-hover dark:hover:bg-gray-900 transition {$selectedFolder?.id ===
+			folderId
+				? 'bg-sidebar-hover dark:bg-gray-900 selected'
+				: ''}"
 				on:dblclick={(e) => {
 					if (clickTimer) {
 						clearTimeout(clickTimer); // cancel the single-click action

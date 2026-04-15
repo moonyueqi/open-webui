@@ -2,7 +2,7 @@
 	import dayjs from 'dayjs';
 	import { DropdownMenu } from 'bits-ui';
 	import { onMount, onDestroy, getContext, createEventDispatcher } from 'svelte';
-	import { searchNotes } from '$lib/apis/notes';
+	// import { searchNotes } from '$lib/apis/notes'; // Notes feature disabled
 	import { searchKnowledgeBases, searchKnowledgeFiles } from '$lib/apis/knowledge';
 
 	import { flyAndScale } from '$lib/utils/transitions';
@@ -47,11 +47,12 @@
 	});
 
 	const getItems = () => {
-		getNoteItems();
+		// getNoteItems(); // Notes feature disabled
 		getKnowledgeItems();
 		getKnowledgeFileItems();
 	};
 
+	/* Notes feature disabled
 	const getNoteItems = async () => {
 		const res = await searchNotes(localStorage.token, query).catch(() => {
 			return null;
@@ -68,6 +69,7 @@
 			});
 		}
 	};
+	*/
 
 	const getKnowledgeItems = async () => {
 		const res = await searchKnowledgeBases(localStorage.token, query).catch(() => {

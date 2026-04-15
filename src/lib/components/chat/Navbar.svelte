@@ -73,7 +73,7 @@
 />
 
 <nav
-	class="sticky top-0 z-30 w-full {chat?.id
+	class="sticky top-0 z-30 w-full md:rounded-t-xl {chat?.id
 		? 'pt-0.5 pb-1'
 		: 'pt-1 pb-1'} -mb-12 flex flex-col items-center drag-region"
 >
@@ -82,7 +82,7 @@
 			id="navbar-bg-gradient-to-b"
 			class="{chat?.id
 				? 'visible'
-				: 'invisible'} bg-linear-to-b via-40% to-97% from-white/90 via-white/50 to-transparent dark:from-gray-900/90 dark:via-gray-900/50 dark:to-transparent pointer-events-none absolute inset-0 -bottom-10 z-[-1]"
+				: 'invisible'} md:rounded-t-xl bg-linear-to-b via-40% to-97% from-white/95 via-white/60 to-transparent dark:from-gray-900/90 dark:via-gray-900/50 dark:to-transparent pointer-events-none absolute inset-0 -bottom-10 z-[-1]"
 		></div>
 
 		<div class=" flex max-w-full w-full mx-auto px-1.5 md:px-2 pt-0.5 bg-transparent">
@@ -119,15 +119,15 @@
 				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 
-					{#if $user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true}
-						{#if !chat?.id}
+				{#if $user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true}
+					{#if !chat?.id}
+						{#if !$showSidebar}
 							<Tooltip content={$i18n.t(`Temporary Chat`)}>
 								<button
 									class="flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
 									id="temporary-chat-button"
 									on:click={async () => {
 										if (($settings?.temporaryChatByDefault ?? false) && $temporaryChatEnabled) {
-											// for proper initNewChat handling
 											await temporaryChatEnabled.set(null);
 										} else {
 											await temporaryChatEnabled.set(!$temporaryChatEnabled);
@@ -137,7 +137,6 @@
 											await goto('/');
 										}
 
-										// add 'temporary-chat=true' to the URL
 										if ($temporaryChatEnabled) {
 											window.history.replaceState(null, '', '?temporary-chat=true');
 										} else {
@@ -154,7 +153,8 @@
 									</div>
 								</button>
 							</Tooltip>
-						{:else if $temporaryChatEnabled}
+						{/if}
+					{:else if $temporaryChatEnabled}
 							<Tooltip content={$i18n.t(`Save Chat`)}>
 								<button
 									class="flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"

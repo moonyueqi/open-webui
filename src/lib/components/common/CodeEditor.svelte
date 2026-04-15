@@ -284,25 +284,23 @@ print("${endTag}")
 			attributeFilter: ['class']
 		});
 
-		const keydownHandler = async (e) => {
-			if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-				e.preventDefault();
+		// const keydownHandler = async (e) => {
+		// 	if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+		// 		e.preventDefault();
+		// 		onSave();
+		// 	}
 
-				onSave();
-			}
+		// 	if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'f') {
+		// 		e.preventDefault();
+		// 		await formatPythonCodeHandler();
+		// 	}
+		// };
 
-			// Format code when Ctrl + Shift + F is pressed
-			if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'f') {
-				e.preventDefault();
-				await formatPythonCodeHandler();
-			}
-		};
-
-		document.addEventListener('keydown', keydownHandler);
+		// document.addEventListener('keydown', keydownHandler);
 
 		return () => {
 			observer.disconnect();
-			document.removeEventListener('keydown', keydownHandler);
+			// document.removeEventListener('keydown', keydownHandler);
 			// Must destroy EditorView so CodeMirror releases internal DOMObserver and DOM refs
 			if (codeEditor) {
 				codeEditor.destroy();

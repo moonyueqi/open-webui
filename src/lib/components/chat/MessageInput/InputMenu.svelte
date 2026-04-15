@@ -24,7 +24,7 @@
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
 	import PageEdit from '$lib/components/icons/PageEdit.svelte';
 	import Chats from './InputMenu/Chats.svelte';
-	import Notes from './InputMenu/Notes.svelte';
+	// import Notes from './InputMenu/Notes.svelte'; // Notes feature disabled
 	import Knowledge from './InputMenu/Knowledge.svelte';
 	import AttachWebpageModal from './AttachWebpageModal.svelte';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
@@ -208,37 +208,39 @@
 						</DropdownMenu.Item>
 					</Tooltip>
 
-					{#if $config?.features?.enable_notes ?? false}
-						<Tooltip
-							content={fileUploadCapableModels.length !== selectedModels.length
-								? $i18n.t('Model(s) do not support file upload')
-								: !fileUploadEnabled
-									? $i18n.t('You do not have permission to upload files.')
-									: ''}
-							className="w-full"
+				<!-- Notes feature disabled
+				{#if $config?.features?.enable_notes ?? false}
+					<Tooltip
+						content={fileUploadCapableModels.length !== selectedModels.length
+							? $i18n.t('Model(s) do not support file upload')
+							: !fileUploadEnabled
+								? $i18n.t('You do not have permission to upload files.')
+								: ''}
+						className="w-full"
+					>
+						<button
+							class="flex gap-2 w-full items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl {!fileUploadEnabled
+								? 'opacity-50'
+								: ''}"
+							on:click={() => {
+								tab = 'notes';
+							}}
 						>
-							<button
-								class="flex gap-2 w-full items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl {!fileUploadEnabled
-									? 'opacity-50'
-									: ''}"
-								on:click={() => {
-									tab = 'notes';
-								}}
-							>
-								<PageEdit />
+							<PageEdit />
 
-								<div class="flex items-center w-full justify-between">
-									<div class=" line-clamp-1">
-										{$i18n.t('Attach Notes')}
-									</div>
-
-									<div class="text-gray-500">
-										<ChevronRight />
-									</div>
+							<div class="flex items-center w-full justify-between">
+								<div class=" line-clamp-1">
+									{$i18n.t('Attach Notes')}
 								</div>
-							</button>
-						</Tooltip>
-					{/if}
+
+								<div class="text-gray-500">
+									<ChevronRight />
+								</div>
+							</div>
+						</button>
+					</Tooltip>
+				{/if}
+				-->
 
 					<Tooltip
 						content={fileUploadCapableModels.length !== selectedModels.length
@@ -465,26 +467,28 @@
 
 					<Knowledge {onSelect} />
 				</div>
-			{:else if tab === 'notes'}
-				<div in:fly={{ x: 20, duration: 150 }}>
-					<button
-						class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
-						on:click={() => {
-							tab = '';
-						}}
-					>
-						<ChevronLeft />
+		<!-- Notes feature disabled
+		{:else if tab === 'notes'}
+			<div in:fly={{ x: 20, duration: 150 }}>
+				<button
+					class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+					on:click={() => {
+						tab = '';
+					}}
+				>
+					<ChevronLeft />
 
-						<div class="flex items-center w-full justify-between">
-							<div>
-								{$i18n.t('Notes')}
-							</div>
+					<div class="flex items-center w-full justify-between">
+						<div>
+							{$i18n.t('Notes')}
 						</div>
-					</button>
+					</div>
+				</button>
 
-					<Notes {onSelect} />
-				</div>
-			{:else if tab === 'chats'}
+				<Notes {onSelect} />
+			</div>
+		-->
+		{:else if tab === 'chats'}
 				<div in:fly={{ x: 20, duration: 150 }}>
 					<button
 						class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"

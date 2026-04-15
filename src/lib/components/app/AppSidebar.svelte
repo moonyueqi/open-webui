@@ -8,7 +8,7 @@
 
 <nav
 	aria-label="App navigation"
-	class="min-w-[4.5rem] bg-gray-50 dark:bg-gray-950 flex gap-2.5 flex-col pt-8"
+	class="min-w-[4.5rem] bg-sidebar-50 dark:bg-gray-950 flex gap-2.5 flex-col pt-8"
 >
 	<div class="flex justify-center relative">
 		{#if selected === 'home'}
@@ -39,7 +39,7 @@
 		</Tooltip>
 	</div>
 
-	<div class=" -mt-1 border-[1.5px] border-gray-100 dark:border-gray-900 mx-4"></div>
+	<div class=" -mt-1 border-[1.5px] border-sidebar-100 dark:border-gray-900 mx-4"></div>
 
 	<div class="flex justify-center relative group">
 		{#if selected === ''}

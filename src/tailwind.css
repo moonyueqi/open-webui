@@ -15,6 +15,12 @@
 	--color-gray-850: oklch(0.27 0 0);
 	--color-gray-900: oklch(0.2 0 0);
 	--color-gray-950: oklch(0.16 0 0);
+
+	--color-sidebar-50: oklch(0.97 0.015 240);
+	--color-sidebar-100: oklch(0.94 0.025 240);
+	--color-sidebar-200: oklch(0.90 0.035 240);
+	--color-sidebar-300: oklch(0.85 0.04 240);
+	--color-sidebar-hover: oklch(0.92 0.03 240);
 }
 
 /*
@@ -38,9 +44,13 @@
 @layer base {
 	html,
 	pre {
-		font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Vazirmatn', ui-sans-serif, system-ui,
-			'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif, 'Helvetica Neue', Arial,
-			'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+		font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+			'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+			'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'kern';
+		font-variant-ligatures: common-ligatures;
 	}
 
 	pre {

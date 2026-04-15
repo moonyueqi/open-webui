@@ -294,7 +294,7 @@
 
 	<div slot="content">
 		<DropdownMenu.Content
-			class="select-none w-full max-w-[200px] rounded-2xl px-1 py-1  border border-gray-100  dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg transition"
+			class="select-none w-full max-w-[210px] rounded-2xl px-1 py-1.5 border border-gray-100 dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg transition"
 			sideOffset={-2}
 			side="bottom"
 			align="start"
@@ -303,34 +303,33 @@
 			{#if $user?.role === 'admin' || ($user.permissions?.chat?.share ?? true)}
 				<DropdownMenu.Item
 					draggable="false"
-					class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"
+					class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 					on:click={() => {
 						shareHandler();
 					}}
 				>
 					<Share strokeWidth="1.5" />
-					<div class="flex items-center">{$i18n.t('Share')}</div>
+					<div class="flex items-center">分享此对话</div>
 				</DropdownMenu.Item>
 			{/if}
 
 			<DropdownMenu.Sub>
 				<DropdownMenu.SubTrigger
 					draggable="false"
-					class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+					class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 				>
 					<Download strokeWidth="1.5" />
-
-					<div class="flex items-center">{$i18n.t('Download')}</div>
+					<div class="flex items-center">导出对话</div>
 				</DropdownMenu.SubTrigger>
 				<DropdownMenu.SubContent
-					class="select-none w-full rounded-2xl p-1 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg border border-gray-100  dark:border-gray-800"
+					class="select-none w-full rounded-2xl p-1 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg border border-gray-100 dark:border-gray-800"
 					transition={flyAndScale}
 					sideOffset={8}
 				>
 					{#if $user?.role === 'admin' || ($user.permissions?.chat?.export ?? true)}
 						<DropdownMenu.Item
 							draggable="false"
-							class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+							class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 							on:click={() => {
 								downloadJSONExport();
 							}}
@@ -341,7 +340,7 @@
 
 					<DropdownMenu.Item
 						draggable="false"
-						class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+						class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 						on:click={() => {
 							downloadTxt();
 						}}
@@ -351,7 +350,7 @@
 
 					<DropdownMenu.Item
 						draggable="false"
-						class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl select-none w-full"
+						class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl select-none w-full"
 						on:click={() => {
 							downloadPdf();
 						}}
@@ -363,7 +362,7 @@
 
 			<DropdownMenu.Item
 				draggable="false"
-				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 				on:click={() => {
 					renameHandler();
 				}}
@@ -372,27 +371,26 @@
 				<div class="flex items-center">{$i18n.t('Rename')}</div>
 			</DropdownMenu.Item>
 
-			<hr class="border-gray-50/30 dark:border-gray-800/30 my-1" />
-
 			<DropdownMenu.Item
 				draggable="false"
-				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 				on:click={() => {
 					pinHandler();
 				}}
 			>
 				{#if pinned}
 					<BookmarkSlash strokeWidth="1.5" />
-					<div class="flex items-center">{$i18n.t('Unpin')}</div>
+					<div class="flex items-center">取消置顶</div>
 				{:else}
 					<Bookmark strokeWidth="1.5" />
-					<div class="flex items-center">{$i18n.t('Pin')}</div>
+					<div class="flex items-center">置顶此对话</div>
 				{/if}
 			</DropdownMenu.Item>
 
+			<!-- 复制功能已禁用
 			<DropdownMenu.Item
 				draggable="false"
-				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 				on:click={() => {
 					cloneChatHandler();
 				}}
@@ -400,26 +398,27 @@
 				<DocumentDuplicate strokeWidth="1.5" />
 				<div class="flex items-center">{$i18n.t('Clone')}</div>
 			</DropdownMenu.Item>
+			-->
 
+			<!-- Folders 功能已禁用
 			{#if chatId && $folders.length > 0}
 				<DropdownMenu.Sub>
 					<DropdownMenu.SubTrigger
 						draggable="false"
-						class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl select-none w-full"
+						class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl select-none w-full"
 					>
 						<Folder />
-
 						<div class="flex items-center">{$i18n.t('Move')}</div>
 					</DropdownMenu.SubTrigger>
 					<DropdownMenu.SubContent
-						class="select-none w-full max-w-[200px] rounded-2xl p-1 z-50 bg-white dark:bg-gray-850 dark:text-white border border-gray-100  dark:border-gray-800 shadow-lg max-h-52 overflow-y-auto scrollbar-hidden"
+						class="select-none w-full max-w-[200px] rounded-2xl p-1 z-50 bg-white dark:bg-gray-850 dark:text-white border border-gray-100 dark:border-gray-800 shadow-lg max-h-52 overflow-y-auto scrollbar-hidden"
 						transition={flyAndScale}
 						sideOffset={8}
 					>
 						{#each $folders.sort((a, b) => b.updated_at - a.updated_at) as folder}
 							<DropdownMenu.Item
 								draggable="false"
-								class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl overflow-hidden"
+								class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl overflow-hidden"
 								on:click={() => {
 									moveChatHandler(chatId, folder.id);
 								}}
@@ -427,17 +426,18 @@
 								<div class="shrink-0">
 									<Folder />
 								</div>
-
 								<div class="truncate">{folder?.name ?? 'Folder'}</div>
 							</DropdownMenu.Item>
 						{/each}
 					</DropdownMenu.SubContent>
 				</DropdownMenu.Sub>
 			{/if}
+			-->
 
+			<!-- 归档功能已禁用
 			<DropdownMenu.Item
 				draggable="false"
-				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 				on:click={() => {
 					archiveChatHandler();
 				}}
@@ -445,16 +445,19 @@
 				<ArchiveBox strokeWidth="1.5" />
 				<div class="flex items-center">{$i18n.t('Archive')}</div>
 			</DropdownMenu.Item>
+			-->
+
+			<hr class="border-gray-200 dark:border-gray-700 my-1" />
 
 			<DropdownMenu.Item
 				draggable="false"
-				class="flex  gap-2  items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-red-500"
 				on:click={() => {
 					deleteHandler();
 				}}
 			>
 				<GarbageBin strokeWidth="1.5" />
-				<div class="flex items-center">{$i18n.t('Delete')}</div>
+				<div class="flex items-center">删除此对话</div>
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</div>

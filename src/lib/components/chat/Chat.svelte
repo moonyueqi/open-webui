@@ -637,18 +637,19 @@
 		}
 	};
 
+	// Folders 功能已禁用
 	const savedModelIds = async () => {
-		if (
-			$selectedFolder &&
-			selectedModels.filter((modelId) => modelId !== '').length > 0 &&
-			JSON.stringify($selectedFolder?.data?.model_ids) !== JSON.stringify(selectedModels)
-		) {
-			const res = await updateFolderById(localStorage.token, $selectedFolder.id, {
-				data: {
-					model_ids: selectedModels
-				}
-			});
-		}
+		// if (
+		// 	$selectedFolder &&
+		// 	selectedModels.filter((modelId) => modelId !== '').length > 0 &&
+		// 	JSON.stringify($selectedFolder?.data?.model_ids) !== JSON.stringify(selectedModels)
+		// ) {
+		// 	const res = await updateFolderById(localStorage.token, $selectedFolder.id, {
+		// 		data: {
+		// 			model_ids: selectedModels
+		// 		}
+		// 	});
+		// }
 	};
 
 	$: if (selectedModels !== null) {
@@ -711,16 +712,16 @@
 			}
 		});
 
+		// Folders 功能已禁用
 		const selectedFolderSubscribe = selectedFolder.subscribe(async (folder) => {
-			await tick();
-			if (
-				folder?.data?.model_ids &&
-				JSON.stringify(selectedModels) !== JSON.stringify(folder.data.model_ids)
-			) {
-				selectedModels = folder.data.model_ids;
-
-				console.log('Set selectedModels from folder data:', selectedModels);
-			}
+			// await tick();
+			// if (
+			// 	folder?.data?.model_ids &&
+			// 	JSON.stringify(selectedModels) !== JSON.stringify(folder.data.model_ids)
+			// ) {
+			// 	selectedModels = folder.data.model_ids;
+			// 	console.log('Set selectedModels from folder data:', selectedModels);
+			// }
 		});
 
 		const storageChatInput = sessionStorage.getItem(
@@ -1089,9 +1090,8 @@
 				$models.map((m) => m.id).includes(modelId)
 			);
 		} else {
-			if ($selectedFolder?.data?.model_ids) {
-				// Set from folder model IDs
-				selectedModels = $selectedFolder?.data?.model_ids;
+			if (false) { // Folders 功能已禁用
+				selectedModels = [];
 			} else {
 				if (sessionStorage.selectedModels) {
 					// Set from session storage (temporary selection)
@@ -2537,8 +2537,8 @@
 					messages: createMessagesList(history, history.currentId),
 					tags: [],
 					timestamp: Date.now()
-				},
-				$selectedFolder?.id
+				}
+				// Folders 功能已禁用，不传 folder_id
 			);
 
 			_chatId = chat.id;
@@ -2551,7 +2551,7 @@
 			await chats.set(await getChatList(localStorage.token, $currentChatPage));
 			currentChatPage.set(1);
 
-			selectedFolder.set(null);
+			// selectedFolder.set(null); // Folders 功能已禁用
 		} else {
 			_chatId = `local:${$socket?.id}`; // Use socket id for temporary chat
 			await chatId.set(_chatId);
@@ -2604,26 +2604,26 @@
 		await sessionStorage.removeItem(`chat-input${chatId ? `-${chatId}` : ''}`);
 	};
 
-	const moveChatHandler = async (chatId, folderId) => {
-		if (chatId && folderId) {
-			const res = await updateChatFolderIdById(localStorage.token, chatId, folderId).catch(
-				(error) => {
-					toast.error(`${error}`);
-					return null;
-				}
-			);
-
-			if (res) {
-				currentChatPage.set(1);
-				await chats.set(await getChatList(localStorage.token, $currentChatPage));
-				await pinnedChats.set(await getPinnedChatList(localStorage.token));
-
-				toast.success($i18n.t('Chat moved successfully'));
-			}
-		} else {
-			toast.error($i18n.t('Failed to move chat'));
-		}
-	};
+	// Folders 功能已禁用
+	// const moveChatHandler = async (chatId, folderId) => {
+	// 	if (chatId && folderId) {
+	// 		const res = await updateChatFolderIdById(localStorage.token, chatId, folderId).catch(
+	// 			(error) => {
+	// 				toast.error(`${error}`);
+	// 				return null;
+	// 			}
+	// 		);
+	// 		if (res) {
+	// 			currentChatPage.set(1);
+	// 			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+	// 			await pinnedChats.set(await getPinnedChatList(localStorage.token));
+	// 			toast.success($i18n.t('Chat moved successfully'));
+	// 		}
+	// 	} else {
+	// 		toast.error($i18n.t('Failed to move chat'));
+	// 	}
+	// };
+	const moveChatHandler = async (chatId, folderId) => {};
 </script>
 
 <svelte:head>
@@ -2657,23 +2657,13 @@
 />
 
 <div
-	class="h-screen max-h-[100dvh] transition-width duration-200 ease-in-out {$showSidebar
-		? '  md:max-w-[calc(100%-var(--sidebar-width))]'
-		: ' '} w-full max-w-full flex flex-col"
+	class="h-screen max-h-[100dvh] transition-width duration-200 ease-in-out w-full max-w-full flex flex-col"
 	id="chat-container"
 >
 	{#if !loading}
 		<div in:fade={{ duration: 50 }} class="w-full h-full flex flex-col">
-			{#if $selectedFolder && $selectedFolder?.meta?.background_image_url}
-				<div
-					class="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat"
-					style="background-image: url({$selectedFolder?.meta?.background_image_url})  "
-				/>
-
-				<div
-					class="absolute top-0 left-0 w-full h-full bg-linear-to-t from-white to-white/85 dark:from-gray-900 dark:to-gray-900/90 z-0"
-				/>
-			{:else if $settings?.backgroundImageUrl ?? $config?.license_metadata?.background_image_url ?? null}
+			<!-- Folders 功能已禁用，移除 selectedFolder 背景图 -->
+			{#if $settings?.backgroundImageUrl ?? $config?.license_metadata?.background_image_url ?? null}
 				<div
 					class="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat"
 					style="background-image: url({$settings?.backgroundImageUrl ??
@@ -2748,7 +2738,7 @@
 					/>
 
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
-						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+						{#if ($settings?.landingPageMode === 'chat') || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
 								id="messages-container"

@@ -60,7 +60,7 @@
 
 	import { WEBUI_BASE_URL, WEBUI_API_BASE_URL, PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 
-	import { createNoteHandler } from '../notes/utils';
+	// import { createNoteHandler } from '../notes/utils'; // Notes feature disabled
 	import { getSuggestionRenderer } from '../common/RichTextInput/suggestions';
 
 	import InputMenu from './MessageInput/InputMenu.svelte';
@@ -779,6 +779,7 @@
 		});
 	};
 
+	/* Notes feature disabled
 	const createNote = async () => {
 		if (inputContent?.md.trim() === '' && inputContent?.html.trim() === '') {
 			toast.error($i18n.t('Cannot create an empty note.'));
@@ -792,11 +793,11 @@
 		);
 
 		if (res) {
-			// Clear the input content saved in session storage.
 			sessionStorage.removeItem('chat-input');
 			goto(`/notes/${res.id}`);
 		}
 	};
+	*/
 
 	const onDragOver = (e: DragEvent) => {
 		e.preventDefault();
@@ -836,18 +837,16 @@
 			shiftKey = true;
 		}
 
-		// Cmd/Ctrl+Shift+L to toggle dictation
-		if (e.key.toLowerCase() === 'l' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-			e.preventDefault();
-			if (recording) {
-				// Confirm and stop recording
-				document.getElementById('confirm-recording-button')?.click();
-			} else {
-				// Start recording (same logic as voice-input-button click)
-				document.getElementById('voice-input-button')?.click();
-			}
-			return;
-		}
+		// // Cmd/Ctrl+Shift+L to toggle dictation
+		// if (e.key.toLowerCase() === 'l' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+		// 	e.preventDefault();
+		// 	if (recording) {
+		// 		document.getElementById('confirm-recording-button')?.click();
+		// 	} else {
+		// 		document.getElementById('voice-input-button')?.click();
+		// 	}
+		// 	return;
+		// }
 
 		if (e.key === 'Escape') {
 			console.log('Escape');
@@ -1084,7 +1083,7 @@
 							class=" absolute -top-12 left-0 right-0 flex justify-center z-30 pointer-events-none"
 						>
 							<button
-								class=" bg-white border border-gray-100 dark:border-none dark:bg-white/20 p-1.5 rounded-full pointer-events-auto"
+								class=" bg-white border border-blue-100 dark:border-none dark:bg-white/20 p-1.5 rounded-full pointer-events-auto shadow-sm hover:shadow-md hover:border-blue-200 transition"
 								on:click={() => {
 									autoScroll = true;
 									scrollToBottom();
@@ -1190,10 +1189,10 @@
 						{/if}
 
 						<div
-							id="message-input-container"
-							class="flex-1 flex flex-col relative w-full shadow-lg rounded-3xl border {$temporaryChatEnabled
-								? 'border-dashed border-gray-100 dark:border-gray-800 hover:border-gray-200 focus-within:border-gray-200 hover:dark:border-gray-700 focus-within:dark:border-gray-700'
-								: ' border-gray-100/30 dark:border-gray-850/30 hover:border-gray-200 focus-within:border-gray-100 hover:dark:border-gray-800 focus-within:dark:border-gray-800'}  transition px-1 bg-white/5 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
+						id="message-input-container"
+						class="flex-1 flex flex-col relative w-full rounded-3xl border {$temporaryChatEnabled
+							? 'border-dashed border-gray-100 dark:border-gray-800 hover:border-gray-200 focus-within:border-gray-200 hover:dark:border-gray-700 focus-within:dark:border-gray-700'
+							: ' border-gray-200/50 dark:border-gray-850/30 hover:border-gray-300 focus-within:border-gray-300 hover:dark:border-gray-800 focus-within:dark:border-gray-800'}  transition px-1 bg-white/80 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
 							dir={$settings?.chatDirection ?? 'auto'}
 						>
 							{#if atSelectedModel !== undefined}
@@ -1790,8 +1789,8 @@
 											</Tooltip>
 										</div>
 									{:else}
+										<!-- Notes feature disabled
 										{#if prompt !== '' && !history?.currentId && ($config?.features?.enable_notes ?? false) && ($_user?.role === 'admin' || ($_user?.permissions?.features?.notes ?? true))}
-											<!-- {$i18n.t('Create Note')}  -->
 											<Tooltip content={$i18n.t('Create note')} className=" flex items-center">
 												<button
 													id="create-note-button"
@@ -1806,6 +1805,7 @@
 												</button>
 											</Tooltip>
 										{/if}
+										-->
 
 										{#if (!history?.currentId || history.messages[history.currentId]?.done == true) && ($_user?.role === 'admin' || ($_user?.permissions?.chat?.stt ?? true))}
 											<!-- Terminal Server Selector -->

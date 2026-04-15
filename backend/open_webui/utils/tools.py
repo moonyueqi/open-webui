@@ -64,16 +64,16 @@ from open_webui.tools.builtin import (
     list_memories,
     get_current_timestamp,
     calculate_timestamp,
-    search_notes,
+    # search_notes,  # Notes feature disabled
     search_chats,
     search_channels,
     search_channel_messages,
-    view_note,
+    # view_note,  # Notes feature disabled
     view_chat,
     view_channel_message,
     view_channel_thread,
-    replace_note_content,
-    write_note,
+    # replace_note_content,  # Notes feature disabled
+    # write_note,  # Notes feature disabled
     list_knowledge_bases,
     search_knowledge_bases,
     query_knowledge_bases,
@@ -440,8 +440,9 @@ def get_builtin_tools(
             knowledge_types = {item.get("type") for item in model_knowledge}
             if "file" in knowledge_types or "collection" in knowledge_types:
                 builtin_functions.append(view_file)
-            if "note" in knowledge_types:
-                builtin_functions.append(view_note)
+            # Notes feature disabled
+            # if "note" in knowledge_types:
+            #     builtin_functions.append(view_note)
         else:
             # No model knowledge - allow full KB browsing
             builtin_functions.extend(
@@ -505,13 +506,13 @@ def get_builtin_tools(
     ):
         builtin_functions.append(execute_code)
 
-    # Notes tools - search, view, create, and update user's notes (if builtin category enabled AND notes enabled globally)
-    if is_builtin_tool_enabled("notes") and getattr(
-        request.app.state.config, "ENABLE_NOTES", False
-    ):
-        builtin_functions.extend(
-            [search_notes, view_note, write_note, replace_note_content]
-        )
+    # Notes feature disabled
+    # if is_builtin_tool_enabled("notes") and getattr(
+    #     request.app.state.config, "ENABLE_NOTES", False
+    # ):
+    #     builtin_functions.extend(
+    #         [search_notes, view_note, write_note, replace_note_content]
+    #     )
 
     # Channels tools - search channels and messages (if builtin category enabled AND channels enabled globally)
     if is_builtin_tool_enabled("channels") and getattr(

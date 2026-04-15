@@ -158,28 +158,8 @@
 		dispatch('change');
 	};
 
-	const moveChatHandler = async (chatId, folderId) => {
-		if (chatId && folderId) {
-			const res = await updateChatFolderIdById(localStorage.token, chatId, folderId).catch(
-				(error) => {
-					toast.error(`${error}`);
-					return null;
-				}
-			);
-
-			if (res) {
-				currentChatPage.set(1);
-				await chats.set(await getChatList(localStorage.token, $currentChatPage));
-				await pinnedChats.set(await getPinnedChatList(localStorage.token));
-
-				dispatch('change');
-
-				toast.success($i18n.t('Chat moved successfully'));
-			}
-		} else {
-			toast.error($i18n.t('Failed to move chat'));
-		}
-	};
+	// Folders 功能已禁用
+	const moveChatHandler = async (chatId, folderId) => {};
 
 	let itemElement;
 
@@ -365,25 +345,25 @@
 <div
 	id="sidebar-chat-group"
 	bind:this={itemElement}
-	class=" w-full {className} relative group"
+	class=" w-full {className} relative group my-[1px]"
 	draggable={draggable && !confirmEdit}
 >
 	{#if confirmEdit}
 		<div
 			id="sidebar-chat-item"
-			class=" w-full flex justify-between rounded-xl px-[11px] py-[6px] {id === $chatId ||
-			confirmEdit
-				? 'bg-gray-100 dark:bg-gray-900 selected'
-				: selected
-					? 'bg-gray-100 dark:bg-gray-950 selected'
-					: 'group-hover:bg-gray-100 dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis relative {generating
-				? 'cursor-not-allowed'
-				: ''}"
+	class=" w-full flex justify-between rounded-lg px-[11px] py-[8px] {id === $chatId ||
+		confirmEdit
+			? 'bg-sidebar-hover dark:bg-gray-900 selected'
+			: selected
+				? 'bg-sidebar-100 dark:bg-gray-950 selected'
+				: 'group-hover:bg-sidebar-hover dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis relative {generating
+			? 'cursor-not-allowed'
+			: ''}"
 		>
 			<input
 				id="chat-title-input-{id}"
 				bind:value={chatTitle}
-				class=" bg-transparent w-full outline-hidden mr-10"
+				class=" bg-transparent w-full outline-hidden mr-10 text-[0.8rem]"
 				placeholder={generating ? $i18n.t('Generating...') : ''}
 				disabled={generating}
 				on:keydown={chatTitleInputKeydownHandler}
@@ -407,12 +387,12 @@
 	{:else}
 		<a
 			id="sidebar-chat-item"
-			class=" w-full flex justify-between rounded-xl px-[11px] py-[6px] {id === $chatId ||
-			confirmEdit
-				? 'bg-gray-100 dark:bg-gray-900 selected'
-				: selected
-					? 'bg-gray-100 dark:bg-gray-950 selected'
-					: ' group-hover:bg-gray-100 dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis"
+	class=" w-full flex justify-between rounded-lg px-[11px] py-[8px] {id === $chatId ||
+		confirmEdit
+			? 'bg-sidebar-hover dark:bg-gray-900 selected'
+			: selected
+				? 'bg-sidebar-100 dark:bg-gray-950 selected'
+				: ' group-hover:bg-sidebar-hover dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis"
 			href="/c/{id}"
 			on:click={() => {
 				dispatch('select');
@@ -449,7 +429,7 @@
 			{/if}
 
 			<div class="flex self-center flex-1 w-full min-w-0">
-				<div dir="auto" class="text-left self-center overflow-hidden w-full h-[20px] truncate">
+				<div dir="auto" class="text-left self-center overflow-hidden w-full h-[18px] text-[0.8rem] truncate">
 					{title}
 				</div>
 			</div>
@@ -468,10 +448,10 @@
 		id="sidebar-chat-item-menu"
 		class="
         {id === $chatId || confirmEdit
-			? 'from-gray-100 dark:from-gray-900 selected'
+			? 'from-sidebar-hover dark:from-gray-900 selected'
 			: selected
-				? 'from-gray-100 dark:from-gray-950 selected'
-				: 'invisible group-hover:visible from-gray-100 dark:from-gray-950'}
+				? 'from-sidebar-100 dark:from-gray-950 selected'
+				: 'invisible group-hover:visible from-sidebar-hover dark:from-gray-950'}
             absolute {className === 'pr-2'
 			? 'right-[8px]'
 			: 'right-1'} top-[4px] py-1 pr-0.5 mr-1.5 pl-5 bg-linear-to-l from-80%

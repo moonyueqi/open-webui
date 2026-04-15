@@ -359,14 +359,32 @@
 			</div>
 		{/if}
 
+	<!-- Notes feature disabled
+	<div class="flex flex-col w-full">
+		<div class="flex w-full justify-between my-1">
+			<div class=" self-center text-xs font-medium">
+				{$i18n.t('Notes Sharing')}
+			</div>
+			<Switch bind:state={permissions.sharing.notes} />
+		</div>
+		{#if defaultPermissions?.sharing?.notes && !permissions.sharing.notes}
+			<div>
+				<div class="text-xs text-gray-500">
+					{$i18n.t('This is a default user permission and will remain enabled.')}
+				</div>
+			</div>
+		{/if}
+	</div>
+
+	{#if permissions.sharing.notes}
 		<div class="flex flex-col w-full">
 			<div class="flex w-full justify-between my-1">
 				<div class=" self-center text-xs font-medium">
-					{$i18n.t('Notes Sharing')}
+					{$i18n.t('Notes Public Sharing')}
 				</div>
-				<Switch bind:state={permissions.sharing.notes} />
+				<Switch bind:state={permissions.sharing.public_notes} />
 			</div>
-			{#if defaultPermissions?.sharing?.notes && !permissions.sharing.notes}
+			{#if defaultPermissions?.sharing?.public_notes && !permissions.sharing.public_notes}
 				<div>
 					<div class="text-xs text-gray-500">
 						{$i18n.t('This is a default user permission and will remain enabled.')}
@@ -374,24 +392,8 @@
 				</div>
 			{/if}
 		</div>
-
-		{#if permissions.sharing.notes}
-			<div class="flex flex-col w-full">
-				<div class="flex w-full justify-between my-1">
-					<div class=" self-center text-xs font-medium">
-						{$i18n.t('Notes Public Sharing')}
-					</div>
-					<Switch bind:state={permissions.sharing.public_notes} />
-				</div>
-				{#if defaultPermissions?.sharing?.public_notes && !permissions.sharing.public_notes}
-					<div>
-						<div class="text-xs text-gray-500">
-							{$i18n.t('This is a default user permission and will remain enabled.')}
-						</div>
-					</div>
-				{/if}
-			</div>
-		{/if}
+	{/if}
+	-->
 	</div>
 
 	<hr class=" border-gray-100/30 dark:border-gray-850/30" />
@@ -767,26 +769,28 @@
 			{/if}
 		</div>
 
-		<div class="flex flex-col w-full">
-			<div class="flex w-full justify-between my-1">
-				<div class=" self-center text-xs font-medium">
-					{$i18n.t('Notes')}
-				</div>
-				<Switch bind:state={permissions.features.notes} />
+	<!-- Notes feature disabled
+	<div class="flex flex-col w-full">
+		<div class="flex w-full justify-between my-1">
+			<div class=" self-center text-xs font-medium">
+				{$i18n.t('Notes')}
 			</div>
-			{#if defaultPermissions?.features?.notes && !permissions.features.notes}
-				<div>
-					<div class="text-xs text-gray-500">
-						{$i18n.t('This is a default user permission and will remain enabled.')}
-					</div>
-				</div>
-			{/if}
+			<Switch bind:state={permissions.features.notes} />
 		</div>
+		{#if defaultPermissions?.features?.notes && !permissions.features.notes}
+			<div>
+				<div class="text-xs text-gray-500">
+					{$i18n.t('This is a default user permission and will remain enabled.')}
+				</div>
+			</div>
+		{/if}
+	</div>
+	-->
 
-		<div class="flex flex-col w-full">
-			<div class="flex w-full justify-between my-1">
-				<div class=" self-center text-xs font-medium">
-					{$i18n.t('Channels')}
+	<div class="flex flex-col w-full">
+		<div class="flex w-full justify-between my-1">
+			<div class=" self-center text-xs font-medium">
+				{$i18n.t('Channels')}
 				</div>
 				<Switch bind:state={permissions.features.channels} />
 			</div>

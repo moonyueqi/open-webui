@@ -411,6 +411,7 @@
 			{#if !$temporaryChatEnabled && chat?.id}
 				<hr class="border-gray-50/30 dark:border-gray-800/30 my-1" />
 
+				<!-- Folders 功能已禁用
 				{#if $folders.length > 0}
 					<DropdownMenu.Sub>
 						<DropdownMenu.SubTrigger
@@ -446,6 +447,7 @@
 						</DropdownMenu.SubContent>
 					</DropdownMenu.Sub>
 				{/if}
+			-->
 
 				<DropdownMenu.Item
 					draggable="false"

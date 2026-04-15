@@ -29,7 +29,7 @@
 		tags,
 		banners,
 		showSettings,
-		showShortcuts,
+		// showShortcuts,
 		showChangelog,
 		temporaryChatEnabled,
 		toolServers,
@@ -46,7 +46,7 @@
 	import AccountPending from '$lib/components/layout/Overlay/AccountPending.svelte';
 	import UpdateInfoToast from '$lib/components/layout/UpdateInfoToast.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
-	import { Shortcut, shortcuts } from '$lib/shortcuts';
+	// import { Shortcut, shortcuts } from '$lib/shortcuts';
 
 	const i18n = getContext('i18n');
 
@@ -213,107 +213,107 @@
 			}).catch((e) => console.error('Failed to load user settings:', e))
 		]);
 
-		// Helper function to check if the pressed keys match the shortcut definition
-		const isShortcutMatch = (event: KeyboardEvent, shortcut): boolean => {
-			const keys = shortcut?.keys || [];
+		// // Helper function to check if the pressed keys match the shortcut definition
+		// const isShortcutMatch = (event: KeyboardEvent, shortcut): boolean => {
+		// 	const keys = shortcut?.keys || [];
 
-			const normalized = keys.map((k) => k.toLowerCase());
-			const needCtrl = normalized.includes('ctrl') || normalized.includes('mod');
-			const needShift = normalized.includes('shift');
-			const needAlt = normalized.includes('alt');
+		// 	const normalized = keys.map((k) => k.toLowerCase());
+		// 	const needCtrl = normalized.includes('ctrl') || normalized.includes('mod');
+		// 	const needShift = normalized.includes('shift');
+		// 	const needAlt = normalized.includes('alt');
 
-			const mainKeys = normalized.filter((k) => !['ctrl', 'shift', 'alt', 'mod'].includes(k));
+		// 	const mainKeys = normalized.filter((k) => !['ctrl', 'shift', 'alt', 'mod'].includes(k));
 
-			// Get the main key pressed
-			const keyPressed = event.key.toLowerCase();
+		// 	// Get the main key pressed
+		// 	const keyPressed = event.key.toLowerCase();
 
-			// Check modifiers
-			if (needShift && !event.shiftKey) return false;
+		// 	// Check modifiers
+		// 	if (needShift && !event.shiftKey) return false;
 
-			if (needCtrl && !(event.ctrlKey || event.metaKey)) return false;
-			if (!needCtrl && (event.ctrlKey || event.metaKey)) return false;
-			if (needAlt && !event.altKey) return false;
-			if (!needAlt && event.altKey) return false;
+		// 	if (needCtrl && !(event.ctrlKey || event.metaKey)) return false;
+		// 	if (!needCtrl && (event.ctrlKey || event.metaKey)) return false;
+		// 	if (needAlt && !event.altKey) return false;
+		// 	if (!needAlt && event.altKey) return false;
 
-			if (mainKeys.length && !mainKeys.includes(keyPressed)) return false;
+		// 	if (mainKeys.length && !mainKeys.includes(keyPressed)) return false;
 
-			return true;
-		};
+		// 	return true;
+		// };
 
-		const setupKeyboardShortcuts = () => {
-			document.addEventListener('keydown', async (event) => {
-				if (isShortcutMatch(event, shortcuts[Shortcut.SEARCH])) {
-					console.log('Shortcut triggered: SEARCH');
-					event.preventDefault();
-					showSearch.set(!$showSearch);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.NEW_CHAT])) {
-					console.log('Shortcut triggered: NEW_CHAT');
-					event.preventDefault();
-					document.getElementById('sidebar-new-chat-button')?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.FOCUS_INPUT])) {
-					console.log('Shortcut triggered: FOCUS_INPUT');
-					event.preventDefault();
-					document.getElementById('chat-input')?.focus();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.COPY_LAST_CODE_BLOCK])) {
-					console.log('Shortcut triggered: COPY_LAST_CODE_BLOCK');
-					event.preventDefault();
-					[...document.getElementsByClassName('copy-code-button')]?.at(-1)?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.COPY_LAST_RESPONSE])) {
-					console.log('Shortcut triggered: COPY_LAST_RESPONSE');
-					event.preventDefault();
-					[...document.getElementsByClassName('copy-response-button')]?.at(-1)?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.TOGGLE_SIDEBAR])) {
-					console.log('Shortcut triggered: TOGGLE_SIDEBAR');
-					event.preventDefault();
-					showSidebar.set(!$showSidebar);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.DELETE_CHAT])) {
-					console.log('Shortcut triggered: DELETE_CHAT');
-					event.preventDefault();
-					document.getElementById('delete-chat-button')?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_SETTINGS])) {
-					console.log('Shortcut triggered: OPEN_SETTINGS');
-					event.preventDefault();
-					showSettings.set(!$showSettings);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.SHOW_SHORTCUTS])) {
-					console.log('Shortcut triggered: SHOW_SHORTCUTS');
-					event.preventDefault();
-					showShortcuts.set(!$showShortcuts);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.CLOSE_MODAL])) {
-					console.log('Shortcut triggered: CLOSE_MODAL');
-					event.preventDefault();
-					showSettings.set(false);
-					showShortcuts.set(false);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_MODEL_SELECTOR])) {
-					console.log('Shortcut triggered: OPEN_MODEL_SELECTOR');
-					event.preventDefault();
-					document.getElementById('model-selector-0-button')?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.NEW_TEMPORARY_CHAT])) {
-					console.log('Shortcut triggered: NEW_TEMPORARY_CHAT');
-					event.preventDefault();
-					if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
-						temporaryChatEnabled.set(true);
-					} else {
-						temporaryChatEnabled.set(!$temporaryChatEnabled);
-					}
-					await goto('/');
-					setTimeout(() => {
-						document.getElementById('new-chat-button')?.click();
-					}, 0);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.GENERATE_MESSAGE_PAIR])) {
-					console.log('Shortcut triggered: GENERATE_MESSAGE_PAIR');
-					event.preventDefault();
-					document.getElementById('generate-message-pair-button')?.click();
-				} else if (
-					isShortcutMatch(event, shortcuts[Shortcut.REGENERATE_RESPONSE]) &&
-					document.activeElement?.id === 'chat-input'
-				) {
-					console.log('Shortcut triggered: REGENERATE_RESPONSE');
-					event.preventDefault();
-					[...document.getElementsByClassName('regenerate-response-button')]?.at(-1)?.click();
-				}
-			});
-		};
-		setupKeyboardShortcuts();
+		// const setupKeyboardShortcuts = () => {
+		// 	document.addEventListener('keydown', async (event) => {
+		// 		if (isShortcutMatch(event, shortcuts[Shortcut.SEARCH])) {
+		// 			console.log('Shortcut triggered: SEARCH');
+		// 			event.preventDefault();
+		// 			showSearch.set(!$showSearch);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.NEW_CHAT])) {
+		// 			console.log('Shortcut triggered: NEW_CHAT');
+		// 			event.preventDefault();
+		// 			document.getElementById('sidebar-new-chat-button')?.click();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.FOCUS_INPUT])) {
+		// 			console.log('Shortcut triggered: FOCUS_INPUT');
+		// 			event.preventDefault();
+		// 			document.getElementById('chat-input')?.focus();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.COPY_LAST_CODE_BLOCK])) {
+		// 			console.log('Shortcut triggered: COPY_LAST_CODE_BLOCK');
+		// 			event.preventDefault();
+		// 			[...document.getElementsByClassName('copy-code-button')]?.at(-1)?.click();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.COPY_LAST_RESPONSE])) {
+		// 			console.log('Shortcut triggered: COPY_LAST_RESPONSE');
+		// 			event.preventDefault();
+		// 			[...document.getElementsByClassName('copy-response-button')]?.at(-1)?.click();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.TOGGLE_SIDEBAR])) {
+		// 			console.log('Shortcut triggered: TOGGLE_SIDEBAR');
+		// 			event.preventDefault();
+		// 			showSidebar.set(!$showSidebar);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.DELETE_CHAT])) {
+		// 			console.log('Shortcut triggered: DELETE_CHAT');
+		// 			event.preventDefault();
+		// 			document.getElementById('delete-chat-button')?.click();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_SETTINGS])) {
+		// 			console.log('Shortcut triggered: OPEN_SETTINGS');
+		// 			event.preventDefault();
+		// 			showSettings.set(!$showSettings);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.SHOW_SHORTCUTS])) {
+		// 			console.log('Shortcut triggered: SHOW_SHORTCUTS');
+		// 			event.preventDefault();
+		// 			showShortcuts.set(!$showShortcuts);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.CLOSE_MODAL])) {
+		// 			console.log('Shortcut triggered: CLOSE_MODAL');
+		// 			event.preventDefault();
+		// 			showSettings.set(false);
+		// 			showShortcuts.set(false);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_MODEL_SELECTOR])) {
+		// 			console.log('Shortcut triggered: OPEN_MODEL_SELECTOR');
+		// 			event.preventDefault();
+		// 			document.getElementById('model-selector-0-button')?.click();
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.NEW_TEMPORARY_CHAT])) {
+		// 			console.log('Shortcut triggered: NEW_TEMPORARY_CHAT');
+		// 			event.preventDefault();
+		// 			if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
+		// 				temporaryChatEnabled.set(true);
+		// 			} else {
+		// 				temporaryChatEnabled.set(!$temporaryChatEnabled);
+		// 			}
+		// 			await goto('/');
+		// 			setTimeout(() => {
+		// 				document.getElementById('new-chat-button')?.click();
+		// 			}, 0);
+		// 		} else if (isShortcutMatch(event, shortcuts[Shortcut.GENERATE_MESSAGE_PAIR])) {
+		// 			console.log('Shortcut triggered: GENERATE_MESSAGE_PAIR');
+		// 			event.preventDefault();
+		// 			document.getElementById('generate-message-pair-button')?.click();
+		// 		} else if (
+		// 			isShortcutMatch(event, shortcuts[Shortcut.REGENERATE_RESPONSE]) &&
+		// 			document.activeElement?.id === 'chat-input'
+		// 		) {
+		// 			console.log('Shortcut triggered: REGENERATE_RESPONSE');
+		// 			event.preventDefault();
+		// 			[...document.getElementsByClassName('regenerate-response-button')]?.at(-1)?.click();
+		// 		}
+		// 	});
+		// };
+		// setupKeyboardShortcuts();
 
 		if ($user?.role === 'admin' && ($settings?.showChangelog ?? true)) {
 			showChangelog.set($settings?.version !== $config.version);
@@ -383,7 +383,7 @@
 {#if $user}
 	<div class="app relative">
 		<div
-			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
+			class=" text-gray-700 dark:text-gray-100 bg-sidebar-50 dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
 		>
 			{#if !['user', 'admin'].includes($user?.role)}
 				<AccountPending />
@@ -445,17 +445,25 @@
 
 				<Sidebar />
 
-				{#if loaded}
-					<slot />
-				{:else}
-					<div
-						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
-							? '  md:max-w-[calc(100%-var(--sidebar-width))]'
-							: ' '}"
-					>
-						<Spinner className="size-5" />
-					</div>
-				{/if}
+				<div
+					class="w-full flex-1 {$showSidebar
+						? 'md:max-w-[calc(100%-var(--sidebar-width))]'
+						: ''} md:py-2 md:pr-2 h-screen max-h-[100dvh] flex flex-col"
+				>
+				<div
+					class="w-full flex-1 bg-white dark:bg-gray-900 md:rounded-xl md:shadow-lg md:shadow-black/5 dark:md:shadow-black/20 overflow-hidden"
+				>
+					{#if loaded}
+						<slot />
+					{:else}
+						<div
+							class="w-full h-full flex items-center justify-center"
+						>
+							<Spinner className="size-5" />
+						</div>
+					{/if}
+				</div>
+				</div>
 			{/if}
 		</div>
 	</div>

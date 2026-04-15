@@ -9,7 +9,7 @@
 	import { getUsage } from '$lib/apis';
 	import { getSessionUser, userSignOut } from '$lib/apis/auths';
 
-	import { showSettings, mobile, showSidebar, showShortcuts, user, config } from '$lib/stores';
+	import { showSettings, mobile, showSidebar, /* showShortcuts, */ user, config } from '$lib/stores';
 
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
@@ -17,8 +17,8 @@
 	import ArchiveBox from '$lib/components/icons/ArchiveBox.svelte';
 	import QuestionMarkCircle from '$lib/components/icons/QuestionMarkCircle.svelte';
 	import Map from '$lib/components/icons/Map.svelte';
-	import Keyboard from '$lib/components/icons/Keyboard.svelte';
-	import ShortcutsModal from '$lib/components/chat/ShortcutsModal.svelte';
+	// import Keyboard from '$lib/components/icons/Keyboard.svelte';
+	// import ShortcutsModal from '$lib/components/chat/ShortcutsModal.svelte';
 	import Settings from '$lib/components/icons/Settings.svelte';
 	import Code from '$lib/components/icons/Code.svelte';
 	import UserGroup from '$lib/components/icons/UserGroup.svelte';
@@ -70,7 +70,7 @@
 	};
 </script>
 
-<ShortcutsModal bind:show={$showShortcuts} />
+<!-- <ShortcutsModal bind:show={$showShortcuts} /> -->
 <UserStatusModal
 	bind:show={showUserStatusModal}
 	onSave={async () => {
@@ -321,7 +321,7 @@
 					</DropdownMenu.Item>
 				{/if}
 
-				<DropdownMenu.Item
+				<!-- <DropdownMenu.Item
 					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
 					id="chat-share-button"
 					on:click={async () => {
@@ -338,7 +338,7 @@
 						<Keyboard className="size-5" />
 					</div>
 					<div class=" self-center truncate">{$i18n.t('Keyboard shortcuts')}</div>
-				</DropdownMenu.Item>
+				</DropdownMenu.Item> -->
 			{/if}
 
 			<hr class=" border-gray-50/30 dark:border-gray-800/30 my-1 p-0" />

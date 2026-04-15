@@ -5,6 +5,7 @@
 	import { onMount, getContext, tick, createEventDispatcher } from 'svelte';
 	import { blur, fade } from 'svelte/transition';
 
+
 	const dispatch = createEventDispatcher();
 
 	import { getChatList } from '$lib/apis/chats';
@@ -65,6 +66,25 @@
 	let models = [];
 	let selectedModelIdx = 0;
 
+	const greetingText = '我是灵犀智能预报员，很高兴见到您！';
+	let displayedText = '';
+	let typingComplete = false;
+
+	onMount(() => {
+		let i = 0;
+		const interval = setInterval(() => {
+			if (i < greetingText.length) {
+				displayedText = greetingText.slice(0, i + 1);
+				i++;
+			} else {
+				typingComplete = true;
+				clearInterval(interval);
+			}
+		}, 60);
+
+		return () => clearInterval(interval);
+	});
+
 	$: if (selectedModels.length > 0) {
 		selectedModelIdx = models.length - 1;
 	}
@@ -72,7 +92,7 @@
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
 </script>
 
-<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
+<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center animate-fade-in">
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -104,99 +124,20 @@
 					}}
 				/>
 			{:else}
-				<div class="flex flex-row justify-center gap-3 @sm:gap-3.5 w-fit px-5 max-w-xl">
-					<div class="flex shrink-0 justify-center">
-						<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
-							{#each models as model, modelIdx}
-								<Tooltip
-									content={(models[modelIdx]?.info?.meta?.tags ?? [])
-										.map((tag) => tag.name.toUpperCase())
-										.join(', ')}
-									placement="top"
-								>
-									<button
-										aria-hidden={models.length <= 1}
-										aria-label={$i18n.t('Get information on {{name}} in the UI', {
-											name: models[modelIdx]?.name
-										})}
-										on:click={() => {
-											selectedModelIdx = modelIdx;
-										}}
-									>
-										<img
-											src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
-											class=" size-9 @sm:size-10 rounded-full border-[1px] border-gray-100 dark:border-none"
-											aria-hidden="true"
-											draggable="false"
-										/>
-									</button>
-								</Tooltip>
-							{/each}
-						</div>
-					</div>
-
-					<div
-						class=" text-3xl @sm:text-3xl line-clamp-1 flex items-center"
-						in:fade={{ duration: 100 }}
-					>
-						{#if models[selectedModelIdx]?.name}
-							<Tooltip
-								content={models[selectedModelIdx]?.name}
-								placement="top"
-								className=" flex items-center "
-							>
-								<span class="line-clamp-1">
-									{models[selectedModelIdx]?.name}
-								</span>
-							</Tooltip>
-						{:else}
-							{$i18n.t('Hello, {{name}}', { name: $user?.name })}
-						{/if}
-					</div>
+			<div class="flex flex-row items-center gap-4 w-fit px-5 max-w-2xl" in:fade={{ duration: 100 }}>
+				<div class="flex shrink-0">
+					<img
+						src="{WEBUI_BASE_URL}/static/auth-form-logo.png"
+						class="h-14 w-auto object-contain dark:invert"
+						alt="logo"
+						draggable="false"
+					/>
 				</div>
 
-				<div class="flex mt-1 mb-2">
-					<div in:fade={{ duration: 100, delay: 50 }}>
-						{#if models[selectedModelIdx]?.info?.meta?.description ?? null}
-							<Tooltip
-								className=" w-fit"
-								content={marked.parse(
-									sanitizeResponseContent(
-										models[selectedModelIdx]?.info?.meta?.description ?? ''
-									).replaceAll('\n', '<br>')
-								)}
-								placement="top"
-							>
-								<div
-									class="mt-0.5 px-2 text-sm font-normal text-gray-500 dark:text-gray-400 line-clamp-2 max-w-xl markdown"
-								>
-									{@html marked.parse(
-										sanitizeResponseContent(
-											models[selectedModelIdx]?.info?.meta?.description ?? ''
-										).replaceAll('\n', '<br>')
-									)}
-								</div>
-							</Tooltip>
-
-							{#if models[selectedModelIdx]?.info?.meta?.user}
-								<div class="mt-0.5 text-sm font-normal text-gray-400 dark:text-gray-500">
-									By
-									{#if models[selectedModelIdx]?.info?.meta?.user.community}
-										<a
-											href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user
-												.username}"
-											>{models[selectedModelIdx]?.info?.meta?.user.name
-												? models[selectedModelIdx]?.info?.meta?.user.name
-												: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}</a
-										>
-									{:else}
-										{models[selectedModelIdx]?.info?.meta?.user.name}
-									{/if}
-								</div>
-							{/if}
-						{/if}
-					</div>
-				</div>
+			<div class="text-xl @sm:text-2xl text-left whitespace-nowrap">
+				{displayedText}<span class="typing-cursor" class:hidden={typingComplete}>|</span>
+			</div>
+			</div>
 			{/if}
 
 			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
@@ -251,3 +192,35 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	:global(.animate-fade-in) {
+		animation: fadeIn 0.4s ease-out;
+	}
+
+	.typing-cursor {
+		animation: blink 0.6s step-end infinite;
+		font-weight: 100;
+	}
+
+	.typing-cursor.hidden {
+		display: none;
+	}
+
+	@keyframes blink {
+		50% {
+			opacity: 0;
+		}
+	}
+</style>

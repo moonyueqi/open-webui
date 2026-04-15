@@ -225,6 +225,7 @@
 	};
 
 	onMount(() => {
+		/* Notes feature disabled
 		actions = [
 			...actions,
 			...(($config?.features?.enable_notes ?? false) &&
@@ -242,6 +243,7 @@
 					]
 				: [])
 		];
+		*/
 
 		document.addEventListener('keydown', onKeyDown);
 	});

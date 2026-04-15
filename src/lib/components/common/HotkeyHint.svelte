@@ -1,3 +1,5 @@
+<!-- HotkeyHint - disabled -->
+<!--
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { shortcuts } from '$lib/shortcuts';
@@ -35,3 +37,9 @@
 		<span>{keys.map(formatKey).join(isMac ? '' : '+')}</span>
 	</div>
 {/if}
+-->
+
+<script lang="ts">
+	export let name: string;
+	export let className = '';
+</script>
