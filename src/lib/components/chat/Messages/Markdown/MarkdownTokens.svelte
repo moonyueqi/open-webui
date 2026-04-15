@@ -325,19 +325,18 @@
 			.trim()}
 
 		{#if token?.attributes?.type === 'tool_calls'}
-			<!-- Tool calls have dedicated handling with ToolCallDisplay component -->
 			<ToolCallDisplay
 				id={`${id}-${tokenIdx}-tc`}
 				attributes={token.attributes}
 				open={false}
-				className="w-full space-y-1"
+				className="w-full space-y-1 mb-2"
 			/>
 		{:else if textContent.length > 0}
 			<Collapsible
 				title={token.summary}
 				open={$settings?.expandDetails ?? false}
 				attributes={token?.attributes}
-				className="w-full space-y-1"
+				className="w-full space-y-1 mb-2"
 				dir="auto"
 			>
 				<div class=" mb-1.5" slot="content">
@@ -359,7 +358,7 @@
 				open={false}
 				disabled={true}
 				attributes={token?.attributes}
-				className="w-full space-y-1"
+				className="w-full space-y-1 mb-2"
 				dir="auto"
 			/>
 		{/if}

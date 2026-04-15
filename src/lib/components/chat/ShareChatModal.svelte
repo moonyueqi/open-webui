@@ -1,81 +1,89 @@
 <script lang="ts">
-	import { getContext, onMount } from 'svelte';
-	import { models, config } from '$lib/stores';
-
+	import { getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { deleteSharedChatById, getChatById, shareChatById } from '$lib/apis/chats';
-	import { copyToClipboard } from '$lib/utils';
+	import { getChatById, shareChatById } from '$lib/apis/chats';
+	import { copyToClipboard, createMessagesList } from '$lib/utils';
 
 	import Modal from '../common/Modal.svelte';
 	import Link from '../icons/Link.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 
 	export let chatId;
-
-	let chat = null;
-	let shareUrl = null;
-	const i18n = getContext('i18n');
-
-	const shareLocalChat = async () => {
-		const _chat = chat;
-
-		const sharedChat = await shareChatById(localStorage.token, chatId);
-		shareUrl = `${window.location.origin}/s/${sharedChat.id}`;
-		console.log(shareUrl);
-		chat = await getChatById(localStorage.token, chatId);
-
-		return shareUrl;
-	};
-
-	const shareChat = async () => {
-		const _chat = chat.chat;
-		console.log('share', _chat);
-
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-		const url = 'https://openwebui.com';
-		// const url = 'http://localhost:5173';
-
-		const tab = await window.open(`${url}/chats/upload`, '_blank');
-		window.addEventListener(
-			'message',
-			(event) => {
-				if (event.origin !== url) return;
-				if (event.data === 'loaded') {
-					tab.postMessage(
-						JSON.stringify({
-							chat: _chat,
-							models: $models.filter((m) => _chat.models.includes(m.id))
-						}),
-						'*'
-					);
-				}
-			},
-			false
-		);
-	};
-
 	export let show = false;
 
-	const isDifferentChat = (_chat) => {
-		if (!chat) {
-			return true;
+	let chat = null;
+	let shareUrl = '';
+	let messages = [];
+	let loading = false;
+	const i18n = getContext('i18n');
+
+	const stripHtmlTags = (text: string) => {
+		if (!text) return '';
+		return text
+			.replace(/<details[\s\S]*?<\/details>/gi, '')
+			.replace(/<[^>]*>/g, '')
+			.replace(/&[a-zA-Z0-9#]+;/g, '')
+			.trim();
+	};
+
+	const getPreviewMessages = (chat) => {
+		if (!chat?.chat) return [];
+		const chatContent = chat.chat;
+		let msgs = [];
+		if (chatContent.history) {
+			msgs = createMessagesList(chatContent.history, chatContent.history.currentId);
+		} else if (chatContent.messages) {
+			msgs = chatContent.messages;
 		}
-		if (!_chat) {
-			return false;
+		return msgs
+			.map((m) => ({ ...m, content: stripHtmlTags(m.content) }))
+			.filter((m) => m.content);
+	};
+
+	const generateShareLink = async () => {
+		loading = true;
+		try {
+			const sharedChat = await shareChatById(localStorage.token, chatId);
+			shareUrl = `${window.location.origin}/s/${sharedChat.id}`;
+			chat = await getChatById(localStorage.token, chatId);
+		} finally {
+			loading = false;
 		}
-		return chat.id !== _chat.id || chat.share_id !== _chat.share_id;
+	};
+
+	const copyShareLink = async () => {
+		if (!shareUrl) {
+			await generateShareLink();
+		}
+
+		const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+		if (isSafari) {
+			await navigator.clipboard.write([
+				new ClipboardItem({
+					'text/plain': new Blob([shareUrl], { type: 'text/plain' })
+				})
+			]);
+		} else {
+			copyToClipboard(shareUrl);
+		}
+		toast.success($i18n.t('Copied shared chat URL to clipboard!'));
 	};
 
 	$: if (show) {
 		(async () => {
 			if (chatId) {
 				const _chat = await getChatById(localStorage.token, chatId);
-				if (isDifferentChat(_chat)) {
-					chat = _chat;
+				chat = _chat;
+				messages = getPreviewMessages(_chat);
+				if (_chat.share_id) {
+					shareUrl = `${window.location.origin}/s/${_chat.share_id}`;
+				} else {
+					await generateShareLink();
 				}
 			} else {
 				chat = null;
-				console.log(chat);
+				messages = [];
+				shareUrl = '';
 			}
 		})();
 	}
@@ -83,8 +91,8 @@
 
 <Modal bind:show size="md">
 	<div>
-		<div class=" flex justify-between dark:text-gray-300 px-5 pt-4 pb-0.5">
-			<div class=" text-lg font-medium self-center">{$i18n.t('Share Chat')}</div>
+		<div class="flex justify-between dark:text-gray-300 px-5 pt-4 pb-0.5">
+			<div class="text-sm font-medium self-center">{$i18n.t('Share Chat')}</div>
 			<button
 				class="self-center"
 				aria-label={$i18n.t('Close')}
@@ -92,102 +100,64 @@
 					show = false;
 				}}
 			>
-				<XMark className={'size-5'} />
+				<XMark className={'size-4'} />
 			</button>
 		</div>
 
 		{#if chat}
-			<div class="px-5 pt-4 pb-5 w-full flex flex-col justify-center">
-				<div class=" text-sm dark:text-gray-300 mb-1">
-					{#if chat.share_id}
-						<a href="/s/{chat.share_id}" target="_blank"
-							>{$i18n.t('You have shared this chat')}
-							<span class=" underline">{$i18n.t('before')}</span>.</a
+			<div class="px-5 pt-3 pb-4 w-full flex flex-col justify-center">
+				{#if messages.length > 0}
+					<div
+						class="mb-3 rounded-lg overflow-hidden bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+					>
+						<div
+							class="max-h-64 overflow-y-auto px-4 py-3 space-y-3"
 						>
-						{$i18n.t('Click here to')}
-						<button
-							class="underline"
-							on:click={async () => {
-								const res = await deleteSharedChatById(localStorage.token, chatId);
-
-								if (res) {
-									chat = await getChatById(localStorage.token, chatId);
-								}
-							}}
-							>{$i18n.t('delete this link')}
-						</button>
-						{$i18n.t('and create a new shared link.')}
-					{:else}
-						{$i18n.t(
-							"Messages you send after creating your link won't be shared. Users with the URL will be able to view the shared chat."
-						)}
-					{/if}
-				</div>
-
-				<div class="flex justify-end">
-					<div class="flex flex-col items-end space-x-1 mt-3">
-						<div class="flex gap-1">
-							{#if $config?.features.enable_community_sharing}
-								<button
-									class="self-center flex items-center gap-1 px-3.5 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:text-white dark:hover:bg-gray-800 transition rounded-full"
-									type="button"
-									on:click={() => {
-										shareChat();
-										show = false;
-									}}
+							{#each messages as message}
+								<div
+									class="flex {message.role === 'user'
+										? 'justify-end'
+										: 'justify-start'}"
 								>
-									{$i18n.t('Share to Open WebUI Community')}
-								</button>
-							{/if}
-
-							<button
-								class="self-center flex items-center gap-1 px-3.5 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
-								type="button"
-								id="copy-and-share-chat-button"
-								on:click={async () => {
-									const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-									if (isSafari) {
-										// Oh, Safari, you're so special, let's give you some extra love and attention
-										console.log('isSafari');
-
-										const getUrlPromise = async () => {
-											const url = await shareLocalChat();
-											return new Blob([url], { type: 'text/plain' });
-										};
-
-										navigator.clipboard
-											.write([
-												new ClipboardItem({
-													'text/plain': getUrlPromise()
-												})
-											])
-											.then(() => {
-												console.log('Async: Copying to clipboard was successful!');
-												return true;
-											})
-											.catch((error) => {
-												console.error('Async: Could not copy text: ', error);
-												return false;
-											});
-									} else {
-										copyToClipboard(await shareLocalChat());
-									}
-
-									toast.success($i18n.t('Copied shared chat URL to clipboard!'));
-									show = false;
-								}}
-							>
-								<Link />
-
-								{#if chat.share_id}
-									{$i18n.t('Update and Copy Link')}
-								{:else}
-									{$i18n.t('Copy Link')}
-								{/if}
-							</button>
+									<div
+										class="max-w-[80%] px-3 py-2 text-xs {message.role === 'user'
+											? 'bg-blue-50 dark:bg-blue-900/30 text-gray-700 dark:text-gray-200 rounded-2xl rounded-br-sm'
+											: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl rounded-bl-sm'}"
+									>
+										<div class="whitespace-pre-wrap break-words line-clamp-4">
+											{message.content}
+										</div>
+									</div>
+								</div>
+							{/each}
 						</div>
 					</div>
+				{/if}
+
+				<div class="text-xs text-gray-400 dark:text-gray-500 mb-2">
+					{$i18n.t(
+						'Users with the URL will be able to view the shared chat.'
+					)}
+				</div>
+
+				<div class="flex items-center gap-2">
+					<input
+						type="text"
+						class="flex-1 text-xs bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-1.5 outline-none"
+						value={shareUrl}
+						placeholder={loading ? $i18n.t('Generating link...') : ''}
+						readonly
+					/>
+					<button
+						class="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg shrink-0"
+						type="button"
+						id="copy-and-share-chat-button"
+						disabled={loading}
+						on:click={copyShareLink}
+					>
+						<Link />
+						{$i18n.t('Copy Link')}
+					</button>
 				</div>
 			</div>
 		{/if}

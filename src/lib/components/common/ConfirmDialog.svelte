@@ -100,21 +100,21 @@
 	<!-- svelte-ignore a11y-no-static-element-interactions -->
 	<div
 		bind:this={modalElement}
-		class=" fixed top-0 right-0 left-0 bottom-0 bg-black/60 w-full h-screen max-h-[100dvh] flex justify-center z-99999999 overflow-hidden overscroll-contain"
+		class=" fixed top-0 right-0 left-0 bottom-0 bg-black/60 backdrop-blur-sm w-full h-screen max-h-[100dvh] flex justify-center z-99999999 overflow-hidden overscroll-contain"
 		in:fade={{ duration: 10 }}
 		on:mousedown={() => {
 			show = false;
 		}}
 	>
 		<div
-			class=" m-auto max-w-full w-[32rem] mx-2 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm rounded-4xl max-h-[100dvh] shadow-3xl border border-white dark:border-gray-900"
+			class=" m-auto max-w-full w-[32rem] mx-2 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm rounded-2xl max-h-[100dvh] shadow-3xl border border-white dark:border-gray-900"
 			in:flyAndScale
 			on:mousedown={(e) => {
 				e.stopPropagation();
 			}}
 		>
 			<div class="px-[1.75rem] py-6 flex flex-col">
-				<div class=" text-lg font-medium dark:text-gray-200 mb-2.5">
+				<div class=" text-base font-bold dark:text-gray-200 mb-2.5">
 					{#if title !== ''}
 						{title}
 					{:else}
@@ -158,27 +158,27 @@
 					</div>
 				</slot>
 
-				<div class="mt-6 flex justify-between gap-1.5">
-					<button
-						class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white font-medium w-full py-2 rounded-3xl transition"
-						on:click={() => {
-							show = false;
-							dispatch('cancel');
-						}}
-						type="button"
-					>
-						{cancelLabel}
-					</button>
-					<button
-						class="text-sm bg-gray-900 hover:bg-gray-850 text-gray-100 dark:bg-gray-100 dark:hover:bg-white dark:text-gray-800 font-medium w-full py-2 rounded-3xl transition"
-						on:click={() => {
-							confirmHandler();
-						}}
-						type="button"
-					>
-						{confirmLabel}
-					</button>
-				</div>
+			<div class="mt-6 flex justify-end gap-2">
+				<button
+					class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white font-medium px-4 py-1.5 rounded-lg transition"
+					on:click={() => {
+						show = false;
+						dispatch('cancel');
+					}}
+					type="button"
+				>
+					{cancelLabel}
+				</button>
+				<button
+					class="text-xs bg-gray-900 hover:bg-gray-850 text-gray-100 dark:bg-gray-100 dark:hover:bg-white dark:text-gray-800 font-medium px-4 py-1.5 rounded-lg transition"
+					on:click={() => {
+						confirmHandler();
+					}}
+					type="button"
+				>
+					{confirmLabel}
+				</button>
+			</div>
 			</div>
 		</div>
 	</div>

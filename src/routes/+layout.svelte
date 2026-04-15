@@ -800,7 +800,9 @@
 				? backendConfig.default_locale
 				: bestMatchingLanguage(languages, browserLanguages, 'en-US');
 			changeLanguage(lang);
-			dayjs.locale(lang);
+			dayjs.locale(lang.toLowerCase());
+		} else {
+			dayjs.locale(localStorage.locale.toLowerCase());
 		}
 
 		if (backendConfig) {

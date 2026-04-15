@@ -79,9 +79,12 @@ export const getLanguages = async () => {
 	const languages = (await import(`./locales/languages.json`)).default;
 	return languages;
 };
-export const changeLanguage = (lang: string) => {
+export const changeLanguage = async (lang: string) => {
 	document.documentElement.setAttribute('lang', lang);
 	i18next.changeLanguage(lang);
+
+	const { default: dayjs } = await import('$lib/dayjs');
+	dayjs.locale(lang.toLowerCase());
 };
 
 export default i18n;

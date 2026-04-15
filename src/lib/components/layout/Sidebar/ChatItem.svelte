@@ -41,9 +41,7 @@
 	import Check from '$lib/components/icons/Check.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import Document from '$lib/components/icons/Document.svelte';
-	import Sparkles from '$lib/components/icons/Sparkles.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
-	import { generateTitle } from '$lib/apis';
 
 	export let className = '';
 
@@ -163,8 +161,6 @@
 
 	let itemElement;
 
-	let generating = false;
-
 	let ignoreBlur = false;
 	let doubleClicked = false;
 
@@ -277,55 +273,19 @@
 		}, 0);
 	};
 
-	const generateTitleHandler = async () => {
-		generating = true;
-		if (!chat) {
-			chat = await getChatById(localStorage.token, id);
-		}
-
-		const messages = (chat.chat?.messages ?? []).map((message) => {
-			return {
-				role: message.role,
-				content: message.content
-			};
-		});
-
-		const model = chat.chat.models.at(0) ?? chat.models.at(0) ?? '';
-
-		chatTitle = '';
-
-		const generatedTitle = await generateTitle(localStorage.token, model, messages).catch(
-			(error) => {
-				toast.error(`${error}`);
-				return null;
-			}
-		);
-
-		if (generatedTitle) {
-			if (generatedTitle !== title) {
-				editChatTitle(id, generatedTitle);
-			}
-
-			confirmEdit = false;
-		} else {
-			chatTitle = title;
-		}
-
-		generating = false;
-	};
 </script>
 
 <ShareChatModal bind:show={showShareChatModal} chatId={id} />
 
 <DeleteConfirmDialog
 	bind:show={showDeleteConfirm}
-	title={$i18n.t('Delete chat?')}
+	title="删除此对话？"
 	on:confirm={() => {
 		deleteChatHandler(id);
 	}}
 >
-	<div class=" text-sm text-gray-500 flex-1 line-clamp-3">
-		{$i18n.t('This will delete')} <span class="  font-semibold">{title}</span>.
+	<div class=" text-sm text-gray-500 flex-1">
+		删除后，这条对话记录将无法找回，其中包含的文件也将一并被删除。若你之前分享过对话，分享链接也将无法查看。确定删除此对话？
 	</div>
 </DeleteConfirmDialog>
 
@@ -356,16 +316,13 @@
 			? 'bg-sidebar-hover dark:bg-gray-900 selected'
 			: selected
 				? 'bg-sidebar-100 dark:bg-gray-950 selected'
-				: 'group-hover:bg-sidebar-hover dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis relative {generating
-			? 'cursor-not-allowed'
-			: ''}"
+				: 'group-hover:bg-sidebar-hover dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis relative"
 		>
 			<input
 				id="chat-title-input-{id}"
 				bind:value={chatTitle}
 				class=" bg-transparent w-full outline-hidden mr-10 text-[0.8rem]"
-				placeholder={generating ? $i18n.t('Generating...') : ''}
-				disabled={generating}
+				placeholder=""
 				on:keydown={chatTitleInputKeydownHandler}
 				on:blur={async (e) => {
 					if (doubleClicked) {
@@ -468,16 +425,30 @@
 			<div
 				class="flex self-center items-center space-x-1.5 z-10 translate-y-[0.5px] -translate-x-[0.5px]"
 			>
-				<Tooltip content={$i18n.t('Generate')}>
+				<Tooltip content={$i18n.t('Confirm')}>
 					<button
-						class=" self-center dark:hover:text-white transition disabled:cursor-not-allowed"
-						id="generate-title-button"
-						disabled={generating}
+						class="self-center dark:hover:text-white transition"
 						on:click={() => {
-							generateTitleHandler();
+							if (chatTitle !== '' && chatTitle !== title) {
+								editChatTitle(id, chatTitle);
+							}
+							confirmEdit = false;
+							chatTitle = '';
 						}}
 					>
-						<Sparkles strokeWidth="2" />
+						<Check className="size-3.5" strokeWidth="2.5" />
+					</button>
+				</Tooltip>
+
+				<Tooltip content={$i18n.t('Cancel')}>
+					<button
+						class="self-center dark:hover:text-white transition"
+						on:click={() => {
+							confirmEdit = false;
+							chatTitle = '';
+						}}
+					>
+						<XMark className="size-3.5" strokeWidth="2.5" />
 					</button>
 				</Tooltip>
 			</div>

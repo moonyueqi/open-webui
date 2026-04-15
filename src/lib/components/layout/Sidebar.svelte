@@ -1184,7 +1184,8 @@
 							<div class="flex flex-col space-y-1 rounded-xl">
 								<Folder
 									id="sidebar-pinned-chats"
-									buttonClassName=" text-gray-500"
+									buttonClassName=" text-gray-400 dark:text-gray-500"
+									textSize="text-[0.65rem]"
 									on:import={(e) => {
 										importChatHandler(e.detail, true);
 									}}
