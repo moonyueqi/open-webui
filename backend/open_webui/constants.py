@@ -38,6 +38,9 @@ class ERROR_MESSAGES(str, Enum):
     ID_TAKEN = "此ID已被注册，请选择其他ID。"
     MODEL_ID_TAKEN = "此模型ID已被注册，请选择其他模型ID。"
     NAME_TAG_TAKEN = "此名称标签已被注册，请选择其他名称标签。"
+    KNOWLEDGE_NAME_TAKEN = "您已有一个同名的知识库，请使用其他名称。"
+    SKILL_NAME_TAKEN = "已存在同名的技能，请使用其他名称。"
+    TOOL_NAME_TAKEN = "已存在同名的工具，请使用其他名称。"
     MODEL_ID_TOO_LONG = "模型ID过长，请确保模型ID长度不超过256个字符。"
 
     INVALID_TOKEN = (
@@ -108,6 +111,34 @@ class ERROR_MESSAGES(str, Enum):
     INVALID_PASSWORD = lambda err="": (
         err if err else "密码不符合所要求的验证条件。"
     )
+
+    # ===== 嵌入 / 重排序 / 检索 =====
+    EMBEDDING_MODEL_UNAVAILABLE = (
+        "嵌入模型暂时不可用，请联系管理员检查 API 配置。"
+    )
+    RERANKING_MODEL_UNAVAILABLE = (
+        "重排序模型暂时不可用，请联系管理员检查 API 配置。"
+    )
+    RAG_RETRIEVAL_FAILED = (
+        "知识库检索失败，请联系管理员检查嵌入模型 API 配置。"
+    )
+
+    # ===== 语音模型（STT / TTS）=====
+    STT_FAILED = "语音转文字失败，请联系管理员检查 STT API 配置。"
+    TTS_FAILED = "语音合成失败，请联系管理员检查 TTS API 配置。"
+    STT_CONFIG_MISSING = (
+        lambda provider="": f"{provider + ' ' if provider else ''}语音识别未正确配置，请联系管理员。"
+    )
+    TTS_CONFIG_MISSING = (
+        lambda provider="": f"{provider + ' ' if provider else ''}语音合成未正确配置，请联系管理员。"
+    )
+    AUDIO_FILE_TOO_LARGE = (
+        lambda size="": f"音频文件过大{f'（限制 {size}）' if size else ''}，请上传更小的文件。"
+    )
+    AUDIO_FORMAT_INVALID = "音频格式不支持，请上传 mp3 或 wav 格式。"
+    AUDIO_FILE_NOT_FOUND = "音频文件未找到，请重新录制后再试。"
+    INVALID_AUDIO_PAYLOAD = "请求格式无效，请联系管理员。"
+    INVALID_VOICE_ID = "语音 ID 无效，请联系管理员检查 TTS 配置。"
 
 
 class TASKS(str, Enum):

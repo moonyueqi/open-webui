@@ -3,6 +3,7 @@
 	import { WEBUI_NAME, config, user, showSidebar } from '$lib/stores';
 	import { goto } from '$app/navigation';
 	import { onMount, getContext, onDestroy } from 'svelte';
+	import { getSessionUser } from '$lib/apis/auths';
 
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
@@ -15,11 +16,9 @@
 	import { updateUserRole, getUsers, deleteUserById } from '$lib/apis/users';
 
 	import Pagination from '$lib/components/common/Pagination.svelte';
-	import ChatBubbles from '$lib/components/icons/ChatBubbles.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	import EditUserModal from '$lib/components/admin/Users/UserList/EditUserModal.svelte';
-	import UserChatsModal from '$lib/components/admin/Users/UserList/UserChatsModal.svelte';
 	import AddUserModal from '$lib/components/admin/Users/UserList/AddUserModal.svelte';
 
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -52,8 +51,17 @@
 	let showDeleteConfirmDialog = false;
 	let showAddUserModal = false;
 
-	let showUserChatsModal = false;
 	let showEditUserModal = false;
+
+	// Cache-busting version map for avatar images. Bumping the version of a user
+	// forces the browser to re-fetch /users/{id}/profile/image after the avatar
+	// has been changed (otherwise the cached image would persist).
+	let avatarVersions: Record<string, number> = {};
+	const getAvatarSrc = (userId: string) => {
+		const v = avatarVersions[userId];
+		const suffix = v ? `?v=${v}` : '';
+		return `${WEBUI_API_BASE_URL}/users/${userId}/profile/image${suffix}`;
+	};
 
 	const deleteUserHandler = async (id) => {
 		const res = await deleteUserById(localStorage.token, id).catch((error) => {
@@ -134,13 +142,21 @@
 	{selectedUser}
 	sessionUser={$user}
 	on:save={async () => {
+		if (selectedUser?.id) {
+			avatarVersions = { ...avatarVersions, [selectedUser.id]: Date.now() };
+
+			// If admin edited their own profile, refresh the global user store so
+			// that the sidebar avatar/name reflects the change immediately.
+			if (selectedUser.id === $user?.id) {
+				const sessionUser = await getSessionUser(localStorage.token).catch(() => null);
+				if (sessionUser) {
+					user.set(sessionUser);
+				}
+			}
+		}
 		getUserList();
 	}}
 />
-
-{#if selectedUser}
-	<UserChatsModal bind:show={showUserChatsModal} user={selectedUser} />
-{/if}
 
 {#if ($config?.license_metadata?.seats ?? null) !== null && total && total > $config?.license_metadata?.seats}
 	<div class=" mt-1 mb-2 text-xs text-red-500">
@@ -157,147 +173,141 @@
 {/if}
 
 {#if users === null || total === null}
-	<div class="my-10">
-		<Spinner className="size-5" />
+	<div class="flex items-center justify-center py-16">
+		<Spinner className="size-6" />
 	</div>
 {:else}
 	<div
-		class="pt-0.5 pb-1 gap-1 flex flex-col md:flex-row justify-between sticky top-0 z-10 bg-white dark:bg-gray-900"
+		class="pt-1 pb-3 gap-3 flex flex-col md:flex-row md:items-center justify-between sticky top-0 z-10 bg-white dark:bg-gray-900"
 	>
-		<div class="flex md:self-center text-lg font-medium px-0.5 gap-2">
-			<div class="flex-shrink-0">
+		<div class="flex items-center gap-3">
+			<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">
 				{$i18n.t('Users')}
 			</div>
 
-			<div>
+			<div class="flex items-center">
 				{#if ($config?.license_metadata?.seats ?? null) !== null}
 					{#if total > $config?.license_metadata?.seats}
-						<span class="text-lg font-medium text-red-500"
-							>{total} of {$config?.license_metadata?.seats}
-							<span class="text-sm font-normal">{$i18n.t('available users')}</span></span
-						>
+						<span class="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-0.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+							{total} / {$config?.license_metadata?.seats}
+						</span>
 					{:else}
-						<span class="text-lg font-medium text-gray-500 dark:text-gray-300"
-							>{total} of {$config?.license_metadata?.seats}
-							<span class="text-sm font-normal">{$i18n.t('available users')}</span></span
-						>
+						<span class="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+							{total} / {$config?.license_metadata?.seats}
+						</span>
 					{/if}
 				{:else}
-					<span class="text-lg font-medium text-gray-500 dark:text-gray-300">{total}</span>
+					<span class="inline-flex items-center text-sm font-medium px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+						{total}
+					</span>
 				{/if}
 			</div>
 		</div>
 
-		<div class="flex gap-1">
-			<div class=" flex w-full space-x-2">
-				<div class="flex flex-1">
-					<div class=" self-center ml-1 mr-3">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-							class="w-4 h-4"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-					</div>
-					<input
-						class=" w-full text-sm pr-4 py-1 rounded-r-xl outline-hidden bg-transparent"
-						bind:value={query}
-						aria-label={$i18n.t('Search')}
-						placeholder={$i18n.t('Search')}
+		<div class="flex items-center gap-2">
+			<div class="flex items-center flex-1 md:w-64 rounded-xl px-3 py-1.5 bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-colors">
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 20 20"
+					fill="currentColor"
+					class="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0"
+				>
+					<path
+						fill-rule="evenodd"
+						d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+						clip-rule="evenodd"
 					/>
-				</div>
-
-				<div>
-					<Tooltip content={$i18n.t('Add User')}>
-						<button
-							class=" p-2 rounded-xl hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-850 transition font-medium text-sm flex items-center space-x-1"
-							on:click={() => {
-								showAddUserModal = !showAddUserModal;
-							}}
-						>
-							<Plus className="size-3.5" />
-						</button>
-					</Tooltip>
-				</div>
+				</svg>
+				<input
+					class="w-full text-sm pl-2 outline-hidden bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+					bind:value={query}
+					aria-label={$i18n.t('Search')}
+					placeholder={$i18n.t('Search')}
+				/>
 			</div>
+
+			<Tooltip content={$i18n.t('Add User')}>
+				<button
+					class="flex items-center justify-center p-2 rounded-xl bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300"
+					on:click={() => {
+						showAddUserModal = !showAddUserModal;
+					}}
+				>
+					<Plus className="size-4" />
+				</button>
+			</Tooltip>
 		</div>
 	</div>
 
-	<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
-		<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto max-w-full">
-			<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
-				<tr class=" border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
+	<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full rounded-xl border border-gray-100 dark:border-gray-800">
+		<table class="w-full text-sm text-left text-gray-600 dark:text-gray-400 table-auto max-w-full">
+			<thead class="text-xs uppercase bg-gray-50/80 dark:bg-gray-850/50 text-gray-500 dark:text-gray-400">
+				<tr>
 					<th
 						scope="col"
-						class="px-2.5 py-2 cursor-pointer select-none"
+						class="px-4 py-3 cursor-pointer select-none font-semibold"
 						on:click={() => setSortKey('role')}
 					>
 						<div class="flex gap-1.5 items-center">
 							{$i18n.t('Role')}
 
 							{#if orderBy === 'role'}
-								<span class="font-normal"
+								<span class="font-normal text-gray-400 dark:text-gray-500"
 									>{#if direction === 'asc'}
-										<ChevronUp className="size-2" />
+										<ChevronUp className="size-2.5" />
 									{:else}
-										<ChevronDown className="size-2" />
+										<ChevronDown className="size-2.5" />
 									{/if}
 								</span>
 							{:else}
 								<span class="invisible">
-									<ChevronUp className="size-2" />
+									<ChevronUp className="size-2.5" />
 								</span>
 							{/if}
 						</div>
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-2 cursor-pointer select-none"
+						class="px-4 py-3 cursor-pointer select-none font-semibold"
 						on:click={() => setSortKey('name')}
 					>
 						<div class="flex gap-1.5 items-center">
 							{$i18n.t('Name')}
 
 							{#if orderBy === 'name'}
-								<span class="font-normal"
+								<span class="font-normal text-gray-400 dark:text-gray-500"
 									>{#if direction === 'asc'}
-										<ChevronUp className="size-2" />
+										<ChevronUp className="size-2.5" />
 									{:else}
-										<ChevronDown className="size-2" />
+										<ChevronDown className="size-2.5" />
 									{/if}
 								</span>
 							{:else}
 								<span class="invisible">
-									<ChevronUp className="size-2" />
+									<ChevronUp className="size-2.5" />
 								</span>
 							{/if}
 						</div>
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-2 cursor-pointer select-none"
+						class="px-4 py-3 cursor-pointer select-none font-semibold"
 						on:click={() => setSortKey('email')}
 					>
 						<div class="flex gap-1.5 items-center">
 							{$i18n.t('Email')}
 
 							{#if orderBy === 'email'}
-								<span class="font-normal"
+								<span class="font-normal text-gray-400 dark:text-gray-500"
 									>{#if direction === 'asc'}
-										<ChevronUp className="size-2" />
+										<ChevronUp className="size-2.5" />
 									{:else}
-										<ChevronDown className="size-2" />
+										<ChevronDown className="size-2.5" />
 									{/if}
 								</span>
 							{:else}
 								<span class="invisible">
-									<ChevronUp className="size-2" />
+									<ChevronUp className="size-2.5" />
 								</span>
 							{/if}
 						</div>
@@ -305,59 +315,59 @@
 
 					<th
 						scope="col"
-						class="px-2.5 py-2 cursor-pointer select-none"
+						class="px-4 py-3 cursor-pointer select-none font-semibold"
 						on:click={() => setSortKey('last_active_at')}
 					>
 						<div class="flex gap-1.5 items-center">
 							{$i18n.t('Last Active')}
 
 							{#if orderBy === 'last_active_at'}
-								<span class="font-normal"
+								<span class="font-normal text-gray-400 dark:text-gray-500"
 									>{#if direction === 'asc'}
-										<ChevronUp className="size-2" />
+										<ChevronUp className="size-2.5" />
 									{:else}
-										<ChevronDown className="size-2" />
+										<ChevronDown className="size-2.5" />
 									{/if}
 								</span>
 							{:else}
 								<span class="invisible">
-									<ChevronUp className="size-2" />
+									<ChevronUp className="size-2.5" />
 								</span>
 							{/if}
 						</div>
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-2 cursor-pointer select-none"
+						class="px-4 py-3 cursor-pointer select-none font-semibold"
 						on:click={() => setSortKey('created_at')}
 					>
 						<div class="flex gap-1.5 items-center">
 							{$i18n.t('Created at')}
 							{#if orderBy === 'created_at'}
-								<span class="font-normal"
+								<span class="font-normal text-gray-400 dark:text-gray-500"
 									>{#if direction === 'asc'}
-										<ChevronUp className="size-2" />
+										<ChevronUp className="size-2.5" />
 									{:else}
-										<ChevronDown className="size-2" />
+										<ChevronDown className="size-2.5" />
 									{/if}
 								</span>
 							{:else}
 								<span class="invisible">
-									<ChevronUp className="size-2" />
+									<ChevronUp className="size-2.5" />
 								</span>
 							{/if}
 						</div>
 					</th>
 
-					<th scope="col" class="px-2.5 py-2 text-right" />
+					<th scope="col" class="px-4 py-3 text-right" />
 				</tr>
 			</thead>
-			<tbody class="">
+			<tbody>
 				{#each users as user, userIdx (user.id)}
-					<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
-						<td class="px-3 py-1 min-w-[7rem] w-28">
+					<tr class="border-t border-gray-50 dark:border-gray-850/50 text-xs hover:bg-gray-50/50 dark:hover:bg-gray-850/30 transition-colors">
+						<td class="px-4 py-2.5 min-w-[7rem] w-28">
 							<button
-								class=" translate-y-0.5"
+								class="translate-y-0.5"
 								aria-label={$i18n.t('Change User Role')}
 								on:click={() => {
 									selectedUser = user;
@@ -370,12 +380,12 @@
 								/>
 							</button>
 						</td>
-						<td class="px-3 py-1 font-medium text-gray-900 dark:text-white max-w-48">
-							<div class="flex items-center gap-2">
+						<td class="px-4 py-2.5 font-medium text-gray-900 dark:text-white max-w-48">
+							<div class="flex items-center gap-2.5">
 								<ProfilePreview {user} side="right" align="center" sideOffset={6}>
 									<img
-										class="rounded-full w-6 min-w-6 h-6 object-cover mr-0.5 flex-shrink-0"
-										src={`${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`}
+										class="rounded-full w-7 min-w-7 h-7 object-cover flex-shrink-0 ring-2 ring-gray-100 dark:ring-gray-800"
+										src={getAvatarSrc(user.id)}
 										alt="user"
 									/>
 								</ProfilePreview>
@@ -384,46 +394,31 @@
 
 								{#if user?.last_active_at && Date.now() / 1000 - user.last_active_at < 180}
 									<div>
-										<span class="relative flex size-1.5">
+										<span class="relative flex size-2">
 											<span
 												class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"
 											></span>
-											<span class="relative inline-flex size-1.5 rounded-full bg-green-500"></span>
+											<span class="relative inline-flex size-2 rounded-full bg-green-500"></span>
 										</span>
 									</div>
 								{/if}
 							</div>
 						</td>
-						<td class=" px-3 py-1"> {user.email} </td>
+						<td class="px-4 py-2.5 text-gray-500 dark:text-gray-400"> {user.email} </td>
 
-						<td class=" px-3 py-1">
-							{dayjs(user.last_active_at * 1000).fromNow()}
+						<td class="px-4 py-2.5 text-gray-500 dark:text-gray-400">
+							{user.last_active_at ? dayjs(user.last_active_at * 1000).fromNow() : $i18n.t('Never')}
 						</td>
 
-						<td class=" px-3 py-1">
+						<td class="px-4 py-2.5 text-gray-500 dark:text-gray-400">
 							{dayjs(user.created_at * 1000).format('LL')}
 						</td>
 
-						<td class="px-3 py-1 text-right">
-							<div class="flex justify-end w-full">
-								{#if $config.features.enable_admin_chat_access && user.role !== 'admin'}
-									<Tooltip content={$i18n.t('Chats')}>
-										<button
-											class="self-center w-fit text-sm px-2 py-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-											aria-label={$i18n.t('Chats')}
-											on:click={async () => {
-												showUserChatsModal = !showUserChatsModal;
-												selectedUser = user;
-											}}
-										>
-											<ChatBubbles />
-										</button>
-									</Tooltip>
-								{/if}
-
-								<Tooltip content={$i18n.t('Edit User')}>
+						<td class="px-4 py-2.5 text-right">
+							<div class="flex justify-end items-center gap-0.5">
+							<Tooltip content={$i18n.t('Edit User')}>
 									<button
-										class="self-center w-fit text-sm px-2 py-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+										class="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
 										aria-label={$i18n.t('Edit User')}
 										on:click={async () => {
 											showEditUserModal = !showEditUserModal;
@@ -450,7 +445,7 @@
 								{#if user.role !== 'admin'}
 									<Tooltip content={$i18n.t('Delete User')}>
 										<button
-											class="self-center w-fit text-sm px-2 py-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+											class="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
 											aria-label={$i18n.t('Delete User')}
 											on:click={async () => {
 												showDeleteConfirmDialog = true;
@@ -482,12 +477,14 @@
 		</table>
 	</div>
 
-	<div class=" text-gray-500 text-xs mt-1.5 text-right">
+	<div class="text-gray-400 dark:text-gray-500 text-xs mt-2.5 text-right">
 		ⓘ {$i18n.t("Click on the user role button to change a user's role.")}
 	</div>
 
 	{#if total > 30}
-		<Pagination bind:page count={total} perPage={30} />
+		<div class="mt-2">
+			<Pagination bind:page count={total} perPage={30} />
+		</div>
 	{/if}
 {/if}
 

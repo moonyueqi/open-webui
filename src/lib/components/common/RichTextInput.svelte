@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import urlExtension from '$lib/utils/marked/url-extension';
 
+	marked.use(urlExtension());
 	marked.use({
 		breaks: true,
 		gfm: true,
@@ -463,6 +465,29 @@
 
 		// insert the HTML content at the current selection
 		editor.commands.insertContent(htmlContent);
+
+		focus();
+	};
+
+	// Insert a Tiptap mention node programmatically (e.g. from a toolbar button).
+	// `char` is the trigger char that the mention turndown rule emits, e.g. '$' for skills, '@' for models.
+	// We inject HTML directly so the `data-mention-suggestion-char` attribute is preserved on the rendered
+	// span. The turndown rule reads that attribute when serializing the editor content back to text.
+	export const insertMention = (char: string, id: string, label?: string) => {
+		if (!editor || !editor.view) return;
+
+		const safeId = String(id).replace(/"/g, '&quot;');
+		const safeLabel = String(label ?? id).replace(/"/g, '&quot;');
+
+		try {
+			editor.commands.insertContent(
+				`<span data-type="mention" data-id="${safeId}" data-label="${safeLabel}" data-mention-suggestion-char="${char}">${char}${safeLabel}</span>&nbsp;`
+			);
+		} catch (e) {
+			// Fallback: insert plain text in the same `<charid>` form so the
+			// downstream regex parser still picks it up.
+			editor.commands.insertContent(`<${char}${id}> `);
+		}
 
 		focus();
 	};

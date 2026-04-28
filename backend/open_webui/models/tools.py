@@ -156,6 +156,16 @@ class ToolsTable:
         except Exception:
             return None
 
+    def get_tool_by_name(
+        self, name: str, db: Optional[Session] = None
+    ) -> Optional[ToolModel]:
+        try:
+            with get_db_context(db) as db:
+                tool = db.query(Tool).filter_by(name=name).first()
+                return self._to_tool_model(tool, db=db) if tool else None
+        except Exception:
+            return None
+
     def get_tools(
         self, defer_content: bool = False, db: Optional[Session] = None
     ) -> list[ToolUserModel]:

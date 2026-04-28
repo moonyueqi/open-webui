@@ -73,7 +73,7 @@ class User(Base):
     oauth = Column(JSON, nullable=True)
     scim = Column(JSON, nullable=True)
 
-    last_active_at = Column(BigInteger)
+    last_active_at = Column(BigInteger, nullable=True)
     updated_at = Column(BigInteger)
     created_at = Column(BigInteger)
 
@@ -106,7 +106,7 @@ class UserModel(BaseModel):
     oauth: Optional[dict] = None
     scim: Optional[dict] = None
 
-    last_active_at: int  # timestamp in epoch
+    last_active_at: Optional[int] = None  # timestamp in epoch
     updated_at: int  # timestamp in epoch
     created_at: int  # timestamp in epoch
 
@@ -277,7 +277,7 @@ class UsersTable:
                     "name": name,
                     "role": role,
                     "profile_image_url": profile_image_url,
-                    "last_active_at": int(time.time()),
+                    "last_active_at": None,
                     "created_at": int(time.time()),
                     "updated_at": int(time.time()),
                     "username": username,

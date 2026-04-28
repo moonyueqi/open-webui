@@ -1,3 +1,4 @@
+<!-- Functions workspace redirect disabled
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -6,3 +7,4 @@
 		goto('/admin/functions/create');
 	});
 </script>
+-->

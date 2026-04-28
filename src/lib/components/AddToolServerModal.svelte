@@ -10,13 +10,9 @@
 
 	import { settings } from '$lib/stores';
 	import Modal from '$lib/components/common/Modal.svelte';
-	import Plus from '$lib/components/icons/Plus.svelte';
-	import Minus from '$lib/components/icons/Minus.svelte';
-	import PencilSolid from '$lib/components/icons/PencilSolid.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
-	import Tags from './common/Tags.svelte';
 	import { getToolServerData } from '$lib/apis';
 	import { verifyToolServerConnection, registerOAuthClient } from '$lib/apis/configs';
 	import AccessControlModal from '$lib/components/workspace/common/AccessControlModal.svelte';
@@ -59,6 +55,7 @@
 
 	let enable = true;
 	let loading = false;
+	let verifying = false;
 	let showAdvanced = false;
 	let showAccessControlModal = false;
 
@@ -130,43 +127,48 @@
 			}
 		}
 
-		if (direct) {
-			const res = await getToolServerData(
-				auth_type === 'bearer' ? key : localStorage.token,
-				path.includes('://') ? path : `${url}${path.startsWith('/') ? '' : '/'}${path}`
-			).catch((err) => {
-				toast.error($i18n.t('Connection failed'));
-			});
+		verifying = true;
+		try {
+			if (direct) {
+				const res = await getToolServerData(
+					auth_type === 'bearer' ? key : localStorage.token,
+					path.includes('://') ? path : `${url}${path.startsWith('/') ? '' : '/'}${path}`
+				).catch((err) => {
+					toast.error($i18n.t('Connection failed'));
+				});
 
-			if (res) {
-				toast.success($i18n.t('Connection successful'));
-				console.debug('Connection successful', res);
-			}
-		} else {
-			const res = await verifyToolServerConnection(localStorage.token, {
-				url,
-				path,
-				type,
-				auth_type,
-				headers: headers ? JSON.parse(headers) : undefined,
-				key,
-				config: {
-					enable: enable,
-					access_grants: accessGrants
-				},
-				info: {
-					id,
-					name,
-					description
+				if (res) {
+					toast.success($i18n.t('Connection successful'));
+					console.debug('Connection successful', res);
 				}
-			}).catch((err) => {
-				toast.error($i18n.t('Connection failed'));
-			});
+			} else {
+				const res = await verifyToolServerConnection(localStorage.token, {
+					url,
+					path,
+					type,
+					auth_type,
+					headers: headers ? JSON.parse(headers) : undefined,
+					key,
+					config: {
+						enable: enable,
+						access_grants: accessGrants
+					},
+					info: {
+						id,
+						name,
+						description
+					}
+				}).catch((err) => {
+					toast.error($i18n.t('Connection failed'));
+				});
 
-			if (res) {
-				toast.success($i18n.t('Connection successful'));
-				console.debug('Connection successful', res);
+				if (res) {
+					toast.success($i18n.t('Connection successful'));
+					console.debug('Connection successful', res);
+				}
 			}
+		} finally {
+			verifying = false;
 		}
 	};
 
@@ -181,7 +183,6 @@
 
 			try {
 				let data = JSON.parse(json);
-				// validate data
 				if (Array.isArray(data)) {
 					if (data.length === 0) {
 						toast.error($i18n.t('Please select a valid JSON file'));
@@ -221,7 +222,6 @@
 	};
 
 	const exportHandler = async () => {
-		// export current connection as json file
 		const json = JSON.stringify([
 			{
 				type,
@@ -271,7 +271,6 @@
 			return;
 		}
 
-		// validate spec
 		if (spec_type === 'json') {
 			try {
 				const specJSON = JSON.parse(spec);
@@ -385,19 +384,19 @@
 
 <Modal size="sm" bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 pb-2">
-			<h1 class=" text-lg font-medium self-center font-primary">
+		<div class="flex justify-between items-center px-6 pt-5 pb-4">
+			<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">
 				{#if edit}
 					{$i18n.t('Edit Connection')}
 				{:else}
 					{$i18n.t('Add Connection')}
 				{/if}
-			</h1>
+			</div>
 
 			<div class="flex items-center gap-3">
-				<div class="flex gap-1.5 text-xs justify-end">
+				<div class="flex gap-2 text-xs justify-end">
 					<button
-						class=" hover:underline"
+						class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:underline transition-colors"
 						type="button"
 						on:click={() => {
 							inputElement?.click();
@@ -406,516 +405,505 @@
 						{$i18n.t('Import')}
 					</button>
 
-					<button class=" hover:underline" type="button" on:click={exportHandler}>
+					<button
+						class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:underline transition-colors"
+						type="button"
+						on:click={exportHandler}
+					>
 						{$i18n.t('Export')}
 					</button>
 				</div>
+
 				<button
-					class="self-center"
-					aria-label={$i18n.t('Close Configure Connection Modal')}
+					class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+					aria-label={$i18n.t('Close')}
 					on:click={() => {
 						show = false;
 					}}
+					type="button"
 				>
 					<XMark className={'size-5'} />
 				</button>
 			</div>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-4 pb-4 md:space-x-4 dark:text-gray-200">
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
-				<input
-					bind:this={inputElement}
-					type="file"
-					hidden
-					accept=".json"
-					on:change={(e) => {
-						importHandler(e);
-					}}
-				/>
+		<div class="px-6 pb-6 dark:text-gray-200">
+			<input
+				bind:this={inputElement}
+				type="file"
+				hidden
+				accept=".json"
+				on:change={(e) => {
+					importHandler(e);
+				}}
+			/>
 
-				<form
-					class="flex flex-col w-full"
-					on:submit={(e) => {
-						e.preventDefault();
-						submitHandler();
-					}}
-				>
-					<div class="px-1">
-						<div class="flex gap-2 mb-1.5">
-							<div class="flex w-full justify-between items-center">
-								<div class=" text-xs text-gray-500">{$i18n.t('Type')}</div>
+			<form class="flex flex-col w-full space-y-3" on:submit|preventDefault={submitHandler}>
+				<!-- Type selector -->
+				<div class="flex flex-col w-full">
+					<label
+						for="type-input"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+					>
+						{$i18n.t('Type')}
+					</label>
 
-								<div class="">
-									<button
-										on:click={() => {
-											type = ['', 'openapi'].includes(type) ? 'mcp' : 'openapi';
-										}}
-										type="button"
-										class=" text-xs text-gray-700 dark:text-gray-300"
-									>
-										{#if ['', 'openapi'].includes(type)}
-											{$i18n.t('OpenAPI')}
-										{:else if type === 'mcp'}
-											{$i18n.t('MCP')}
-											<span class="text-gray-500">{$i18n.t('Streamable HTTP')}</span>
-										{/if}
-									</button>
-								</div>
-							</div>
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 transition-all"
+					>
+						<select
+							id="type-input"
+							class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden dark:bg-gray-800/50"
+							bind:value={type}
+						>
+							<option value="openapi">{$i18n.t('OpenAPI')}</option>
+							<option value="mcp">{$i18n.t('MCP')} - {$i18n.t('Streamable HTTP')}</option>
+						</select>
+
+						<Tooltip content={enable ? $i18n.t('Enabled') : $i18n.t('Disabled')}>
+							<Switch bind:state={enable} />
+						</Tooltip>
+					</div>
+				</div>
+
+				<!-- Name + ID -->
+				<div class="flex gap-3">
+					<div class="flex flex-col flex-1 min-w-0">
+						<label
+							for="enter-name"
+							class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+						>
+							{$i18n.t('Name')}
+						</label>
+
+						<div
+							class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+						>
+							<input
+								id="enter-name"
+								class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+								type="text"
+								bind:value={name}
+								placeholder={$i18n.t('Enter name')}
+								autocomplete="off"
+							/>
 						</div>
+					</div>
 
-						<div class="flex gap-2">
-							<div class="flex flex-col flex-1">
-								<div class="flex justify-between mb-0.5">
-									<label
-										for="enter-name"
-										class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-										>{$i18n.t('Name')}</label
-									>
-								</div>
-
-								<div class="flex flex-1 items-center">
-									<input
-										id="enter-name"
-										class={`w-full flex-1 text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-										type="text"
-										bind:value={name}
-										placeholder={$i18n.t('Enter name')}
-										autocomplete="off"
-									/>
-								</div>
-							</div>
-							{#if !direct}
-								<div class="flex flex-col flex-1">
-									<div class="flex justify-between mb-0.5">
-										<label
-											for="enter-id"
-											class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>{$i18n.t('ID')}
-											{#if type !== 'mcp'}<span class="opacity-50">({$i18n.t('optional')})</span
-												>{/if}</label
-										>
-									</div>
-									<div class="flex flex-1 items-center">
-										<input
-											id="enter-id"
-											class={`w-full flex-1 text-sm bg-transparent font-mono ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-											type="text"
-											bind:value={id}
-											placeholder="auto"
-											autocomplete="off"
-											required={type === 'mcp'}
-										/>
-									</div>
-								</div>
-							{/if}
-						</div>
-
-						<div class="flex flex-col w-full mt-1 mb-1.5">
+					{#if !direct}
+						<div class="flex flex-col flex-1 min-w-0">
 							<label
-								for="description"
-								class={`mb-0.5 text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-								>{$i18n.t('Description')}</label
+								for="enter-id"
+								class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1"
 							>
+								<span>{$i18n.t('ID')}</span>
+								{#if type !== 'mcp'}
+									<span class="opacity-60 normal-case tracking-normal text-[10px]"
+										>({$i18n.t('optional')})</span
+									>
+								{/if}
+							</label>
 
-							<div class="flex-1">
+							<div
+								class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+							>
 								<input
-									id="description"
-									class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+									id="enter-id"
+									class="flex-1 min-w-0 text-sm font-mono text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
 									type="text"
-									bind:value={description}
-									placeholder={$i18n.t('Enter description')}
+									bind:value={id}
+									placeholder="auto"
 									autocomplete="off"
+									required={type === 'mcp'}
 								/>
 							</div>
 						</div>
+					{/if}
+				</div>
 
-						<div class="flex gap-2">
-							<div class="flex flex-col w-full">
-								<div class="flex justify-between mb-0.5">
-									<label
-										for="api-base-url"
-										class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-										>{$i18n.t('URL')}</label
-									>
-								</div>
+				<!-- Description -->
+				<div class="flex flex-col w-full">
+					<label
+						for="description"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+					>
+						{$i18n.t('Description')}
+					</label>
 
-								<div class="flex flex-1 items-center">
-									<input
-										id="api-base-url"
-										class={`w-full flex-1 text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-										type="text"
-										bind:value={url}
-										placeholder={$i18n.t('API Base URL')}
-										autocomplete="off"
-										required
-									/>
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+					>
+						<input
+							id="description"
+							class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+							type="text"
+							bind:value={description}
+							placeholder={$i18n.t('Enter description')}
+							autocomplete="off"
+						/>
+					</div>
+				</div>
 
-									<Tooltip
-										content={$i18n.t('Verify Connection')}
-										className="shrink-0 flex items-center mr-1"
-									>
-										<button
-											class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
-											on:click={() => {
-												verifyHandler();
-											}}
-											aria-label={$i18n.t('Verify Connection')}
-											type="button"
-										>
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												viewBox="0 0 20 20"
-												fill="currentColor"
-												class="w-4 h-4"
-												aria-hidden="true"
-											>
-												<path
-													fill-rule="evenodd"
-													d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
-													clip-rule="evenodd"
-												/>
-											</svg>
-										</button>
-									</Tooltip>
+				<!-- URL -->
+				<div class="flex flex-col w-full">
+					<label
+						for="api-base-url"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+					>
+						{$i18n.t('URL')}
+					</label>
 
-									<Tooltip content={enable ? $i18n.t('Enabled') : $i18n.t('Disabled')}>
-										<Switch bind:state={enable} />
-									</Tooltip>
-								</div>
-							</div>
-						</div>
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+					>
+						<input
+							id="api-base-url"
+							class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+							type="text"
+							bind:value={url}
+							placeholder={$i18n.t('API Base URL')}
+							autocomplete="off"
+							required
+						/>
 
-						<div class="flex gap-2 mt-2">
-							<div class="flex flex-col w-full">
-								<div class="flex justify-between items-center">
-									<div class="flex gap-2 items-center">
-										<div
-											for="select-bearer-or-session"
-											class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-										>
-											{$i18n.t('Auth')}
-										</div>
-									</div>
-
-									{#if auth_type === 'oauth_2.1'}
-										<div class="flex items-center gap-2">
-											<div class="flex flex-col justify-end items-center shrink-0">
-												<Tooltip
-													content={oauthClientInfo
-														? $i18n.t('Register Again')
-														: $i18n.t('Register Client')}
-												>
-													<button
-														class=" text-xs underline dark:text-gray-500 dark:hover:text-gray-200 text-gray-700 hover:text-gray-900 transition"
-														type="button"
-														on:click={() => {
-															registerOAuthClientHandler();
-														}}
-													>
-														{$i18n.t('Register Client')}
-													</button>
-												</Tooltip>
-											</div>
-
-											{#if !oauthClientInfo}
-												<div
-													class="text-xs font-medium px-1.5 rounded-md bg-yellow-500/20 text-yellow-700 dark:text-yellow-200"
-												>
-													{$i18n.t('Not Registered')}
-												</div>
-											{:else}
-												<div
-													class="text-xs font-medium px-1.5 rounded-md bg-green-500/20 text-green-700 dark:text-green-200"
-												>
-													{$i18n.t('Registered')}
-												</div>
-											{/if}
-										</div>
-									{/if}
-								</div>
-
-								<div class="flex gap-2">
-									<div class="flex-shrink-0 self-start">
-										<select
-											id="select-bearer-or-session"
-											class={`dark:bg-gray-900 w-full text-sm bg-transparent pr-5 ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-											bind:value={auth_type}
-										>
-											<option value="none">{$i18n.t('None')}</option>
-
-											<option value="bearer">{$i18n.t('Bearer')}</option>
-											<option value="session">{$i18n.t('Session')}</option>
-
-											{#if !direct}
-												<option value="system_oauth">{$i18n.t('OAuth')}</option>
-												{#if type === 'mcp'}
-													<option value="oauth_2.1">{$i18n.t('OAuth 2.1')}</option>
-												{/if}
-											{/if}
-										</select>
-									</div>
-
-									<div class="flex flex-1 items-center">
-										{#if auth_type === 'bearer'}
-											<SensitiveInput
-												bind:value={key}
-												placeholder={$i18n.t('API Key')}
-												required={false}
-											/>
-										{:else if auth_type === 'none'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('No authentication')}
-											</div>
-										{:else if auth_type === 'session'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Forwards system user session credentials to authenticate')}
-											</div>
-										{:else if auth_type === 'system_oauth'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Forwards system user OAuth access token to authenticate')}
-											</div>
-										{:else if auth_type === 'oauth_2.1'}
-											<div
-												class={`flex items-center text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Uses OAuth 2.1 Dynamic Client Registration')}
-											</div>
-										{/if}
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="flex items-center justify-between">
+						<Tooltip content={$i18n.t('Verify Connection')}>
 							<button
+								class="shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+								on:click={verifyHandler}
 								type="button"
-								class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition mt-2"
-								on:click={() => (showAdvanced = !showAdvanced)}
+								aria-label={$i18n.t('Verify Connection')}
+								disabled={verifying || !url}
 							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 20 20"
-									fill="currentColor"
-									class="w-3 h-3 transition-transform {showAdvanced ? 'rotate-90' : ''}"
-								>
-									<path
-										fill-rule="evenodd"
-										d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-										clip-rule="evenodd"
-									/>
-								</svg>
-								{$i18n.t('Advanced')}
+								{#if verifying}
+									<Spinner className="size-4" />
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+										aria-hidden="true"
+										class="size-4"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								{/if}
 							</button>
+						</Tooltip>
+					</div>
+				</div>
 
-							{#if !direct}
+				<!-- Auth -->
+				<div class="flex flex-col w-full">
+					<div class="flex items-center justify-between mb-1.5">
+						<label
+							for="select-bearer-or-session"
+							class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+						>
+							{$i18n.t('Auth')}
+						</label>
+
+						{#if auth_type === 'oauth_2.1'}
+							<div class="flex items-center gap-2">
 								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 object-cover rounded-full flex gap-1 items-center mt-2"
+									class="text-xs underline text-gray-700 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 transition"
 									type="button"
 									on:click={() => {
-										showAccessControlModal = true;
+										registerOAuthClientHandler();
 									}}
 								>
-									<LockClosed strokeWidth="2.5" className="size-3.5 shrink-0" />
-
-									<div class="text-xs font-medium shrink-0">
-										{$i18n.t('Access')}
-									</div>
+									{oauthClientInfo ? $i18n.t('Register Again') : $i18n.t('Register Client')}
 								</button>
-							{/if}
-						</div>
 
-						{#if showAdvanced}
-							{#if ['', 'openapi'].includes(type)}
-								<div class="flex gap-2 mt-2">
-									<div class="flex flex-col w-full">
-										<div class="flex justify-between items-center mb-0.5">
-											<div class="flex gap-2 items-center">
-												<div
-													for="select-bearer-or-session"
-													class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-												>
-													{$i18n.t('OpenAPI Spec')}
-												</div>
-											</div>
-										</div>
-
-										<div class="flex gap-2">
-											<div class="flex-shrink-0 self-start">
-												<select
-													id="select-bearer-or-session"
-													class={`dark:bg-gray-900 w-full text-sm bg-transparent pr-5 ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-													bind:value={spec_type}
-												>
-													<option value="url">{$i18n.t('URL')}</option>
-													<option value="json">{$i18n.t('JSON')}</option>
-												</select>
-											</div>
-
-											<div class="flex flex-1 items-center">
-												{#if spec_type === 'url'}
-													<div class="flex-1 flex items-center">
-														<label for="url-or-path" class="sr-only"
-															>{$i18n.t('openapi.json URL or Path')}</label
-														>
-														<input
-															class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-															type="text"
-															id="url-or-path"
-															bind:value={path}
-															placeholder={$i18n.t('openapi.json URL or Path')}
-															autocomplete="off"
-															required
-														/>
-													</div>
-												{:else if spec_type === 'json'}
-													<div
-														class={`text-xs w-full self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-													>
-														<label for="url-or-path" class="sr-only">{$i18n.t('JSON Spec')}</label>
-														<textarea
-															class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700 text-black dark:text-white'}`}
-															bind:value={spec}
-															placeholder={$i18n.t('JSON Spec')}
-															autocomplete="off"
-															required
-															rows="5"
-														/>
-													</div>
-												{/if}
-											</div>
-										</div>
-
-										{#if ['', 'url'].includes(spec_type)}
-											<div
-												class={`text-xs mt-1 ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t(`WebUI will make requests to "{{url}}"`, {
-													url: path.includes('://')
-														? path
-														: `${url}${path.startsWith('/') ? '' : '/'}${path}`
-												})}
-											</div>
-										{/if}
+								{#if !oauthClientInfo}
+									<div
+										class="text-[10px] font-medium px-1.5 py-px rounded-md bg-yellow-500/20 text-yellow-700 dark:text-yellow-200"
+									>
+										{$i18n.t('Not Registered')}
 									</div>
-								</div>
-							{/if}
-
-							{#if !direct}
-								<div class="flex gap-2 mt-2">
-									<div class="flex flex-col w-full">
-										<label
-											for="headers-input"
-											class={`mb-0.5 text-xs text-gray-500
-									${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-											>{$i18n.t('Headers')}</label
-										>
-
-										<div class="flex-1">
-											<Tooltip
-												content={$i18n.t(
-													'Enter additional headers in JSON format (e.g. {"X-Custom-Header": "value"}'
-												)}
-											>
-												<Textarea
-													className="w-full text-sm outline-hidden"
-													bind:value={headers}
-													placeholder={$i18n.t('Enter additional headers in JSON format')}
-													required={false}
-													minSize={30}
-												/>
-											</Tooltip>
-										</div>
+								{:else}
+									<div
+										class="text-[10px] font-medium px-1.5 py-px rounded-md bg-green-500/20 text-green-700 dark:text-green-200"
+									>
+										{$i18n.t('Registered')}
 									</div>
-								</div>
-							{/if}
-						{/if}
-
-						{#if !direct}
-							<hr class=" border-gray-100 dark:border-gray-700/10 my-2.5 w-full" />
-
-							<div class="flex flex-col w-full mt-2">
-								<label
-									for="function-name-filter-list"
-									class={`mb-1 text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100 placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700 text-gray-500'}`}
-									>{$i18n.t('Function Name Filter List')}</label
-								>
-
-								<div class="flex-1">
-									<input
-										id="function-name-filter-list"
-										class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-										type="text"
-										bind:value={functionNameFilterList}
-										placeholder={$i18n.t('Enter function name filter list (e.g. func1, !func2)')}
-										autocomplete="off"
-									/>
-								</div>
+								{/if}
 							</div>
 						{/if}
 					</div>
 
-					{#if type === 'mcp'}
-						<div
-							class=" bg-yellow-500/20 text-yellow-700 dark:text-yellow-200 rounded-2xl text-xs px-4 py-3 mb-2"
+					<div
+						class="flex items-stretch gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+					>
+						<select
+							id="select-bearer-or-session"
+							class="shrink-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent dark:bg-gray-800/50 outline-hidden pr-2"
+							bind:value={auth_type}
 						>
-							<span class="font-medium">
-								{$i18n.t('Warning')}:
-							</span>
-							{$i18n.t(
-								'MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.'
-							)}
+							<option value="none">{$i18n.t('None')}</option>
+							<option value="bearer">{$i18n.t('Bearer')}</option>
+							<option value="session">{$i18n.t('Session')}</option>
 
-							<a
-								class="font-medium underline"
-								href="https://docs.openwebui.com/features/mcp"
-								target="_blank">{$i18n.t('Read more →')}</a
+							{#if !direct}
+								<option value="system_oauth">{$i18n.t('OAuth')}</option>
+								{#if type === 'mcp'}
+									<option value="oauth_2.1">{$i18n.t('OAuth 2.1')}</option>
+								{/if}
+							{/if}
+						</select>
+
+						<div class="flex flex-1 items-center min-w-0">
+							{#if auth_type === 'bearer'}
+								<SensitiveInput
+									bind:value={key}
+									placeholder={$i18n.t('API Key')}
+									required={false}
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							{:else if auth_type === 'none'}
+								<div class="text-xs text-gray-500 dark:text-gray-400 self-center">
+									{$i18n.t('No authentication')}
+								</div>
+							{:else if auth_type === 'session'}
+								<div class="text-xs text-gray-500 dark:text-gray-400 self-center">
+									{$i18n.t('Forwards system user session credentials to authenticate')}
+								</div>
+							{:else if auth_type === 'system_oauth'}
+								<div class="text-xs text-gray-500 dark:text-gray-400 self-center">
+									{$i18n.t('Forwards system user OAuth access token to authenticate')}
+								</div>
+							{:else if auth_type === 'oauth_2.1'}
+								<div class="text-xs text-gray-500 dark:text-gray-400 self-center">
+									{$i18n.t('Uses OAuth 2.1 Dynamic Client Registration')}
+								</div>
+							{/if}
+						</div>
+					</div>
+				</div>
+
+				<!-- Advanced toggle + Access -->
+				<div class="flex items-center justify-between">
+					<button
+						type="button"
+						class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+						on:click={() => (showAdvanced = !showAdvanced)}
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+							class="w-3 h-3 transition-transform {showAdvanced ? 'rotate-90' : ''}"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+						{$i18n.t('Advanced')}
+					</button>
+
+					{#if !direct}
+						<button
+							class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
+							type="button"
+							on:click={() => {
+								showAccessControlModal = true;
+							}}
+						>
+							<LockClosed strokeWidth="2.5" className="size-3.5 shrink-0" />
+							<div class="text-xs font-medium shrink-0">
+								{$i18n.t('Access')}
+							</div>
+						</button>
+					{/if}
+				</div>
+
+				{#if showAdvanced}
+					{#if ['', 'openapi'].includes(type)}
+						<div class="flex flex-col w-full">
+							<label
+								for="select-spec-type"
+								class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
 							>
+								{$i18n.t('OpenAPI Spec')}
+							</label>
+
+							<div
+								class="flex items-stretch gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+							>
+								<select
+									id="select-spec-type"
+									class="shrink-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent dark:bg-gray-800/50 outline-hidden pr-2"
+									bind:value={spec_type}
+								>
+									<option value="url">{$i18n.t('URL')}</option>
+									<option value="json">{$i18n.t('JSON')}</option>
+								</select>
+
+								<div class="flex flex-1 items-center min-w-0">
+									{#if spec_type === 'url'}
+										<label for="url-or-path" class="sr-only"
+											>{$i18n.t('openapi.json URL or Path')}</label
+										>
+										<input
+											class="w-full text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+											type="text"
+											id="url-or-path"
+											bind:value={path}
+											placeholder={$i18n.t('openapi.json URL or Path')}
+											autocomplete="off"
+											required
+										/>
+									{:else if spec_type === 'json'}
+										<label for="spec-json" class="sr-only">{$i18n.t('JSON Spec')}</label>
+										<textarea
+											id="spec-json"
+											class="w-full text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600 resize-y"
+											bind:value={spec}
+											placeholder={$i18n.t('JSON Spec')}
+											autocomplete="off"
+											required
+											rows="5"
+										/>
+									{/if}
+								</div>
+							</div>
+
+							{#if ['', 'url'].includes(spec_type)}
+								<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+									{$i18n.t(`WebUI will make requests to "{{url}}"`, {
+										url: path.includes('://')
+											? path
+											: `${url}${path.startsWith('/') ? '' : '/'}${path}`
+									})}
+								</p>
+							{/if}
 						</div>
 					{/if}
 
-					<div class="flex justify-between pt-3 text-sm font-medium gap-1.5">
-						<div></div>
-						<div class="flex gap-1.5">
-							{#if edit}
-								<button
-									class="px-3.5 py-1.5 text-sm font-medium dark:bg-black dark:hover:bg-gray-900 dark:text-white bg-white text-black hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
-									type="button"
-									on:click={() => {
-										onDelete();
-										show = false;
-									}}
-								>
-									{$i18n.t('Delete')}
-								</button>
-							{/if}
-
-							<button
-								class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
-									? ' cursor-not-allowed'
-									: ''}"
-								type="submit"
-								disabled={loading}
+					{#if !direct}
+						<div class="flex flex-col w-full">
+							<label
+								for="headers-input"
+								class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
 							>
-								{$i18n.t('Save')}
+								{$i18n.t('Headers')}
+							</label>
 
-								{#if loading}
-									<div class="ml-2 self-center">
-										<Spinner />
-									</div>
-								{/if}
-							</button>
+							<div
+								class="px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+							>
+								<Tooltip
+									content={$i18n.t(
+										'Enter additional headers in JSON format (e.g. {"X-Custom-Header": "value"}'
+									)}
+								>
+									<Textarea
+										className="w-full text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+										bind:value={headers}
+										placeholder={$i18n.t('Enter additional headers in JSON format')}
+										required={false}
+										minSize={30}
+									/>
+								</Tooltip>
+							</div>
+						</div>
+					{/if}
+				{/if}
+
+				{#if !direct}
+					<div class="flex flex-col w-full">
+						<label
+							for="function-name-filter-list"
+							class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+						>
+							{$i18n.t('Function Name Filter List')}
+						</label>
+
+						<div
+							class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+						>
+							<input
+								id="function-name-filter-list"
+								class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+								type="text"
+								bind:value={functionNameFilterList}
+								placeholder={$i18n.t('Enter function name filter list (e.g. func1, !func2)')}
+								autocomplete="off"
+							/>
 						</div>
 					</div>
-				</form>
-			</div>
+				{/if}
+
+				{#if type === 'mcp'}
+					<div
+						class="bg-yellow-500/20 text-yellow-700 dark:text-yellow-200 rounded-2xl text-xs px-4 py-3"
+					>
+						<span class="font-medium">{$i18n.t('Warning')}:</span>
+						{$i18n.t(
+							'MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.'
+						)}
+
+						<a
+							class="font-medium underline"
+							href="https://docs.openwebui.com/features/mcp"
+							target="_blank">{$i18n.t('Read more →')}</a
+						>
+					</div>
+				{/if}
+
+				<!-- Footer actions -->
+				<div
+					class="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800"
+				>
+					<div>
+						{#if edit}
+							<button
+								class="px-3 py-1.5 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+								type="button"
+								on:click={() => {
+									onDelete();
+									show = false;
+								}}
+							>
+								{$i18n.t('Delete')}
+							</button>
+						{/if}
+					</div>
+
+					<div class="flex items-center gap-2">
+						<button
+							class="px-3 py-1.5 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+							type="button"
+							on:click={() => {
+								show = false;
+							}}
+						>
+							{$i18n.t('Cancel')}
+						</button>
+
+						<button
+							class="px-5 py-1.5 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 transition-all rounded-lg shadow-sm flex items-center gap-2 {loading
+								? ' cursor-not-allowed opacity-70'
+								: ''}"
+							type="submit"
+							disabled={loading}
+						>
+							{$i18n.t('Save')}
+
+							{#if loading}
+								<Spinner className="size-3.5" />
+							{/if}
+						</button>
+					</div>
+				</div>
+			</form>
 		</div>
 	</div>
 </Modal>

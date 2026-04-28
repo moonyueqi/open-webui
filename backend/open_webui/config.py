@@ -256,6 +256,19 @@ class AppConfig:
         if isinstance(value, PersistentConfig):
             self._state[key] = value
         else:
+            # Skip persisting when the value did not change. Each save() rewrites
+            # the entire CONFIG_DATA blob to SQLite, so repeatedly assigning the
+            # same value (common when the admin "Save" button reposts unchanged
+            # fields) used to issue dozens of identical writes and made the UI
+            # feel slow. Only fall through to save() when something actually changed.
+            try:
+                current_value = self._state[key].value
+            except KeyError:
+                current_value = None
+
+            if current_value == value:
+                return
+
             self._state[key].value = value
             self._state[key].save()
 
@@ -996,7 +1009,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 ENABLE_DIRECT_CONNECTIONS = PersistentConfig(
     "ENABLE_DIRECT_CONNECTIONS",
     "direct.enable",
-    os.environ.get("ENABLE_DIRECT_CONNECTIONS", "False").lower() == "true",
+    os.environ.get("ENABLE_DIRECT_CONNECTIONS", "True").lower() == "true",
 )
 
 ####################################
@@ -1109,16 +1122,13 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_API_BASE_URL = os.environ.get("GEMINI_API_BASE_URL", "")
 
 
-if OPENAI_API_BASE_URL == "":
-    OPENAI_API_BASE_URL = "https://api.openai.com/v1"
-else:
-    if OPENAI_API_BASE_URL.endswith("/"):
-        OPENAI_API_BASE_URL = OPENAI_API_BASE_URL[:-1]
+if OPENAI_API_BASE_URL.endswith("/"):
+    OPENAI_API_BASE_URL = OPENAI_API_BASE_URL[:-1]
 
 OPENAI_API_KEYS = os.environ.get("OPENAI_API_KEYS", "")
 OPENAI_API_KEYS = OPENAI_API_KEYS if OPENAI_API_KEYS != "" else OPENAI_API_KEY
 
-OPENAI_API_KEYS = [url.strip() for url in OPENAI_API_KEYS.split(";")]
+OPENAI_API_KEYS = [url.strip() for url in OPENAI_API_KEYS.split(";") if url.strip()]
 OPENAI_API_KEYS = PersistentConfig(
     "OPENAI_API_KEYS", "openai.api_keys", OPENAI_API_KEYS
 )
@@ -1128,9 +1138,10 @@ OPENAI_API_BASE_URLS = (
     OPENAI_API_BASE_URLS if OPENAI_API_BASE_URLS != "" else OPENAI_API_BASE_URL
 )
 
+# Defaults to an empty list so administrators must explicitly add an API
+# connection in the UI instead of inheriting "https://api.openai.com/v1".
 OPENAI_API_BASE_URLS = [
-    url.strip() if url != "" else "https://api.openai.com/v1"
-    for url in OPENAI_API_BASE_URLS.split(";")
+    url.strip() for url in OPENAI_API_BASE_URLS.split(";") if url.strip()
 ]
 OPENAI_API_BASE_URLS = PersistentConfig(
     "OPENAI_API_BASE_URLS", "openai.api_base_urls", OPENAI_API_BASE_URLS
@@ -1334,128 +1345,118 @@ RESPONSE_WATERMARK = PersistentConfig(
 
 
 USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS", "False").lower() == "true"
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS", "True").lower() == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_MODELS_EXPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_EXPORT", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_EXPORT", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_IMPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_IMPORT", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_IMPORT", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_EXPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_EXPORT", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_EXPORT", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_IMPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_IMPORT", "False").lower() == "true"
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_IMPORT", "True").lower() == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_EXPORT = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_EXPORT", "False").lower() == "true"
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_EXPORT", "True").lower() == "true"
 )
 
 
 USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_SHARING = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_SHARING", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_SHARING", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_PUBLIC_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_PUBLIC_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_PUBLIC_SHARING", "True"
     ).lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_SHARING", "True"
     ).lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_PUBLIC_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_PUBLIC_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_PUBLIC_SHARING", "True"
     ).lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_SHARING = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_SHARING", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_SHARING", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_PUBLIC_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_PUBLIC_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_PUBLIC_SHARING", "True"
     ).lower()
     == "true"
 )
 
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_SHARING = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_SHARING", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_SHARING", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING", "True"
     ).lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING = (
-    os.environ.get("USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING", "False").lower()
+    os.environ.get("USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING", "True").lower()
     == "true"
 )
 
 USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING = (
     os.environ.get(
-        "USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING", "False"
+        "USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING", "True"
     ).lower()
-    == "true"
-)
-
-
-USER_PERMISSIONS_NOTES_ALLOW_SHARING = (
-    os.environ.get("USER_PERMISSIONS_NOTES_ALLOW_SHARING", "False").lower() == "true"
-)
-
-USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING = (
-    os.environ.get("USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING", "False").lower()
     == "true"
 )
 
@@ -1549,7 +1550,7 @@ USER_PERMISSIONS_CHAT_TEMPORARY_ENFORCED = (
 
 
 USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS = (
-    os.environ.get("USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS", "False").lower()
+    os.environ.get("USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS", "True").lower()
     == "true"
 )
 
@@ -1571,25 +1572,13 @@ USER_PERMISSIONS_FEATURES_FOLDERS = (
     os.environ.get("USER_PERMISSIONS_FEATURES_FOLDERS", "True").lower() == "true"
 )
 
-USER_PERMISSIONS_FEATURES_NOTES = (
-    os.environ.get("USER_PERMISSIONS_FEATURES_NOTES", "True").lower() == "true"
-)
-
-USER_PERMISSIONS_FEATURES_CHANNELS = (
-    os.environ.get("USER_PERMISSIONS_FEATURES_CHANNELS", "True").lower() == "true"
-)
 
 USER_PERMISSIONS_FEATURES_API_KEYS = (
-    os.environ.get("USER_PERMISSIONS_FEATURES_API_KEYS", "False").lower() == "true"
+    os.environ.get("USER_PERMISSIONS_FEATURES_API_KEYS", "True").lower() == "true"
 )
 
 USER_PERMISSIONS_FEATURES_MEMORIES = (
     os.environ.get("USER_PERMISSIONS_FEATURES_MEMORIES", "True").lower() == "true"
-)
-
-
-USER_PERMISSIONS_SETTINGS_INTERFACE = (
-    os.environ.get("USER_PERMISSIONS_SETTINGS_INTERFACE", "True").lower() == "true"
 )
 
 
@@ -1618,8 +1607,6 @@ DEFAULT_USER_PERMISSIONS = {
         "public_tools": USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING,
         "skills": USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING,
         "public_skills": USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING,
-        "notes": USER_PERMISSIONS_NOTES_ALLOW_SHARING,
-        "public_notes": USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING,
     },
     "access_grants": {
         "allow_users": USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_USERS,
@@ -1647,20 +1634,13 @@ DEFAULT_USER_PERMISSIONS = {
         "temporary_enforced": USER_PERMISSIONS_CHAT_TEMPORARY_ENFORCED,
     },
     "features": {
-        # General features
         "api_keys": USER_PERMISSIONS_FEATURES_API_KEYS,
-        "notes": USER_PERMISSIONS_FEATURES_NOTES,
         "folders": USER_PERMISSIONS_FEATURES_FOLDERS,
-        "channels": USER_PERMISSIONS_FEATURES_CHANNELS,
         "direct_tool_servers": USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS,
-        # Chat features
         "web_search": USER_PERMISSIONS_FEATURES_WEB_SEARCH,
         "image_generation": USER_PERMISSIONS_FEATURES_IMAGE_GENERATION,
         "code_interpreter": USER_PERMISSIONS_FEATURES_CODE_INTERPRETER,
         "memories": USER_PERMISSIONS_FEATURES_MEMORIES,
-    },
-    "settings": {
-        "interface": USER_PERMISSIONS_SETTINGS_INTERFACE,
     },
 }
 
@@ -1873,24 +1853,24 @@ TITLE_GENERATION_PROMPT_TEMPLATE = PersistentConfig(
 )
 
 DEFAULT_TITLE_GENERATION_PROMPT_TEMPLATE = """### Task:
-Generate a concise, 3-5 word title with an emoji summarizing the chat history.
+根据下方对话历史，生成一条简短会话标题，写入 JSON 的 title 字段。
+
 ### Guidelines:
-- The title should clearly represent the main theme or subject of the conversation.
-- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.
-- Write the title in the chat's primary language; default to English if multilingual.
-- Prioritize accuracy over excessive creativity; keep it clear and simple.
-- Your entire response must consist solely of the JSON object, without any introductory or concluding text.
-- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.
-- Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.
+- **Language**: Match the main language of the chat. If the conversation is primarily in Chinese, write a **natural, idiomatic Chinese** title (short noun phrase or verb–object phrase is fine); avoid stiff translationese. For mostly English or other languages, use that language.
+- **Length**: For Chinese, about 4–12 characters; for English, about 3–8 words. Keep it scannable; summarize the topic in one line.
+- **Emoji**: Use 0–1 emoji at the start if it helps the topic; do not stack multiple emojis or rely on emoji alone.
+- **Content**: Reflect the real subject; avoid vague filler. Do not use quotation marks, book-title marks, or extra punctuation/Markdown beyond what is needed.
+- **Output**: Your **entire** reply must be **only** one raw JSON object—no markdown fences, no preamble or closing remarks—otherwise parsing will fail.
+
 ### Output:
-JSON format: { "title": "your concise title here" }
+JSON format: { "title": "..." }
+
 ### Examples:
-- { "title": "📉 Stock Market Trends" },
-- { "title": "🍪 Perfect Chocolate Chip Recipe" },
-- { "title": "Evolution of Music Streaming" },
-- { "title": "Remote Work Productivity Tips" },
-- { "title": "Artificial Intelligence in Healthcare" },
-- { "title": "🎮 Video Game Development Insights" }
+- { "title": "📌 Python 列表去重写法" }
+- { "title": "预算两千的轻薄本推荐" }
+- { "title": "🧪 电解质与电池原理" }
+- { "title": "Remote onboarding checklist" }
+- { "title": "会议纪要：Q1 复盘要点" }
 ### Chat History:
 <chat_history>
 {{MESSAGES:END:2}}
@@ -1972,13 +1952,13 @@ JSON format: { "follow_ups": ["Question 1?", "Question 2?", "Question 3?"] }
 ENABLE_FOLLOW_UP_GENERATION = PersistentConfig(
     "ENABLE_FOLLOW_UP_GENERATION",
     "task.follow_up.enable",
-    os.environ.get("ENABLE_FOLLOW_UP_GENERATION", "True").lower() == "true",
+    os.environ.get("ENABLE_FOLLOW_UP_GENERATION", "False").lower() == "true",
 )
 
 ENABLE_TAGS_GENERATION = PersistentConfig(
     "ENABLE_TAGS_GENERATION",
     "task.tags.enable",
-    os.environ.get("ENABLE_TAGS_GENERATION", "True").lower() == "true",
+    os.environ.get("ENABLE_TAGS_GENERATION", "False").lower() == "true",
 )
 
 ENABLE_TITLE_GENERATION = PersistentConfig(
@@ -1991,7 +1971,7 @@ ENABLE_TITLE_GENERATION = PersistentConfig(
 ENABLE_SEARCH_QUERY_GENERATION = PersistentConfig(
     "ENABLE_SEARCH_QUERY_GENERATION",
     "task.query.search.enable",
-    os.environ.get("ENABLE_SEARCH_QUERY_GENERATION", "True").lower() == "true",
+    os.environ.get("ENABLE_SEARCH_QUERY_GENERATION", "False").lower() == "true",
 )
 
 ENABLE_RETRIEVAL_QUERY_GENERATION = PersistentConfig(
@@ -2007,25 +1987,25 @@ QUERY_GENERATION_PROMPT_TEMPLATE = PersistentConfig(
     os.environ.get("QUERY_GENERATION_PROMPT_TEMPLATE", ""),
 )
 
-DEFAULT_QUERY_GENERATION_PROMPT_TEMPLATE = """### Task:
-Analyze the chat history to determine the necessity of generating search queries, in the given language. By default, **prioritize generating 1-3 broad and relevant search queries** unless it is absolutely certain that no additional information is required. The aim is to retrieve comprehensive, updated, and valuable information even with minimal uncertainty. If no search is unequivocally needed, return an empty list.
+DEFAULT_QUERY_GENERATION_PROMPT_TEMPLATE = """### 任务：
+请基于对话历史，使用对话所用语言判断是否需要生成搜索查询。默认情况下，**优先生成 1-3 条宽泛且相关的搜索查询**，除非可以完全确定无需任何额外信息。目标是即便存在很小的不确定性，也能检索到全面、最新且有价值的信息。仅当确实无需搜索时，才返回空列表。
 
-### Guidelines:
-- Respond **EXCLUSIVELY** with a JSON object. Any form of extra commentary, explanation, or additional text is strictly prohibited.
-- When generating search queries, respond in the format: { "queries": ["query1", "query2"] }, ensuring each query is distinct, concise, and relevant to the topic.
-- If and only if it is entirely certain that no useful results can be retrieved by a search, return: { "queries": [] }.
-- Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
-- Be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
-- Today's date is: {{CURRENT_DATE}}.
-- Always prioritize providing actionable and broad queries that maximize informational coverage.
+### 指南：
+- **仅**返回一个 JSON 对象，严禁附带任何解释、说明或额外文字。
+- 需要生成搜索查询时，使用如下格式：{ "queries": ["query1", "query2"] }，确保每条查询彼此独立、简洁且与主题相关。
+- 仅当完全确定搜索不会带来任何有用结果时，才返回：{ "queries": [] }。
+- 只要**有任何可能**通过搜索获得有用或更新的信息，就倾向于给出查询。
+- 专注于撰写高质量的搜索查询，避免冗余阐述、点评或臆测。
+- 今天的日期是：{{CURRENT_DATE}}。
+- 始终优先生成可执行、覆盖面广的查询，以最大化信息覆盖率。
 
-### Output:
-Strictly return in JSON format: 
+### 输出：
+严格按以下 JSON 格式返回：
 {
   "queries": ["query1", "query2"]
 }
 
-### Chat History:
+### 对话历史：
 <chat_history>
 {{MESSAGES:END:6}}
 </chat_history>
@@ -2099,30 +2079,30 @@ VOICE_MODE_PROMPT_TEMPLATE = PersistentConfig(
     os.environ.get("VOICE_MODE_PROMPT_TEMPLATE", ""),
 )
 
-DEFAULT_VOICE_MODE_PROMPT_TEMPLATE = """You are a friendly, concise voice assistant.
+DEFAULT_VOICE_MODE_PROMPT_TEMPLATE = """你是一位友好、简洁的语音助手。
 
-Everything you say will be spoken aloud.
-Keep responses short, clear, and natural.
+你说的每一句话都会被朗读出来。
+请保持回答简短、清晰、自然。
 
-STYLE:
-- Use simple words and short sentences.
-- Sound warm and conversational.
-- Avoid long explanations, lists, or complex phrasing.
+风格：
+- 使用简单的词语和短句。
+- 语气温暖、像面对面聊天一样自然。
+- 避免冗长的解释、列表或复杂的表述。
 
-BEHAVIOR:
-- Give the quickest helpful answer first.
-- Offer extra detail only if needed.
-- Ask for clarification only when necessary.
+行为：
+- 先给出最快、最有用的答案。
+- 仅在必要时补充更多细节。
+- 仅在确有必要时才反问澄清。
 
-VOICE OPTIMIZATION:
-- Break information into small, easy-to-hear chunks.
-- Avoid dense wording or anything that sounds like reading text.
+语音优化：
+- 把信息切成小段，便于听清。
+- 避免堆砌词藻或听起来像在念稿子。
 
-ERROR HANDLING:
-- If unsure, say so briefly and offer options.
-- If something is unsafe or impossible, decline kindly and suggest a safe alternative.
+异常处理：
+- 不确定时，简短说明并给出几个可选方向。
+- 遇到不安全或无法完成的请求，礼貌拒绝并给出安全的替代方案。
 
-Stay consistent, helpful, and easy to listen to."""
+始终保持一致、贴心、易于聆听。"""
 
 TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE = PersistentConfig(
     "TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE",
@@ -2173,7 +2153,7 @@ Responses from models: {{responses}}"""
 ENABLE_CODE_EXECUTION = PersistentConfig(
     "ENABLE_CODE_EXECUTION",
     "code_execution.enable",
-    os.environ.get("ENABLE_CODE_EXECUTION", "True").lower() == "true",
+    os.environ.get("ENABLE_CODE_EXECUTION", "False").lower() == "true",
 )
 
 CODE_EXECUTION_ENGINE = PersistentConfig(
@@ -2857,13 +2837,13 @@ RAG_HYBRID_BM25_WEIGHT = PersistentConfig(
 ENABLE_RAG_HYBRID_SEARCH = PersistentConfig(
     "ENABLE_RAG_HYBRID_SEARCH",
     "rag.enable_hybrid_search",
-    os.environ.get("ENABLE_RAG_HYBRID_SEARCH", "").lower() == "true",
+    os.environ.get("ENABLE_RAG_HYBRID_SEARCH", "True").lower() == "true",
 )
 
 ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS = PersistentConfig(
     "ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS",
     "rag.enable_hybrid_search_enriched_texts",
-    os.environ.get("ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS", "False").lower()
+    os.environ.get("ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS", "True").lower()
     == "true",
 )
 
@@ -2927,7 +2907,7 @@ RAG_ALLOWED_FILE_EXTENSIONS = PersistentConfig(
 RAG_EMBEDDING_ENGINE = PersistentConfig(
     "RAG_EMBEDDING_ENGINE",
     "rag.embedding_engine",
-    os.environ.get("RAG_EMBEDDING_ENGINE", ""),
+    os.environ.get("RAG_EMBEDDING_ENGINE", "openai"),
 )
 
 PDF_EXTRACT_IMAGES = PersistentConfig(
@@ -2945,7 +2925,7 @@ PDF_LOADER_MODE = PersistentConfig(
 RAG_EMBEDDING_MODEL = PersistentConfig(
     "RAG_EMBEDDING_MODEL",
     "rag.embedding_model",
-    os.environ.get("RAG_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+    os.environ.get("RAG_EMBEDDING_MODEL", ""),
 )
 log.info(f"Embedding model set: {RAG_EMBEDDING_MODEL.value}")
 
@@ -2990,7 +2970,7 @@ RAG_EMBEDDING_PREFIX_FIELD_NAME = os.environ.get(
 RAG_RERANKING_ENGINE = PersistentConfig(
     "RAG_RERANKING_ENGINE",
     "rag.reranking_engine",
-    os.environ.get("RAG_RERANKING_ENGINE", ""),
+    os.environ.get("RAG_RERANKING_ENGINE", "external"),
 )
 
 RAG_RERANKING_MODEL = PersistentConfig(
@@ -3067,26 +3047,30 @@ CHUNK_OVERLAP = PersistentConfig(
     int(os.environ.get("CHUNK_OVERLAP", "100")),
 )
 
-DEFAULT_RAG_TEMPLATE = """### Task:
-Respond to the user query using the provided context, incorporating inline citations in the format [id] **only when the <source> tag includes an explicit id attribute** (e.g., <source id="1">).
+DEFAULT_RAG_TEMPLATE = """### 角色：
+你是一名专业的气象预报分析助手，擅长解读气象观测数据、天气预报资料、气象灾害分析报告及相关技术文档。
 
-### Guidelines:
-- If you don't know the answer, clearly state that.
-- If uncertain, ask the user for clarification.
-- Respond in the same language as the user's query.
-- If the context is unreadable or of poor quality, inform the user and provide the best possible answer.
-- If the answer isn't present in the context but you possess the knowledge, explain this to the user and provide the answer using your own understanding.
-- **Only include inline citations using [id] (e.g., [1], [2]) when the <source> tag includes an id attribute.**
-- Do not cite if the <source> tag does not contain an id attribute.
-- Do not use XML tags in your response.
-- Ensure citations are concise and directly related to the information provided.
+### 任务：
+根据提供的气象资料上下文，回答用户的问题。当 <source> 标签包含明确的 id 属性时（例如 <source id="1">），使用 [id] 格式进行行内引用。
 
-### Example of Citation:
-If the user asks about a specific topic and the information is found in a source with a provided id attribute, the response should include the citation like in the following example:
-* "According to the study, the proposed method increases efficiency by 20% [1]."
+### 规则：
+- 请使用简体中文回答。
+- 回答应准确、专业，正确使用气象术语（如飑线、龙卷、对流、涡旋、雷暴大风、短时强降水等）。
+- 涉及时间、地点、气象数值（温度、气压、风速、降水量等）时，务必忠实于原文数据，不要编造数值。
+- 如果上下文中包含多个时间段或多个站点的数据，请注意区分，避免混淆。
+- 如果用户询问天气过程的成因或机理，请结合上下文中的分析进行解释，必要时梳理因果链条。
+- 如果上下文中没有相关答案，请明确告知用户资料中未涉及该内容；如果你本身具备相关气象知识，可以补充说明，但需注明这是基于通用气象知识而非文档资料。
+- 如果上下文内容不可读或质量较差，请告知用户并尽可能给出最佳回答。
+- **仅当 <source> 标签包含 id 属性时，才使用 [id]（例如 [1]、[2]）格式进行行内引用。**
+- 如果 <source> 标签不包含 id 属性，则不要引用。
+- 回答中不要使用 XML 标签。
 
-### Output:
-Provide a clear and direct response to the user's query, including inline citations in the format [id] only when the <source> tag with id attribute is present in the context.
+### 引用示例：
+* "2006年5月27日苏州地区出现雷暴大风天气，最大风速达到28.3m/s [1]。"
+* "分析表明，此次强对流过程主要受高空槽前西南急流和低层切变线共同影响 [2]。"
+
+### 输出：
+请对用户的问题给出清晰、专业的回答，合理组织信息结构。如涉及多个要素可分点阐述，仅在上下文中存在带有 id 属性的 <source> 标签时使用 [id] 格式进行行内引用。
 
 <context>
 {{CONTEXT}}
@@ -3102,7 +3086,7 @@ RAG_TEMPLATE = PersistentConfig(
 RAG_OPENAI_API_BASE_URL = PersistentConfig(
     "RAG_OPENAI_API_BASE_URL",
     "rag.openai_api_base_url",
-    os.getenv("RAG_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+    os.getenv("RAG_OPENAI_API_BASE_URL", ""),
 )
 RAG_OPENAI_API_KEY = PersistentConfig(
     "RAG_OPENAI_API_KEY",
@@ -3242,7 +3226,7 @@ WEB_SEARCH_CONCURRENT_REQUESTS = PersistentConfig(
 WEB_LOADER_ENGINE = PersistentConfig(
     "WEB_LOADER_ENGINE",
     "rag.web.loader.engine",
-    os.environ.get("WEB_LOADER_ENGINE", ""),
+    os.environ.get("WEB_LOADER_ENGINE", "playwright"),
 )
 
 
@@ -3949,7 +3933,7 @@ ELEVENLABS_API_BASE_URL = os.getenv(
 AUDIO_STT_OPENAI_API_BASE_URL = PersistentConfig(
     "AUDIO_STT_OPENAI_API_BASE_URL",
     "audio.stt.openai.api_base_url",
-    os.getenv("AUDIO_STT_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+    os.getenv("AUDIO_STT_OPENAI_API_BASE_URL", ""),
 )
 
 AUDIO_STT_OPENAI_API_KEY = PersistentConfig(
@@ -3961,7 +3945,7 @@ AUDIO_STT_OPENAI_API_KEY = PersistentConfig(
 AUDIO_STT_ENGINE = PersistentConfig(
     "AUDIO_STT_ENGINE",
     "audio.stt.engine",
-    os.getenv("AUDIO_STT_ENGINE", ""),
+    os.getenv("AUDIO_STT_ENGINE", "openai"),
 )
 
 AUDIO_STT_MODEL = PersistentConfig(
@@ -4033,7 +4017,7 @@ AUDIO_STT_MISTRAL_USE_CHAT_COMPLETIONS = PersistentConfig(
 AUDIO_TTS_OPENAI_API_BASE_URL = PersistentConfig(
     "AUDIO_TTS_OPENAI_API_BASE_URL",
     "audio.tts.openai.api_base_url",
-    os.getenv("AUDIO_TTS_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+    os.getenv("AUDIO_TTS_OPENAI_API_BASE_URL", ""),
 )
 AUDIO_TTS_OPENAI_API_KEY = PersistentConfig(
     "AUDIO_TTS_OPENAI_API_KEY",
@@ -4046,6 +4030,11 @@ try:
     audio_tts_openai_params = json.loads(audio_tts_openai_params)
 except json.JSONDecodeError:
     audio_tts_openai_params = {}
+
+if not isinstance(audio_tts_openai_params, dict):
+    audio_tts_openai_params = {}
+
+audio_tts_openai_params.setdefault("speed", 1.3)
 
 AUDIO_TTS_OPENAI_PARAMS = PersistentConfig(
     "AUDIO_TTS_OPENAI_PARAMS",
@@ -4063,20 +4052,20 @@ AUDIO_TTS_API_KEY = PersistentConfig(
 AUDIO_TTS_ENGINE = PersistentConfig(
     "AUDIO_TTS_ENGINE",
     "audio.tts.engine",
-    os.getenv("AUDIO_TTS_ENGINE", ""),
+    os.getenv("AUDIO_TTS_ENGINE", "openai"),
 )
 
 
 AUDIO_TTS_MODEL = PersistentConfig(
     "AUDIO_TTS_MODEL",
     "audio.tts.model",
-    os.getenv("AUDIO_TTS_MODEL", "tts-1"),  # OpenAI default model
+    os.getenv("AUDIO_TTS_MODEL", ""),
 )
 
 AUDIO_TTS_VOICE = PersistentConfig(
     "AUDIO_TTS_VOICE",
     "audio.tts.voice",
-    os.getenv("AUDIO_TTS_VOICE", "alloy"),  # OpenAI default voice
+    os.getenv("AUDIO_TTS_VOICE", ""),
 )
 
 AUDIO_TTS_SPLIT_ON = PersistentConfig(

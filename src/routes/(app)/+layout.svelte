@@ -315,9 +315,10 @@
 		// };
 		// setupKeyboardShortcuts();
 
-		if ($user?.role === 'admin' && ($settings?.showChangelog ?? true)) {
-			showChangelog.set($settings?.version !== $config.version);
-		}
+		// 【已禁用】永远不显示新功能介绍弹窗
+		// if ($user?.role === 'admin' && ($settings?.showChangelog ?? true)) {
+		// 	showChangelog.set($settings?.version !== $config.version);
+		// }
 
 		if ($user?.role === 'admin' || ($user?.permissions?.chat?.temporary ?? true)) {
 			if ($page.url.searchParams.get('temporary-chat') === 'true') {
@@ -329,20 +330,18 @@
 			}
 		}
 
-		// Check for version updates
-		if ($user?.role === 'admin' && $config?.features?.enable_version_update_check) {
-			// Check if the user has dismissed the update toast in the last 24 hours
-			if (localStorage.dismissedUpdateToast) {
-				const dismissedUpdateToast = new Date(Number(localStorage.dismissedUpdateToast));
-				const now = new Date();
-
-				if (now - dismissedUpdateToast > 24 * 60 * 60 * 1000) {
-					checkForVersionUpdates();
-				}
-			} else {
-				checkForVersionUpdates();
-			}
-		}
+		// 【已禁用】版本更新检测
+		// if ($user?.role === 'admin' && $config?.features?.enable_version_update_check) {
+		// 	if (localStorage.dismissedUpdateToast) {
+		// 		const dismissedUpdateToast = new Date(Number(localStorage.dismissedUpdateToast));
+		// 		const now = new Date();
+		// 		if (now - dismissedUpdateToast > 24 * 60 * 60 * 1000) {
+		// 			checkForVersionUpdates();
+		// 		}
+		// 	} else {
+		// 		checkForVersionUpdates();
+		// 	}
+		// }
 		// Persist showControls: track open/close state separately from saved size
 		// chatControlsSize always retains the last width for openPane()
 		await showControls.set(!$mobile ? localStorage.showControls === 'true' : false);
@@ -366,9 +365,11 @@
 </script>
 
 <SettingsModal bind:show={$showSettings} />
-<ChangelogModal bind:show={$showChangelog} />
+<!-- 【已禁用】永远不显示新功能介绍弹窗 -->
+<!-- <ChangelogModal bind:show={$showChangelog} /> -->
 
-{#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
+<!-- 【已禁用】版本更新 Toast 提示 -->
+<!-- {#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
 	<div class=" absolute bottom-8 right-8 z-50" in:fade={{ duration: 100 }}>
 		<UpdateInfoToast
 			{version}
@@ -378,7 +379,7 @@
 			}}
 		/>
 	</div>
-{/if}
+{/if} -->
 
 {#if $user}
 	<div class="app relative">

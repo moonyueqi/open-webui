@@ -19,7 +19,7 @@ from open_webui.models.skills import (
 )
 from open_webui.models.access_grants import AccessGrants
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_access, has_permission
+from open_webui.utils.access_control import has_access, require_permission, filter_allowed_access_grants
 
 from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
 from open_webui.constants import ERROR_MESSAGES
@@ -132,16 +132,7 @@ async def export_skills(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if user.role != "admin" and not has_permission(
-        user.id,
-        "workspace.skills",
-        request.app.state.config.USER_PERMISSIONS,
-        db=db,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
+    require_permission(user, "workspace.skills", request, db=db)
 
     if user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL:
         return Skills.get_skills(db=db)
@@ -161,13 +152,7 @@ async def create_new_skill(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if user.role != "admin" and not has_permission(
-        user.id, "workspace.skills", request.app.state.config.USER_PERMISSIONS, db=db
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
+    require_permission(user, "workspace.skills", request, db=db)
 
     form_data.id = form_data.id.lower().replace(" ", "-")
 
@@ -176,6 +161,13 @@ async def create_new_skill(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.ID_TAKEN,
+        )
+
+    existing_by_name = Skills.get_skill_by_name(form_data.name, db=db)
+    if existing_by_name is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.SKILL_NAME_TAKEN,
         )
 
     try:
@@ -280,9 +272,23 @@ async def update_skill_by_id(
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
 
+    existing_by_name = Skills.get_skill_by_name(form_data.name, db=db)
+    if existing_by_name is not None and existing_by_name.id != id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.SKILL_NAME_TAKEN,
+        )
+
     try:
+        # Only the owner / admin can change access grants. Strip access_grants
+        # from the payload when the caller is just a `write` collaborator
+        # to prevent privilege escalation through the content-update endpoint.
+        exclude_fields = {"id"}
+        if skill.user_id != user.id and user.role != "admin":
+            exclude_fields.add("access_grants")
+
         updated = {
-            **form_data.model_dump(exclude={"id"}),
+            **form_data.model_dump(exclude=exclude_fields),
         }
 
         skill = Skills.update_skill_by_id(id, updated, db=db)
@@ -325,17 +331,9 @@ async def update_skill_access_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        skill.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="skill",
-            resource_id=skill.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    # Only the resource owner or an admin may modify access grants.
+    # A user with `write` permission can edit content but cannot change who has access.
+    if skill.user_id != user.id and user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,

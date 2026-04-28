@@ -790,20 +790,11 @@
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
 
-		initI18n(localStorage?.locale);
-		if (!localStorage.locale) {
-			const languages = await getLanguages();
-			const browserLanguages = navigator.languages
-				? navigator.languages
-				: [navigator.language || navigator.userLanguage];
-			const lang = backendConfig?.default_locale
-				? backendConfig.default_locale
-				: bestMatchingLanguage(languages, browserLanguages, 'en-US');
-			changeLanguage(lang);
-			dayjs.locale(lang.toLowerCase());
-		} else {
-			dayjs.locale(localStorage.locale.toLowerCase());
-		}
+		// 强制使用简体中文，不允许用户切换语言
+		localStorage.locale = 'zh-CN';
+		initI18n('zh-CN');
+		changeLanguage('zh-CN');
+		dayjs.locale('zh-cn');
 
 		if (backendConfig) {
 			// Save Backend Status to Store

@@ -30,7 +30,7 @@ from open_webui.utils.plugin import (
 )
 from open_webui.utils.tools import get_tool_specs
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_access, has_permission
+from open_webui.utils.access_control import has_access, require_permission, filter_allowed_access_grants
 from open_webui.utils.tools import get_tool_servers
 
 from open_webui.config import CACHE_DIR, BYPASS_ADMIN_ACCESS_CONTROL
@@ -326,16 +326,7 @@ async def export_tools(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if user.role != "admin" and not has_permission(
-        user.id,
-        "workspace.tools_export",
-        request.app.state.config.USER_PERMISSIONS,
-        db=db,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
+    require_permission(user, "workspace.tools_export", request, db=db)
 
     if user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL:
         return Tools.get_tools(db=db)
@@ -355,29 +346,22 @@ async def create_new_tools(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if user.role != "admin" and not (
-        has_permission(
-            user.id, "workspace.tools", request.app.state.config.USER_PERMISSIONS, db=db
-        )
-        or has_permission(
-            user.id,
-            "workspace.tools_import",
-            request.app.state.config.USER_PERMISSIONS,
-            db=db,
-        )
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
+    require_permission(user, ["workspace.tools", "workspace.tools_import"], request, db=db)
 
     if not form_data.id.isidentifier():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only alphanumeric characters and underscores are allowed in the id",
+            detail="ID 只允许使用字母、数字和下划线，且不能以数字开头",
         )
 
     form_data.id = form_data.id.lower()
+
+    existing_by_name = Tools.get_tool_by_name(form_data.name, db=db)
+    if existing_by_name is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.TOOL_NAME_TAKEN,
+        )
 
     tools = Tools.get_tool_by_id(form_data.id, db=db)
     if tools is None:
@@ -503,6 +487,13 @@ async def update_tools_by_id(
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
 
+    existing_by_name = Tools.get_tool_by_name(form_data.name, db=db)
+    if existing_by_name is not None and existing_by_name.id != id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.TOOL_NAME_TAKEN,
+        )
+
     try:
         form_data.content = replace_imports(form_data.content)
         tool_module, frontmatter = load_tool_module_by_id(id, content=form_data.content)
@@ -513,8 +504,15 @@ async def update_tools_by_id(
 
         specs = get_tool_specs(TOOLS[id])
 
+        # Only the owner / admin can change access grants. Strip access_grants
+        # from the payload when the caller is just a `write` collaborator
+        # to prevent privilege escalation through the content-update endpoint.
+        exclude_fields = {"id"}
+        if tools.user_id != user.id and user.role != "admin":
+            exclude_fields.add("access_grants")
+
         updated = {
-            **form_data.model_dump(exclude={"id"}),
+            **form_data.model_dump(exclude=exclude_fields),
             "specs": specs,
         }
 
@@ -560,17 +558,9 @@ async def update_tool_access_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        tools.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="tool",
-            resource_id=tools.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    # Only the resource owner or an admin may modify access grants.
+    # A user with `write` permission can edit content but cannot change who has access.
+    if tools.user_id != user.id and user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,

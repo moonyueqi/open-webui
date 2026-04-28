@@ -1,12 +1,13 @@
 <script lang="ts">
 	export let className = 'w-4 h-4';
 	export let strokeWidth = '1.5';
+	export let fill = 'none';
 </script>
 
 <svg
 	aria-hidden="true"
 	xmlns="http://www.w3.org/2000/svg"
-	fill="none"
+	{fill}
 	viewBox="0 0 24 24"
 	stroke-width={strokeWidth}
 	stroke="currentColor"

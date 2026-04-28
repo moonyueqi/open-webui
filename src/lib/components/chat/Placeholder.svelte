@@ -21,7 +21,7 @@
 		currentChatPage
 	} from '$lib/stores';
 	import { sanitizeResponseContent, extractCurlyBraceWords } from '$lib/utils';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, APP_VERSION_LOCAL } from '$lib/constants';
 
 	import Suggestions from './Suggestions.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -66,7 +66,7 @@
 	let models = [];
 	let selectedModelIdx = 0;
 
-	const greetingText = '我是灵犀智能预报员，很高兴见到您！';
+	const greetingText = '我是苏州市气象预报智能助手，很高兴见到您！';
 	let displayedText = '';
 	let typingComplete = false;
 
@@ -180,6 +180,12 @@
 	{:else}
 		<div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
 			<div class="mx-5">
+				<div
+					class="flex w-full items-center justify-center text-center text-xs font-medium text-gray-600 dark:text-gray-400"
+				>
+					苏州市气象预报智能助手 v{APP_VERSION_LOCAL}
+				</div>
+				<!-- 暂时禁用首页建议功能，后续重做为面向气象预报员的场景化建议
 				<Suggestions
 					suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??
 						models[selectedModelIdx]?.info?.meta?.suggestion_prompts ??
@@ -188,6 +194,7 @@
 					inputValue={prompt}
 					{onSelect}
 				/>
+				-->
 			</div>
 		</div>
 	{/if}

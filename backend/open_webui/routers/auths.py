@@ -71,7 +71,7 @@ from open_webui.utils.auth import (
 from open_webui.internal.db import get_session
 from sqlalchemy.orm import Session
 from open_webui.utils.webhook import post_webhook
-from open_webui.utils.access_control import get_permissions, has_permission
+from open_webui.utils.access_control import get_permissions, require_permission
 from open_webui.utils.groups import apply_default_group_assignment
 
 from open_webui.utils.redis import get_redis_client
@@ -145,7 +145,7 @@ def create_session_response(
         "email": user.email,
         "name": user.name,
         "role": user.role,
-        "profile_image_url": f"/api/v1/users/{user.id}/profile/image",
+        "profile_image_url": user.profile_image_url,
         "permissions": user_permissions,
     }
 
@@ -300,7 +300,7 @@ async def update_password(
 
         if user:
             try:
-                validate_password(form_data.password)
+                validate_password(form_data.new_password)
             except Exception as e:
                 raise HTTPException(400, detail=str(e))
             hashed = get_password_hash(form_data.new_password)
@@ -721,7 +721,6 @@ async def signup_handler(
     if Users.get_num_users(db=db) == 1:
         Users.update_user_role_by_id(user.id, "admin", db=db)
         user = Users.get_user_by_id(user.id, db=db)
-        request.app.state.config.ENABLE_SIGNUP = False
 
     if request.app.state.config.WEBHOOK_URL:
         await post_webhook(
@@ -930,7 +929,7 @@ async def add_user(
                 "email": user.email,
                 "name": user.name,
                 "role": user.role,
-                "profile_image_url": f"/api/v1/users/{user.id}/profile/image",
+                "profile_image_url": user.profile_image_url,
             }
         else:
             raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
@@ -1224,13 +1223,12 @@ async def update_ldap_config(
 async def generate_api_key(
     request: Request, user=Depends(get_current_user), db: Session = Depends(get_session)
 ):
-    if not request.app.state.config.ENABLE_API_KEYS or not has_permission(
-        user.id, "features.api_keys", request.app.state.config.USER_PERMISSIONS
-    ):
+    if not request.app.state.config.ENABLE_API_KEYS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.API_KEY_CREATION_NOT_ALLOWED,
         )
+    require_permission(user, "features.api_keys", request)
 
     api_key = create_api_key()
     success = Users.update_user_api_key_by_id(user.id, api_key, db=db)

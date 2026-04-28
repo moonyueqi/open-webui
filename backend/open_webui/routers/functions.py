@@ -204,7 +204,7 @@ async def create_new_function(
     if not form_data.id.isidentifier():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only alphanumeric characters and underscores are allowed in the id",
+            detail="ID 只允许使用字母、数字和下划线，且不能以数字开头",
         )
 
     form_data.id = form_data.id.lower()

@@ -45,7 +45,8 @@
 		showEmbeds,
 		selectedTerminalId,
 		showFileNavPath,
-		showFileNavDir
+		showFileNavDir,
+		deepThinking
 	} from '$lib/stores';
 
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
@@ -199,6 +200,21 @@
 	// Message queue for storing messages while generating
 	let messageQueue: { id: string; prompt: string; files: any[] }[] = [];
 
+	// True when the model has not yet started outputting actual reply content.
+	// Covers: waiting for first token, and reasoning/thinking phase before real content arrives.
+	// Stop button is disabled while this is true (similar to Qwen's behavior).
+	$: isThinking = (() => {
+		if (!history.currentId) return false;
+		const msg = history.messages[history.currentId];
+		if (!msg || msg.done) return false;
+		const content = msg.content ?? '';
+		// No content yet (waiting for first token) → still "thinking"
+		if (content === '') return true;
+		// Has content — strip all <details> blocks; if nothing meaningful remains, still thinking
+		const stripped = removeAllDetails(content).trim();
+		return stripped.length === 0;
+	})();
+
 	$: if (chatIdProp) {
 		navigateHandler();
 	}
@@ -268,6 +284,7 @@
 						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
 						codeInterpreterEnabled = input.codeInterpreterEnabled;
+						$deepThinking = input.deepThinkingEnabled ?? $deepThinking;
 					}
 				} catch (e) {}
 			} else {
@@ -295,11 +312,16 @@
 		}
 	};
 
+	let loadingChat = false;
+
 	$: if (selectedModels && chatIdProp !== '') {
 		saveSessionSelectedModels();
 	}
 
 	const saveSessionSelectedModels = () => {
+		if (loadingChat) {
+			return;
+		}
 		const selectedModelsString = JSON.stringify(selectedModels);
 		if (
 			selectedModels.length === 0 ||
@@ -398,13 +420,13 @@
 					webSearchEnabled = model.info.meta.defaultFeatureIds.includes('web_search');
 				}
 
-				if (
-					model.info?.meta?.capabilities?.['code_interpreter'] &&
-					$config?.features?.enable_code_interpreter &&
-					($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
-				) {
-					codeInterpreterEnabled = model.info.meta.defaultFeatureIds.includes('code_interpreter');
-				}
+			// if (
+			// 	model.info?.meta?.capabilities?.['code_interpreter'] &&
+			// 	$config?.features?.enable_code_interpreter &&
+			// 	($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
+			// ) {
+			// 	codeInterpreterEnabled = model.info.meta.defaultFeatureIds.includes('code_interpreter');
+			// }
 			}
 		}
 	};
@@ -756,6 +778,7 @@
 						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
 						codeInterpreterEnabled = input.codeInterpreterEnabled;
+						$deepThinking = input.deepThinkingEnabled ?? $deepThinking;
 					}
 				} catch (e) {}
 			}
@@ -1173,9 +1196,9 @@
 			imageGenerationEnabled = true;
 		}
 
-		if ($page.url.searchParams.get('code-interpreter') === 'true') {
-			codeInterpreterEnabled = true;
-		}
+		// if ($page.url.searchParams.get('code-interpreter') === 'true') {
+		// 	codeInterpreterEnabled = true;
+		// }
 
 		if ($page.url.searchParams.get('tools')) {
 			selectedToolIds = $page.url.searchParams
@@ -1218,6 +1241,7 @@
 
 	const loadChat = async () => {
 		chatId.set(chatIdProp);
+		loadingChat = true;
 
 		if ($temporaryChatEnabled) {
 			temporaryChatEnabled.set(false);
@@ -1279,12 +1303,15 @@
 				}
 
 				await tick();
+				loadingChat = false;
 
 				return true;
 			} else {
+				loadingChat = false;
 				return null;
 			}
 		}
+		loadingChat = false;
 	};
 
 	const scrollToBottom = async (behavior = 'auto') => {
@@ -1877,6 +1904,8 @@
 			newChat?: boolean;
 		} = {}
 	) => {
+		const _deepThinkingEnabled = $deepThinking;
+
 		if (autoScroll) {
 			scrollToBottom();
 		}
@@ -1977,7 +2006,8 @@
 							: createMessagesList(_history, responseMessageId),
 						_history,
 						responseMessageId,
-						_chatId
+						_chatId,
+						_deepThinkingEnabled
 					);
 
 					if (chatEventEmitter) clearInterval(chatEventEmitter);
@@ -2032,7 +2062,7 @@
 		return features;
 	};
 
-	const sendMessageSocket = async (model, _messages, _history, responseMessageId, _chatId) => {
+	const sendMessageSocket = async (model, _messages, _history, responseMessageId, _chatId, _deepThinking = false) => {
 		const responseMessage = _history.messages[responseMessageId];
 		const userMessage = _history.messages[responseMessage.parentId];
 
@@ -2193,6 +2223,7 @@
 				params: {
 					...$settings?.params,
 					...params,
+					...(!_deepThinking ? { reasoning_effort: 'none', think: false } : {}),
 					stop:
 						(params?.stop ?? $settings?.params?.stop ?? undefined)
 							? (params?.stop.split(',').map((token) => token.trim()) ?? $settings.params.stop).map(
@@ -2244,7 +2275,7 @@
 					follow_up_generation: $settings?.autoFollowUps ?? true
 				},
 
-				...(stream && (model.info?.meta?.capabilities?.usage ?? false)
+				...(stream && (model.info?.meta?.capabilities?.usage ?? true)
 					? {
 							stream_options: {
 								include_usage: true
@@ -2461,7 +2492,8 @@
 					createMessagesList(history, responseMessage.id),
 					history,
 					responseMessage.id,
-					_chatId
+					_chatId,
+					$deepThinking
 				);
 			}
 		}
@@ -2521,15 +2553,41 @@
 		}
 	};
 
+	/** 首条用户消息首行作为会话标题占位（类似千问），生成标题到达后再替换 */
+	const previewTitleFromFirstUserMessage = (h: typeof history) => {
+		const msgs = h?.messages ?? {};
+		for (const m of Object.values(msgs) as Array<{ role?: string; parentId?: string | null; content?: unknown }>) {
+			if (m.role !== 'user' || m.parentId !== null) continue;
+			const c = m.content;
+			let line = '';
+			if (typeof c === 'string') {
+				line = c.split('\n')[0].trim();
+			} else if (Array.isArray(c)) {
+				const textPart = c.find((p) => p?.type === 'text') as { text?: string } | undefined;
+				if (textPart?.text) {
+					line = textPart.text.split('\n')[0].trim();
+				}
+			}
+			if (!line) continue;
+			const max = 80;
+			if (line.length > max) line = `${line.slice(0, max)}...`;
+			return line;
+		}
+		return $i18n.t('New Chat');
+	};
+
 	const initChatHandler = async (history) => {
 		let _chatId = $chatId;
 
 		if (!$temporaryChatEnabled) {
+			const previewTitle = previewTitleFromFirstUserMessage(history);
+			chatTitle.set(previewTitle);
+
 			chat = await createNewChat(
 				localStorage.token,
 				{
 					id: _chatId,
-					title: $i18n.t('New Chat'),
+					title: previewTitle,
 					models: selectedModels,
 					system: $settings.system ?? undefined,
 					params: params,
@@ -2775,26 +2833,27 @@
 								</div>
 							</div>
 
-							<div class=" pb-2 z-10">
-								<MessageInput
-									bind:this={messageInput}
-									{history}
-									{taskIds}
-									{selectedModels}
-									bind:files
-									bind:prompt
-									bind:autoScroll
-									bind:selectedToolIds
-									bind:selectedFilterIds
-									bind:imageGenerationEnabled
-									bind:codeInterpreterEnabled
-									bind:webSearchEnabled
-									bind:atSelectedModel
-									bind:showCommands
-									bind:dragged
-									toolServers={$toolServers}
-									{generating}
-									{stopResponse}
+							<div class=" pb-6 z-10">
+							<MessageInput
+								bind:this={messageInput}
+								{history}
+								{taskIds}
+								{selectedModels}
+								bind:files
+								bind:prompt
+								bind:autoScroll
+								bind:selectedToolIds
+								bind:selectedFilterIds
+								bind:imageGenerationEnabled
+								bind:codeInterpreterEnabled
+								bind:webSearchEnabled
+								bind:atSelectedModel
+								bind:showCommands
+								bind:dragged
+							toolServers={$toolServers}
+							{generating}
+							{isThinking}
+							{stopResponse}
 									{createMessagePair}
 									{onUpload}
 									{messageQueue}

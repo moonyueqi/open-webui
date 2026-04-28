@@ -9,7 +9,7 @@ from open_webui.models.groups import Groups
 from open_webui.models.access_grants import AccessGrantModel, AccessGrants
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import JSON, BigInteger, Boolean, Column, String, Text, or_
+from sqlalchemy import JSON, BigInteger, Boolean, Column, String, Text
 
 log = logging.getLogger(__name__)
 
@@ -245,13 +245,7 @@ class SkillsTable:
                     query_key = filter.get("query")
                     if query_key:
                         query = query.filter(
-                            or_(
-                                Skill.name.ilike(f"%{query_key}%"),
-                                Skill.description.ilike(f"%{query_key}%"),
-                                Skill.id.ilike(f"%{query_key}%"),
-                                User.name.ilike(f"%{query_key}%"),
-                                User.email.ilike(f"%{query_key}%"),
-                            )
+                            Skill.name.ilike(f"%{query_key}%")
                         )
 
                     view_option = filter.get("view_option")

@@ -34,7 +34,8 @@
 		showSettings,
 		selectedTerminalId,
 		TTSWorker,
-		temporaryChatEnabled
+		temporaryChatEnabled,
+		deepThinking
 	} from '$lib/stores';
 
 	import {
@@ -79,6 +80,7 @@
 	import Photo from '../icons/Photo.svelte';
 	import Wrench from '../icons/Wrench.svelte';
 	import Sparkles from '../icons/Sparkles.svelte';
+	import LightBulb from '../icons/LightBulb.svelte';
 
 	import InputVariablesModal from './MessageInput/InputVariablesModal.svelte';
 	import Voice from '../icons/Voice.svelte';
@@ -100,6 +102,10 @@
 	import InputModal from '../common/InputModal.svelte';
 	import Expand from '../icons/Expand.svelte';
 	import QueuedMessageItem from './MessageInput/QueuedMessageItem.svelte';
+	import PromptsMenu from './MessageInput/PromptsMenu.svelte';
+	import ToolsMenu from './MessageInput/ToolsMenu.svelte';
+	import SkillsMenu from './MessageInput/SkillsMenu.svelte';
+	import { getSkillItems } from '$lib/apis/skills';
 
 	const i18n = getContext('i18n');
 
@@ -111,6 +117,7 @@
 
 	export let autoScroll = false;
 	export let generating = false;
+	export let isThinking = false;
 	export let uploadPending = false;
 
 	export let atSelectedModel: Model | undefined = undefined;
@@ -363,6 +370,12 @@
 		chatInputElement?.replaceCommandWithText(text);
 	};
 
+	const insertMention = (char: string, id: string, label?: string) => {
+		const chatInput = document.getElementById('chat-input');
+		if (!chatInput) return;
+		chatInputElement?.insertMention(char, id, label);
+	};
+
 	const insertTextAtCursor = async (text: string) => {
 		const chatInput = document.getElementById('chat-input');
 		if (!chatInput) return;
@@ -403,7 +416,7 @@
 	let command = '';
 	export let showCommands = false;
 	$: showCommands =
-		['/', '#', '@', '$'].includes(command?.charAt(0)) || '\\#' === command?.slice(0, 2);
+		['#', '@', '$'].includes(command?.charAt(0)) || '\\#' === command?.slice(0, 2);
 	let suggestions = null;
 
 	let showTools = false;
@@ -441,9 +454,13 @@
 	let chatInputElement;
 
 	let filesInputElement;
+	let documentsInputElement;
+	let imagesInputElement;
 	let commandsElement;
 
 	let inputFiles;
+	let inputDocuments;
+	let inputImages;
 
 	let showInputModal = false;
 
@@ -492,6 +509,16 @@
 	let showToolsButton = false;
 	$: showToolsButton = ($tools ?? []).length > 0 || ($toolServers ?? []).length > 0;
 
+	let hasSkills = false;
+	const checkSkillsAvailability = async () => {
+		try {
+			const res = await getSkillItems(localStorage.token, null).catch(() => null);
+			hasSkills = (res?.items ?? []).length > 0;
+		} catch {
+			hasSkills = false;
+		}
+	};
+
 	let showWebSearchButton = false;
 	$: showWebSearchButton =
 		(atSelectedModel?.id ? [atSelectedModel.id] : selectedModels).length ===
@@ -507,11 +534,11 @@
 		($_user.role === 'admin' || $_user?.permissions?.features?.image_generation);
 
 	let showCodeInterpreterButton = false;
-	$: showCodeInterpreterButton =
-		(atSelectedModel?.id ? [atSelectedModel.id] : selectedModels).length ===
-			codeInterpreterCapableModels.length &&
-		$config?.features?.enable_code_interpreter &&
-		($_user.role === 'admin' || $_user?.permissions?.features?.code_interpreter);
+	// $: showCodeInterpreterButton =
+	// 	(atSelectedModel?.id ? [atSelectedModel.id] : selectedModels).length ===
+	// 		codeInterpreterCapableModels.length &&
+	// 	$config?.features?.enable_code_interpreter &&
+	// 	($_user.role === 'admin' || $_user?.permissions?.features?.code_interpreter);
 
 	const scrollToBottom = () => {
 		const element = document.getElementById('messages-container');
@@ -904,41 +931,6 @@
 				})
 			},
 			{
-				char: '/',
-				render: getSuggestionRenderer(CommandSuggestionList, {
-					i18n,
-					onSelect: (e) => {
-						const { type, data } = e;
-
-						if (type === 'model') {
-							atSelectedModel = data;
-						}
-
-						document.getElementById('chat-input')?.focus();
-					},
-
-					insertTextHandler: insertTextAtCursor,
-					onUpload: (e) => {
-						const { type, data } = e;
-
-						if (type === 'file') {
-							if (files.find((f) => f.id === data.id)) {
-								return;
-							}
-							files = [
-								...files,
-								{
-									...data,
-									status: 'processed'
-								}
-							];
-						} else {
-							onUpload(e);
-						}
-					}
-				})
-			},
-			{
 				char: '#',
 				render: getSuggestionRenderer(CommandSuggestionList, {
 					i18n,
@@ -1013,6 +1005,7 @@
 			}
 
 			tools.set(await getTools(localStorage.token));
+			checkSkillsAvailability();
 		};
 		initialize();
 
@@ -1115,23 +1108,109 @@
 					: 'max-w-6xl'} px-2.5 mx-auto inset-x-0"
 			>
 				<div class="">
-					<input
-						bind:this={filesInputElement}
-						bind:files={inputFiles}
-						type="file"
-						hidden
-						multiple
-						on:change={async () => {
-							if (inputFiles && inputFiles.length > 0) {
-								const _inputFiles = Array.from(inputFiles);
-								inputFilesHandler(_inputFiles);
-							} else {
-								toast.error($i18n.t(`File not found.`));
+				<input
+					bind:this={filesInputElement}
+					bind:files={inputFiles}
+					type="file"
+					hidden
+					multiple
+					on:change={async () => {
+						if (inputFiles && inputFiles.length > 0) {
+							const _inputFiles = Array.from(inputFiles);
+							inputFilesHandler(_inputFiles);
+						} else {
+							toast.error($i18n.t(`File not found.`));
+						}
+
+						filesInputElement.value = '';
+					}}
+				/>
+
+				<input
+					bind:this={documentsInputElement}
+					bind:files={inputDocuments}
+					type="file"
+					hidden
+					multiple
+					accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.epub,.mobi,.rtf,.json,.xml,.yaml,.yml,.html,.htm"
+					on:change={async () => {
+						if (inputDocuments && inputDocuments.length > 0) {
+							const docFiles = Array.from(inputDocuments);
+							const maxCount = 10;
+							const maxSizeMB = 100;
+
+							if (files.length + docFiles.length > maxCount) {
+								toast.error(
+									$i18n.t('You can upload up to {{maxCount}} documents at a time.', { maxCount })
+								);
+								documentsInputElement.value = '';
+								return;
 							}
 
-							filesInputElement.value = '';
-						}}
-					/>
+							const validFiles = [];
+							for (const file of docFiles) {
+								if (file.size > maxSizeMB * 1024 * 1024) {
+									toast.error(
+										$i18n.t('File "{{name}}" exceeds {{maxSize}} MB limit.', { name: file.name, maxSize: maxSizeMB })
+									);
+									continue;
+								}
+								validFiles.push(file);
+							}
+
+							if (validFiles.length > 0) {
+								inputFilesHandler(validFiles);
+							}
+						} else {
+							toast.error($i18n.t(`File not found.`));
+						}
+
+						documentsInputElement.value = '';
+					}}
+				/>
+
+				<input
+					bind:this={imagesInputElement}
+					bind:files={inputImages}
+					type="file"
+					hidden
+					multiple
+					accept=".jpg,.jpeg,.png,.bmp,.webp,.gif"
+					on:change={async () => {
+						if (inputImages && inputImages.length > 0) {
+							const imgFiles = Array.from(inputImages);
+							const maxCount = 10;
+							const maxSizeMB = 10;
+
+							if (files.length + imgFiles.length > maxCount) {
+								toast.error(
+									$i18n.t('You can upload up to {{maxCount}} images at a time.', { maxCount })
+								);
+								imagesInputElement.value = '';
+								return;
+							}
+
+							const validFiles = [];
+							for (const file of imgFiles) {
+								if (file.size > maxSizeMB * 1024 * 1024) {
+									toast.error(
+										$i18n.t('Image "{{name}}" exceeds {{maxSize}} MB limit.', { name: file.name, maxSize: maxSizeMB })
+									);
+									continue;
+								}
+								validFiles.push(file);
+							}
+
+							if (validFiles.length > 0) {
+								inputFilesHandler(validFiles);
+							}
+						} else {
+							toast.error($i18n.t(`File not found.`));
+						}
+
+						imagesInputElement.value = '';
+					}}
+				/>
 
 					<div class={recording ? '' : 'hidden'}>
 						<VoiceRecording
@@ -1407,7 +1486,7 @@
 														const suggestionsContainerElement =
 															document.getElementById('suggestions-container');
 
-														if (e.key === 'Escape') {
+														if (e.key === 'Escape' && !isThinking) {
 															stopResponse();
 														}
 
@@ -1513,17 +1592,20 @@
 								</div>
 							</div>
 
-							<div class=" flex justify-between mt-0.5 mb-2.5 mx-0.5 max-w-full" dir="ltr">
-								<div class="ml-1 self-end flex items-center flex-1 max-w-[80%]">
+						<div class=" flex justify-between items-center mt-0.5 mb-2.5 mx-0.5 max-w-full" dir="ltr">
+							<div class="ml-1 flex items-center flex-1 max-w-[80%]">
 									<InputMenu
 										bind:files
 										selectedModels={atSelectedModel ? [atSelectedModel.id] : selectedModels}
 										{fileUploadCapableModels}
-										{screenCaptureHandler}
-										{inputFilesHandler}
-										uploadFilesHandler={() => {
-											filesInputElement.click();
-										}}
+								{screenCaptureHandler}
+								{inputFilesHandler}
+								uploadDocumentsHandler={() => {
+									documentsInputElement.click();
+								}}
+								uploadImagesHandler={() => {
+									imagesInputElement.click();
+								}}
 										uploadGoogleDriveHandler={async () => {
 											try {
 												const fileData = await createPicker();
@@ -1575,45 +1657,87 @@
 										</div>
 									</InputMenu>
 
-									{#if showWebSearchButton || showImageGenerationButton || showCodeInterpreterButton || showToolsButton || (toggleFilters && toggleFilters.length > 0)}
+								<div
+									class="flex self-center w-[1px] h-4 mx-1 bg-gray-200/50 dark:bg-gray-800/50"
+								/>
+
+							<Tooltip content={$i18n.t('Deep Thinking')} placement="top">
+								<button
+									on:click|preventDefault={() => deepThinking.set(!$deepThinking)}
+									type="button"
+									class="flex gap-1 items-center px-2.5 h-8 text-sm rounded-full transition-colors duration-200 outline-hidden focus:outline-hidden {$deepThinking
+										? 'text-blue-600 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/15'
+										: 'text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800'}"
+								>
+									<LightBulb className="size-4" strokeWidth="1.75" />
+									<span class="text-xs font-medium whitespace-nowrap">{$i18n.t('Deep Thinking')}</span>
+								</button>
+							</Tooltip>
+
+							<PromptsMenu onSelect={(content) => setText(content)} />
+
+							{#if showToolsButton}
+								<ToolsMenu
+									bind:selectedToolIds
+									closeOnOutsideClick={integrationsMenuCloseOnOutsideClick}
+									onShowValves={(e) => {
+										const { type, id } = e;
+										selectedValvesType = type;
+										selectedValvesItemId = id;
+										showValvesModal = true;
+										integrationsMenuCloseOnOutsideClick = false;
+									}}
+									onClose={async () => {
+										await tick();
+										const chatInput = document.getElementById('chat-input');
+										chatInput?.focus();
+									}}
+								/>
+							{/if}
+
+							{#if hasSkills}
+								<SkillsMenu
+									onSelect={(skill) => {
+										insertMention('$', skill.id, skill.name);
+									}}
+								/>
+							{/if}
+
+								{#if showWebSearchButton || showImageGenerationButton || showCodeInterpreterButton || (toggleFilters && toggleFilters.length > 0)}
+								<IntegrationsMenu
+									selectedModels={atSelectedModel ? [atSelectedModel.id] : selectedModels}
+									{toggleFilters}
+									{showWebSearchButton}
+									{showImageGenerationButton}
+									{showCodeInterpreterButton}
+									bind:selectedToolIds
+									bind:selectedFilterIds
+									bind:webSearchEnabled
+									bind:imageGenerationEnabled
+									bind:codeInterpreterEnabled
+								closeOnOutsideClick={integrationsMenuCloseOnOutsideClick}
+										onShowValves={(e) => {
+											const { type, id } = e;
+											selectedValvesType = type;
+											selectedValvesItemId = id;
+											showValvesModal = true;
+											integrationsMenuCloseOnOutsideClick = false;
+										}}
+										onClose={async () => {
+											await tick();
+
+											const chatInput = document.getElementById('chat-input');
+											chatInput?.focus();
+										}}
+									>
 										<div
-											class="flex self-center w-[1px] h-4 mx-1 bg-gray-200/50 dark:bg-gray-800/50"
-										/>
-
-										<IntegrationsMenu
-											selectedModels={atSelectedModel ? [atSelectedModel.id] : selectedModels}
-											{toggleFilters}
-											{showWebSearchButton}
-											{showImageGenerationButton}
-											{showCodeInterpreterButton}
-											bind:selectedToolIds
-											bind:selectedFilterIds
-											bind:webSearchEnabled
-											bind:imageGenerationEnabled
-											bind:codeInterpreterEnabled
-											closeOnOutsideClick={integrationsMenuCloseOnOutsideClick}
-											onShowValves={(e) => {
-												const { type, id } = e;
-												selectedValvesType = type;
-												selectedValvesItemId = id;
-												showValvesModal = true;
-												integrationsMenuCloseOnOutsideClick = false;
-											}}
-											onClose={async () => {
-												await tick();
-
-												const chatInput = document.getElementById('chat-input');
-												chatInput?.focus();
-											}}
+											id="integration-menu-button"
+											class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-8 flex justify-center items-center outline-hidden focus:outline-hidden"
 										>
-											<div
-												id="integration-menu-button"
-												class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-8 flex justify-center items-center outline-hidden focus:outline-hidden"
-											>
-												<Component className="size-4.5" strokeWidth="1.5" />
-											</div>
-										</IntegrationsMenu>
-									{/if}
+											<Component className="size-4.5" strokeWidth="1.5" />
+										</div>
+									</IntegrationsMenu>
+								{/if}
 
 									{#if selectedModelIds.length === 1 && $models.find((m) => m.id === selectedModelIds[0])?.has_user_valves}
 										<div class="ml-1 flex gap-1.5">
@@ -1735,55 +1859,74 @@
 											</Tooltip>
 										{/if}
 
-										{#if codeInterpreterEnabled}
-											<Tooltip content={$i18n.t('Code Interpreter')} placement="top">
-												<button
-													aria-label={codeInterpreterEnabled
-														? $i18n.t('Disable Code Interpreter')
-														: $i18n.t('Enable Code Interpreter')}
-													aria-pressed={codeInterpreterEnabled}
-													on:click|preventDefault={() =>
-														(codeInterpreterEnabled = !codeInterpreterEnabled)}
-													type="button"
-													class=" group p-[7px] flex gap-1.5 items-center text-sm transition-colors duration-300 max-w-full overflow-hidden {codeInterpreterEnabled
-														? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-700/10 border border-sky-200/40 dark:border-sky-500/20'
-														: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '} {($settings?.highContrastMode ??
-													false)
-														? 'm-1'
-														: 'focus:outline-hidden rounded-full'}"
-												>
-													<Cloud className="size-3.5" strokeWidth="2" />
+									<!-- {#if codeInterpreterEnabled}
+										<Tooltip content={$i18n.t('Code Interpreter')} placement="top">
+											<button
+												aria-label={codeInterpreterEnabled
+													? $i18n.t('Disable Code Interpreter')
+													: $i18n.t('Enable Code Interpreter')}
+												aria-pressed={codeInterpreterEnabled}
+												on:click|preventDefault={() =>
+													(codeInterpreterEnabled = !codeInterpreterEnabled)}
+												type="button"
+												class=" group p-[7px] flex gap-1.5 items-center text-sm transition-colors duration-300 max-w-full overflow-hidden {codeInterpreterEnabled
+													? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-700/10 border border-sky-200/40 dark:border-sky-500/20'
+													: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '} {($settings?.highContrastMode ??
+												false)
+													? 'm-1'
+													: 'focus:outline-hidden rounded-full'}"
+											>
+												<Cloud className="size-3.5" strokeWidth="2" />
 
-													<div class="hidden group-hover:block">
-														<XMark className="size-4" strokeWidth="1.75" />
-													</div>
-												</button>
-											</Tooltip>
-										{/if}
+												<div class="hidden group-hover:block">
+													<XMark className="size-4" strokeWidth="1.75" />
+												</div>
+											</button>
+										</Tooltip>
+									{/if} -->
+
+									<!-- Deep Thinking tag moved to standalone button above
+									{#if $deepThinking}
+										<Tooltip content={$i18n.t('Deep Thinking')} placement="top">
+											<button
+												on:click|preventDefault={() =>
+													deepThinking.set(!$deepThinking)}
+												type="button"
+												class="group p-[7px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {$deepThinking
+													? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border border-sky-200/40 dark:border-sky-500/20'
+													: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '}"
+											>
+												<LightBulb className="size-4" strokeWidth="1.75" />
+												<div class="hidden group-hover:block">
+													<XMark className="size-4" strokeWidth="1.75" />
+												</div>
+											</button>
+										</Tooltip>
+									{/if}
+									-->
 									</div>
 								</div>
 
-								<div class="self-end flex space-x-1 mr-1 shrink-0 gap-[0.5px]">
+								<div class="flex items-center space-x-1 mr-1 shrink-0 gap-[0.5px]">
 									{#if (taskIds && taskIds.length > 0) || (history.currentId && history.messages[history.currentId]?.done != true) || generating}
 										<div class=" flex items-center">
-											<Tooltip content={$i18n.t('Stop')}>
+											<Tooltip content={isThinking ? $i18n.t('Thinking...') : $i18n.t('Stop')}>
 												<button
-													class="bg-white hover:bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-1.5"
+												class="{isThinking
+													? 'bg-gray-200 text-gray-400 dark:bg-gray-600 dark:text-gray-500 cursor-not-allowed'
+													: 'bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500'} transition rounded-full p-1.5"
+													disabled={isThinking}
 													on:click={() => {
 														stopResponse();
 													}}
 												>
 													<svg
 														xmlns="http://www.w3.org/2000/svg"
-														viewBox="0 0 24 24"
+														viewBox="0 0 16 16"
 														fill="currentColor"
 														class="size-5"
 													>
-														<path
-															fill-rule="evenodd"
-															d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm6-2.438c0-.724.588-1.312 1.313-1.312h4.874c.725 0 1.313.588 1.313 1.313v4.874c0 .725-.588 1.313-1.313 1.313H9.564a1.312 1.312 0 01-1.313-1.313V9.564z"
-															clip-rule="evenodd"
-														/>
+														<rect x="3" y="3" width="10" height="10" rx="2" />
 													</svg>
 												</button>
 											</Tooltip>

@@ -1,30 +1,28 @@
 export const DEFAULT_PERMISSIONS = {
 	workspace: {
-		models: false,
-		knowledge: false,
-		prompts: false,
-		tools: false,
-		skills: false,
-		models_import: false,
-		models_export: false,
-		prompts_import: false,
-		prompts_export: false,
-		tools_import: false,
-		tools_export: false
+		models: true,
+		knowledge: true,
+		prompts: true,
+		tools: true,
+		skills: true,
+		models_import: true,
+		models_export: true,
+		prompts_import: true,
+		prompts_export: true,
+		tools_import: true,
+		tools_export: true
 	},
 	sharing: {
-		models: false,
-		public_models: false,
-		knowledge: false,
-		public_knowledge: false,
-		prompts: false,
-		public_prompts: false,
-		tools: false,
-		public_tools: false,
-		skills: false,
-		public_skills: false,
-		notes: false,
-		public_notes: false
+		models: true,
+		public_models: true,
+		knowledge: true,
+		public_knowledge: true,
+		prompts: true,
+		public_prompts: true,
+		tools: true,
+		public_tools: true,
+		skills: true,
+		public_skills: true
 	},
 	access_grants: {
 		allow_users: true
@@ -52,17 +50,12 @@ export const DEFAULT_PERMISSIONS = {
 		temporary_enforced: false
 	},
 	features: {
-		api_keys: false,
-		notes: true,
-		channels: true,
+		api_keys: true,
 		folders: true,
-		direct_tool_servers: false,
+		direct_tool_servers: true,
 		web_search: true,
 		image_generation: true,
 		code_interpreter: true,
 		memories: true
-	},
-	settings: {
-		interface: true
 	}
 } as const;

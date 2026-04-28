@@ -522,7 +522,12 @@ def validate_email_format(email: str) -> bool:
     if email.endswith("@localhost"):
         return True
 
-    return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
+    return bool(
+        re.match(
+            r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$",
+            email.strip(),
+        )
+    )
 
 
 def sanitize_filename(file_name):
@@ -808,10 +813,10 @@ def strict_match_mime_type(supported: list[str] | str, header: str) -> Optional[
 
 
 def extract_urls(text: str) -> list[str]:
-    # Regex pattern to match URLs
     url_pattern = re.compile(
-        r"(https?://[^\s]+)", re.IGNORECASE
-    )  # Matches http and https URLs
+        r"(https?://[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u3400-\u4dbf\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]+)",
+        re.IGNORECASE,
+    )
     return url_pattern.findall(text)
 
 

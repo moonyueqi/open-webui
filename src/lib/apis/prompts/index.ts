@@ -2,8 +2,8 @@ import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 type PromptItem = {
 	id?: string; // Prompt ID
-	command: string;
-	name: string; // Changed from title
+	command?: string;
+	name?: string;
 	content: string;
 	data?: object | null;
 	meta?: object | null;
@@ -11,6 +11,7 @@ type PromptItem = {
 	version_id?: string | null; // Active version
 	commit_message?: string | null; // For history tracking
 	is_production?: boolean; // Whether to set new version as production
+	category_id?: string | null;
 };
 
 type PromptHistoryItem = {
@@ -48,6 +49,11 @@ type PromptDiff = {
 export const createNewPrompt = async (token: string, prompt: PromptItem) => {
 	let error = null;
 
+	const body = { ...prompt };
+	if (body.command) {
+		body.command = body.command.startsWith('/') ? body.command.slice(1) : body.command;
+	}
+
 	const res = await fetch(`${WEBUI_API_BASE_URL}/prompts/create`, {
 		method: 'POST',
 		headers: {
@@ -55,10 +61,7 @@ export const createNewPrompt = async (token: string, prompt: PromptItem) => {
 			'Content-Type': 'application/json',
 			authorization: `Bearer ${token}`
 		},
-		body: JSON.stringify({
-			...prompt,
-			command: prompt.command.startsWith('/') ? prompt.command.slice(1) : prompt.command
-		})
+		body: JSON.stringify(body)
 	})
 		.then(async (res) => {
 			if (!res.ok) throw await res.json();

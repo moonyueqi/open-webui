@@ -100,7 +100,7 @@
 	<!-- svelte-ignore a11y-no-static-element-interactions -->
 	<div
 		bind:this={modalElement}
-		class=" fixed top-0 right-0 left-0 bottom-0 bg-black/60 backdrop-blur-sm w-full h-screen max-h-[100dvh] flex justify-center z-99999999 overflow-hidden overscroll-contain"
+		class=" fixed top-0 right-0 left-0 bottom-0 bg-black/15 dark:bg-black/30 backdrop-blur-[3px] w-full h-screen max-h-[100dvh] flex justify-center z-99999999 overflow-hidden overscroll-contain"
 		in:fade={{ duration: 10 }}
 		on:mousedown={() => {
 			show = false;

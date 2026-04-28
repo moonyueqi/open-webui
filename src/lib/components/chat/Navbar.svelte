@@ -112,7 +112,7 @@
 			"
 				>
 					{#if showModelSelector}
-						<ModelSelector bind:selectedModels showSetDefault={!shareEnabled} />
+						<ModelSelector bind:selectedModels />
 					{/if}
 				</div>
 
@@ -212,7 +212,8 @@
 						</Menu>
 					{/if}
 
-					{#if $user?.role === 'admin' || ($user?.permissions.chat?.controls ?? true)}
+					<!-- 暂时隐藏对话高级设置（Controls）按钮：所有参数统一使用后端默认配置，不允许用户修改 -->
+					<!-- {#if $user?.role === 'admin' || ($user?.permissions.chat?.controls ?? true)}
 						<Tooltip content={$i18n.t('Controls')}>
 							<button
 								class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
@@ -226,34 +227,35 @@
 								</div>
 							</button>
 						</Tooltip>
-					{/if}
+					{/if} -->
 
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							className="max-w-[240px]"
-							role={$user?.role}
-							help={true}
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
+				<!-- 右上角用户头像已隐藏，保留左下角的 -->
+				<!-- {#if $user !== undefined && $user !== null}
+					<UserMenu
+						className="max-w-[240px]"
+						role={$user?.role}
+						help={true}
+						on:show={(e) => {
+							if (e.detail === 'archived-chat') {
+								showArchivedChats.set(true);
+							}
+						}}
+					>
+						<div
+							class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
 						>
-							<div
-								class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-							>
-								<div class=" self-center">
-									<span class="sr-only">{$i18n.t('User menu')}</span>
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class="size-6 object-cover rounded-full"
-										alt=""
-										draggable="false"
-									/>
-								</div>
+							<div class=" self-center">
+								<span class="sr-only">{$i18n.t('User menu')}</span>
+								<img
+									src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+									class="size-6 object-cover rounded-full"
+									alt=""
+									draggable="false"
+								/>
 							</div>
-						</UserMenu>
-					{/if}
+						</div>
+					</UserMenu>
+				{/if} -->
 				</div>
 			</div>
 		</div>

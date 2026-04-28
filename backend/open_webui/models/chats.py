@@ -676,7 +676,6 @@ class ChatTable:
             with get_db_context(db) as db:
                 chat = db.get(Chat, id)
                 chat.pinned = not chat.pinned
-                chat.updated_at = int(time.time())
                 db.commit()
                 db.refresh(chat)
                 return ChatModel.model_validate(chat)

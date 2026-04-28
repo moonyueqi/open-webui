@@ -6,7 +6,7 @@
 	export let value: string = '';
 	export let placeholder = '';
 	export let type = 'text';
-	export let required = true;
+	export let required = false;
 	export let readOnly = false;
 	export let outerClassName = 'flex flex-1 bg-transparent';
 	export let inputClassName = 'w-full text-sm py-0.5 bg-transparent';

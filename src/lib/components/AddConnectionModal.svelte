@@ -8,16 +8,10 @@
 	import { verifyOllamaConnection } from '$lib/apis/ollama';
 
 	import Modal from '$lib/components/common/Modal.svelte';
-	import Plus from '$lib/components/icons/Plus.svelte';
-	import Minus from '$lib/components/icons/Minus.svelte';
-	import PencilSolid from '$lib/components/icons/PencilSolid.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import Switch from '$lib/components/common/Switch.svelte';
-	import Tags from './common/Tags.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
-	import Textarea from './common/Textarea.svelte';
 
 	export let onSubmit: Function = () => {};
 	export let onDelete: Function = () => {};
@@ -32,98 +26,151 @@
 
 	let url = '';
 	let key = '';
-	let auth_type = 'bearer';
-
-	let connectionType = 'external';
-	let azure = false;
-	$: azure =
-		(url.includes('azure.') || url.includes('cognitive.microsoft.com')) && !direct ? true : false;
-
-	let prefixId = '';
-	let enable = true;
-	let apiVersion = '';
-	let apiType = ''; // '' = chat completions (default), 'responses' = Responses API
-
-	let headers = '';
-
-	let tags = [];
-
-	let modelId = '';
-	let modelIds = [];
 
 	let loading = false;
+	let verifying = false;
+
+	/* ---- kept for backward compat in config payload ---- */
+	let auth_type = 'bearer';
+	let connectionType = 'external';
+	let enable = true;
+	let prefixId = '';
+	let tags = [];
+	let modelIds = [];
+	let headers = '';
+	let azure = false;
+	let apiVersion = '';
+	let apiType = '';
+
+	const CONNECTION_ERROR_PATTERNS: Array<{ test: RegExp; key: string }> = [
+		{
+			test: /didn't provide an API key|provide your API key in an Authorization header/i,
+			key: 'You need to provide your API key in an Authorization header using Bearer auth.'
+		},
+		{
+			test: /missing bearer authentication/i,
+			key: 'Missing bearer authentication in header'
+		},
+		{
+			test: /incorrect API key provided/i,
+			key: 'Incorrect API key provided'
+		},
+		{
+			test: /invalid[_\s-]?api[_\s-]?key|invalid authentication/i,
+			key: 'Invalid API key'
+		},
+		{
+			test: /you exceeded your current quota|insufficient[_\s-]?quota/i,
+			key: 'You exceeded your current quota, please check your plan and billing details.'
+		},
+		{
+			test: /rate limit/i,
+			key: 'Rate limit exceeded, please try again later.'
+		},
+		{
+			test: /the model.*does not exist|model[_\s-]?not[_\s-]?found/i,
+			key: 'The requested model does not exist or you do not have access to it.'
+		},
+		{
+			test: /context length|maximum context length/i,
+			key: 'The request exceeds the maximum context length of the model.'
+		},
+		{
+			test: /server (?:is )?overloaded|service unavailable/i,
+			key: 'The server is overloaded, please try again later.'
+		},
+		{
+			test: /connection (?:refused|reset|timed? ?out)|failed to connect|ECONNREFUSED|ETIMEDOUT/i,
+			key: 'Failed to connect to the server, please check the URL and network.'
+		},
+		{
+			test: /not found|404/i,
+			key: 'Endpoint not found (404). Please check the URL.'
+		},
+		{
+			test: /unauthorized|401/i,
+			key: 'Unauthorized (401). Please check your API key.'
+		},
+		{
+			test: /forbidden|403/i,
+			key: 'Forbidden (403). You do not have permission to access this resource.'
+		},
+		{
+			test: /internal server error|500/i,
+			key: 'Internal server error (500).'
+		},
+		{
+			test: /bad gateway|502/i,
+			key: 'Bad gateway (502).'
+		},
+		{
+			test: /gateway timeout|504/i,
+			key: 'Gateway timeout (504).'
+		},
+		{
+			test: /network/i,
+			key: 'Network Problem'
+		}
+	];
+
+	const translateMessage = (message: string): string => {
+		const trimmed = message.trim();
+		if (!trimmed) {
+			return $i18n.t('Network Problem');
+		}
+		const direct = $i18n.t(trimmed);
+		if (direct !== trimmed) {
+			return direct;
+		}
+		for (const { test, key } of CONNECTION_ERROR_PATTERNS) {
+			if (test.test(trimmed)) {
+				return $i18n.t(key);
+			}
+		}
+		return trimmed;
+	};
+
+	const translateConnectionError = (error: unknown): string => {
+		const raw = `${error ?? ''}`;
+		const match = raw.match(/^(OpenAI|Ollama):\s*([\s\S]*)$/);
+		if (match) {
+			return `${match[1]}: ${translateMessage(match[2])}`;
+		}
+		return translateMessage(raw);
+	};
 
 	const verifyOllamaHandler = async () => {
-		// remove trailing slash from url
 		url = url.replace(/\/$/, '');
-
-		const res = await verifyOllamaConnection(localStorage.token, {
-			url,
-			key
-		}).catch((error) => {
-			toast.error(`${error}`);
+		const res = await verifyOllamaConnection(localStorage.token, { url, key }).catch((error) => {
+			toast.error(translateConnectionError(error));
 		});
-
 		if (res) {
 			toast.success($i18n.t('Server connection verified'));
 		}
 	};
 
 	const verifyOpenAIHandler = async () => {
-		// remove trailing slash from url
 		url = url.replace(/\/$/, '');
-
-		let _headers = null;
-
-		if (headers) {
-			try {
-				_headers = JSON.parse(headers);
-				if (typeof _headers !== 'object' || Array.isArray(_headers)) {
-					_headers = null;
-					throw new Error('Headers must be a valid JSON object');
-				}
-				headers = JSON.stringify(_headers, null, 2);
-			} catch (error) {
-				toast.error($i18n.t('Headers must be a valid JSON object'));
-				return;
-			}
-		}
-
 		const res = await verifyOpenAIConnection(
 			localStorage.token,
-			{
-				url,
-				key,
-				config: {
-					auth_type,
-					azure: azure,
-					api_version: apiVersion,
-					...(_headers ? { headers: _headers } : {})
-				}
-			},
+			{ url, key, config: { auth_type } },
 			direct
 		).catch((error) => {
-			toast.error(`${error}`);
+			toast.error(translateConnectionError(error));
 		});
-
 		if (res) {
 			toast.success($i18n.t('Server connection verified'));
 		}
 	};
 
-	const verifyHandler = () => {
+	const verifyHandler = async () => {
+		verifying = true;
 		if (ollama) {
-			verifyOllamaHandler();
+			await verifyOllamaHandler();
 		} else {
-			verifyOpenAIHandler();
+			await verifyOpenAIHandler();
 		}
-	};
-
-	const addModelHandler = () => {
-		if (modelId) {
-			modelIds = [...modelIds, modelId];
-			modelId = '';
-		}
+		verifying = false;
 	};
 
 	const submitHandler = async () => {
@@ -135,96 +182,47 @@
 			return;
 		}
 
-		if (azure) {
-			if (!apiVersion) {
-				loading = false;
-
-				toast.error($i18n.t('API Version is required'));
-				return;
-			}
-
-			if (!key && !['azure_ad', 'microsoft_entra_id'].includes(auth_type)) {
-				loading = false;
-
-				toast.error($i18n.t('Key is required'));
-				return;
-			}
-
-			if (modelIds.length === 0) {
-				loading = false;
-				toast.error($i18n.t('Deployment names are required for Azure OpenAI'));
-				return;
-			}
-		}
-
-		if (headers) {
-			try {
-				const _headers = JSON.parse(headers);
-				if (typeof _headers !== 'object' || Array.isArray(_headers)) {
-					throw new Error('Headers must be a valid JSON object');
-				}
-				headers = JSON.stringify(_headers, null, 2);
-			} catch (error) {
-				toast.error($i18n.t('Headers must be a valid JSON object'));
-				return;
-			}
-		}
-
-		// remove trailing slash from url
 		url = url.replace(/\/$/, '');
 
-		const connection = {
+		const conn = {
 			url,
 			key,
 			config: {
-				enable: enable,
-				tags: tags,
+				enable,
+				tags,
 				prefix_id: prefixId,
 				model_ids: modelIds,
 				connection_type: connectionType,
 				auth_type,
-				headers: headers ? JSON.parse(headers) : undefined,
-				...(!ollama && azure ? { azure: true, api_version: apiVersion } : {}),
+				...(headers ? { headers: JSON.parse(headers) } : {}),
+				...(azure ? { azure: true, api_version: apiVersion } : {}),
 				...(apiType ? { api_type: apiType } : {})
 			}
 		};
 
-		await onSubmit(connection);
+		await onSubmit(conn);
 
 		loading = false;
 		show = false;
 
 		url = '';
 		key = '';
-		auth_type = 'bearer';
-		prefixId = '';
-		tags = [];
-		modelIds = [];
 	};
 
 	const init = () => {
 		if (connection) {
 			url = connection.url;
 			key = connection.key;
-
-			auth_type = connection.config.auth_type ?? 'bearer';
-			headers = connection.config?.headers
-				? JSON.stringify(connection.config.headers, null, 2)
-				: '';
-
+			auth_type = connection.config?.auth_type ?? 'bearer';
+			headers = connection.config?.headers ? JSON.stringify(connection.config.headers, null, 2) : '';
 			enable = connection.config?.enable ?? true;
 			tags = connection.config?.tags ?? [];
 			prefixId = connection.config?.prefix_id ?? '';
 			modelIds = connection.config?.model_ids ?? [];
-
-			if (ollama) {
-				connectionType = connection.config?.connection_type ?? 'local';
-			} else {
-				connectionType = connection.config?.connection_type ?? 'external';
-				azure = connection.config?.azure ?? false;
-				apiVersion = connection.config?.api_version ?? '';
-				apiType = connection.config?.api_type ?? '';
-			}
+			connectionType = connection.config?.connection_type ?? 'external';
+			azure = connection.config?.azure ?? false;
+			apiVersion = connection.config?.api_version ?? '';
+			apiType = connection.config?.api_type ?? '';
 		}
 	};
 
@@ -239,109 +237,67 @@
 
 <Modal size="sm" bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 pb-1.5">
-			<h1 class="text-lg font-medium self-center font-primary">
+		<div class="flex justify-between items-center px-6 pt-5 pb-4">
+			<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">
 				{#if edit}
 					{$i18n.t('Edit Connection')}
 				{:else}
 					{$i18n.t('Add Connection')}
 				{/if}
-			</h1>
+			</div>
 			<button
-				class="self-center"
-				aria-label={$i18n.t('Close modal')}
+				class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+				aria-label={$i18n.t('Close')}
 				on:click={() => {
 					show = false;
 				}}
+				type="button"
 			>
 				<XMark className={'size-5'} />
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-4 pb-4 md:space-x-4 dark:text-gray-200">
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
-				<form
-					class="flex flex-col w-full"
-					on:submit={(e) => {
-						e.preventDefault();
-						submitHandler();
-					}}
-				>
-					<div class="px-1">
-						{#if !direct}
-							<div class="flex gap-2">
-								<div class="flex w-full justify-between items-center">
-									<div class=" text-xs text-gray-500">{$i18n.t('Connection Type')}</div>
+		<div class="px-6 pb-6 dark:text-gray-200">
+			<form class="flex flex-col w-full space-y-3" on:submit|preventDefault={submitHandler}>
+				<!-- URL field -->
+				<div class="flex flex-col w-full">
+					<label
+						for="url-input"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+					>
+						{$i18n.t('URL')}
+					</label>
 
-									<div class="">
-										<button
-											on:click={() => {
-												connectionType = connectionType === 'local' ? 'external' : 'local';
-											}}
-											type="button"
-											class=" text-xs text-gray-700 dark:text-gray-300"
-										>
-											{#if connectionType === 'local'}
-												{$i18n.t('Local')}
-											{:else}
-												{$i18n.t('External')}
-											{/if}
-										</button>
-									</div>
-								</div>
-							</div>
-						{/if}
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+					>
+						<input
+							id="url-input"
+							class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+							type="text"
+							bind:value={url}
+							placeholder={$i18n.t('API Base URL')}
+							autocomplete="off"
+							required
+						/>
 
-						<div class="flex gap-2 mt-1.5">
-							<div class="flex flex-col w-full">
-								<label
-									for="url-input"
-									class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-									>{$i18n.t('URL')}</label
-								>
-
-								<div class="flex-1">
-									<input
-										id="url-input"
-										class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-										type="text"
-										bind:value={url}
-										placeholder={$i18n.t('API Base URL')}
-										autocomplete="off"
-										list={ollama ? undefined : 'suggestions'}
-										required
-									/>
-
-									{#if !ollama}
-										<datalist id="suggestions">
-											<option value="https://api.openai.com/v1" />
-											<option value="https://api.anthropic.com/v1" />
-											<option value="https://generativelanguage.googleapis.com/v1beta/openai" />
-											<option value="https://api.mistral.ai/v1" />
-											<option value="https://api.groq.com/openai/v1" />
-											<option value="https://openrouter.ai/api/v1" />
-											<option value="https://api.x.ai/v1" />
-										</datalist>
-									{/if}
-								</div>
-							</div>
-
-							<Tooltip content={$i18n.t('Verify Connection')} className="self-end -mb-1">
-								<button
-									class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
-									on:click={() => {
-										verifyHandler();
-									}}
-									type="button"
-									aria-label={$i18n.t('Verify Connection')}
-								>
+						<Tooltip content={$i18n.t('Verify Connection')}>
+							<button
+								class="shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+								on:click={verifyHandler}
+								type="button"
+								aria-label={$i18n.t('Verify Connection')}
+								disabled={verifying || !url}
+							>
+								{#if verifying}
+									<Spinner className="size-4" />
+								{:else}
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
 										viewBox="0 0 20 20"
 										fill="currentColor"
 										aria-hidden="true"
-										class="w-4 h-4"
+										class="size-4"
 									>
 										<path
 											fill-rule="evenodd"
@@ -349,345 +305,52 @@
 											clip-rule="evenodd"
 										/>
 									</svg>
-								</button>
-							</Tooltip>
-
-							<div class="flex flex-col shrink-0 self-end">
-								<label class="sr-only" for="toggle-connection"
-									>{$i18n.t('Toggle whether current connection is active.')}</label
-								>
-								<Tooltip content={enable ? $i18n.t('Enabled') : $i18n.t('Disabled')}>
-									<Switch id="toggle-connection" bind:state={enable} />
-								</Tooltip>
-							</div>
-						</div>
-
-						<div class="flex gap-2 mt-2">
-							<div class="flex flex-col w-full">
-								<label
-									for="select-bearer-or-session"
-									class={`text-xs ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-									>{$i18n.t('Auth')}</label
-								>
-
-								<div class="flex gap-2">
-									<div class="flex-shrink-0 self-start">
-										<select
-											id="select-bearer-or-session"
-											class={`dark:bg-gray-900 w-full text-sm bg-transparent pr-5 ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-											bind:value={auth_type}
-										>
-											<option value="none">{$i18n.t('None')}</option>
-											<option value="bearer">{$i18n.t('Bearer')}</option>
-
-											{#if !ollama}
-												<option value="session">{$i18n.t('Session')}</option>
-												{#if !direct}
-													<option value="system_oauth">{$i18n.t('OAuth')}</option>
-													{#if azure}
-														<option value="microsoft_entra_id">{$i18n.t('Entra ID')}</option>
-													{/if}
-												{/if}
-											{/if}
-										</select>
-									</div>
-
-									<div class="flex flex-1 items-center">
-										{#if auth_type === 'bearer'}
-											<SensitiveInput
-												bind:value={key}
-												placeholder={$i18n.t('API Key')}
-												required={false}
-											/>
-										{:else if auth_type === 'none'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('No authentication')}
-											</div>
-										{:else if auth_type === 'session'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Forwards system user session credentials to authenticate')}
-											</div>
-										{:else if auth_type === 'system_oauth'}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Forwards system user OAuth access token to authenticate')}
-											</div>
-										{:else if ['azure_ad', 'microsoft_entra_id'].includes(auth_type)}
-											<div
-												class={`text-xs self-center translate-y-[1px] ${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500'}`}
-											>
-												{$i18n.t('Uses DefaultAzureCredential to authenticate')}
-											</div>
-										{/if}
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{#if !ollama && !direct}
-							<div class="flex gap-2 mt-2">
-								<div class="flex flex-col w-full">
-									<label
-										for="headers-input"
-										class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-										>{$i18n.t('Headers')}</label
-									>
-
-									<div class="flex-1">
-										<Tooltip
-											content={$i18n.t(
-												'Enter additional headers in JSON format (e.g. {"X-Custom-Header": "value"}'
-											)}
-										>
-											<Textarea
-												className="w-full text-sm outline-hidden"
-												bind:value={headers}
-												placeholder={$i18n.t('Enter additional headers in JSON format')}
-												required={false}
-												minSize={30}
-											/>
-										</Tooltip>
-									</div>
-								</div>
-							</div>
-						{/if}
-
-						<div class="flex gap-2 mt-2">
-							<div class="flex flex-col w-full">
-								<label
-									for="prefix-id-input"
-									class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-									>{$i18n.t('Prefix ID')}</label
-								>
-
-								<div class="flex-1">
-									<Tooltip
-										content={$i18n.t(
-											'Prefix ID is used to avoid conflicts with other connections by adding a prefix to the model IDs - leave empty to disable'
-										)}
-									>
-										<input
-											class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-											type="text"
-											id="prefix-id-input"
-											bind:value={prefixId}
-											placeholder={$i18n.t('Prefix ID')}
-											autocomplete="off"
-										/>
-									</Tooltip>
-								</div>
-							</div>
-						</div>
-
-						{#if !ollama && !direct}
-							<div class="flex flex-row justify-between items-center w-full mt-2">
-								<label
-									for="prefix-id-input"
-									class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-									>{$i18n.t('Provider Type')}</label
-								>
-
-								<div>
-									<button
-										on:click={() => {
-											azure = !azure;
-										}}
-										type="button"
-										class=" text-xs text-gray-700 dark:text-gray-300"
-									>
-										{azure ? $i18n.t('Azure OpenAI') : $i18n.t('OpenAI')}
-									</button>
-								</div>
-							</div>
-						{/if}
-
-						{#if azure}
-							<div class="flex gap-2 mt-2">
-								<div class="flex flex-col w-full">
-									<label
-										for="api-version-input"
-										class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-										>{$i18n.t('API Version')}</label
-									>
-
-									<div class="flex-1">
-										<input
-											id="api-version-input"
-											class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
-											type="text"
-											bind:value={apiVersion}
-											placeholder={$i18n.t('API Version')}
-											autocomplete="off"
-											required
-										/>
-									</div>
-								</div>
-							</div>
-						{/if}
-
-						{#if !ollama && !direct}
-							<div class="flex flex-row justify-between items-center w-full mt-1">
-								<label
-									for="api-type-toggle"
-									class={`mb-0.5 text-xs text-gray-500
-							${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-									>{$i18n.t('API Type')}</label
-								>
-
-								<div>
-									<button
-										on:click={() => {
-											apiType = apiType === 'responses' ? '' : 'responses';
-										}}
-										type="button"
-										id="api-type-toggle"
-										class=" text-xs text-gray-700 dark:text-gray-300"
-									>
-										{#if apiType === 'responses'}
-											<Tooltip
-												className="flex items-center gap-1"
-												content={$i18n.t(
-													'This feature is currently experimental and may not work as expected.'
-												)}
-											>
-												<span class=" text-gray-400 dark:text-gray-600"
-													>{$i18n.t('Experimental')}</span
-												>
-
-												{$i18n.t('Responses')}
-											</Tooltip>
-										{:else}
-											{$i18n.t('Chat Completions')}
-										{/if}
-									</button>
-								</div>
-							</div>
-						{/if}
-
-						<div class="flex flex-col w-full mt-2">
-							<div class="mb-1 flex justify-between">
-								<div
-									class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-								>
-									{$i18n.t('Model IDs')}
-								</div>
-							</div>
-
-							{#if modelIds.length > 0}
-								<ul class="flex flex-col">
-									{#each modelIds as modelId, modelIdx}
-										<li class=" flex gap-2 w-full justify-between items-center">
-											<div class=" text-sm flex-1 py-1 rounded-lg">
-												{modelId}
-											</div>
-											<div class="shrink-0">
-												<button
-													aria-label={$i18n.t(`Remove {{MODELID}} from list.`, {
-														MODELID: modelId
-													})}
-													type="button"
-													on:click={() => {
-														modelIds = modelIds.filter((_, idx) => idx !== modelIdx);
-													}}
-												>
-													<Minus strokeWidth="2" className="size-3.5" />
-												</button>
-											</div>
-										</li>
-									{/each}
-								</ul>
-							{:else}
-								<div
-									class={`text-gray-500 text-xs text-center py-2 px-10
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-								>
-									{#if ollama}
-										{$i18n.t('Leave empty to include all models from "{{url}}/api/tags" endpoint', {
-											url: url
-										})}
-									{:else if azure}
-										{$i18n.t('Deployment names are required for Azure OpenAI')}
-										<!-- {$i18n.t('Leave empty to include all models from "{{url}}" endpoint', {
-											url: `${url}/openai/deployments`
-										})} -->
-									{:else}
-										{$i18n.t('Leave empty to include all models from "{{url}}/models" endpoint', {
-											url: url
-										})}
-									{/if}
-								</div>
-							{/if}
-						</div>
-
-						<div class="flex items-center">
-							<label class="sr-only" for="add-model-id-input">{$i18n.t('Add a model ID')}</label>
-							<input
-								class="w-full py-1 text-sm rounded-lg bg-transparent {modelId
-									? ''
-									: 'text-gray-500'} {($settings?.highContrastMode ?? false)
-									? 'dark:placeholder:text-gray-100 placeholder:text-gray-700'
-									: 'placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-hidden'}"
-								bind:value={modelId}
-								id="add-model-id-input"
-								placeholder={$i18n.t('Add a model ID')}
-							/>
-
-							<div>
-								<button
-									type="button"
-									aria-label={$i18n.t('Add')}
-									on:click={() => {
-										addModelHandler();
-									}}
-								>
-									<Plus className="size-3.5" strokeWidth="2" />
-								</button>
-							</div>
-						</div>
+								{/if}
+							</button>
+						</Tooltip>
 					</div>
 
-					<div class="flex gap-2 mt-2">
-						<div class="flex flex-col w-full">
-							<div
-								class={`mb-0.5 text-xs text-gray-500
-								${($settings?.highContrastMode ?? false) ? 'text-gray-800 dark:text-gray-100' : ''}`}
-							>
-								{$i18n.t('Tags')}
-							</div>
+					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Example: https://api.example.com/v1')}
+					</p>
+				</div>
 
-							<div class="flex-1 mt-0.5">
-								<Tags
-									bind:tags
-									on:add={(e) => {
-										tags = [
-											...tags,
-											{
-												name: e.detail
-											}
-										];
-									}}
-									on:delete={(e) => {
-										tags = tags.filter((tag) => tag.name !== e.detail);
-									}}
-								/>
-							</div>
-						</div>
+				<!-- API Key field -->
+				<div class="flex flex-col w-full">
+					<label
+						for="key-input"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+					>
+						{$i18n.t('API Key')}
+					</label>
+
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+					>
+						<SensitiveInput
+							id="key-input"
+							bind:value={key}
+							placeholder={$i18n.t('Paste your API key')}
+							required={false}
+							outerClassName="flex flex-1 bg-transparent items-center"
+							inputClassName="w-full text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+							showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+						/>
 					</div>
 
-					<div class="flex justify-end pt-3 text-sm font-medium gap-1.5">
+					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Optional. Leave empty if the endpoint does not require authentication.')}
+					</p>
+				</div>
+
+				<!-- Footer actions -->
+				<div
+					class="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800"
+				>
+					<div>
 						{#if edit}
 							<button
-								class="px-3.5 py-1.5 text-sm font-medium dark:bg-black dark:hover:bg-gray-900 dark:text-white bg-white text-black hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
+								class="px-3 py-1.5 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
 								type="button"
 								on:click={() => {
 									onDelete();
@@ -697,10 +360,22 @@
 								{$i18n.t('Delete')}
 							</button>
 						{/if}
+					</div>
+
+					<div class="flex items-center gap-2">
+						<button
+							class="px-3 py-1.5 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+							type="button"
+							on:click={() => {
+								show = false;
+							}}
+						>
+							{$i18n.t('Cancel')}
+						</button>
 
 						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
-								? ' cursor-not-allowed'
+							class="px-5 py-1.5 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 transition-all rounded-lg shadow-sm flex items-center gap-2 {loading
+								? ' cursor-not-allowed opacity-70'
 								: ''}"
 							type="submit"
 							disabled={loading}
@@ -708,14 +383,12 @@
 							{$i18n.t('Save')}
 
 							{#if loading}
-								<div class="ml-2 self-center">
-									<Spinner />
-								</div>
+								<Spinner className="size-3.5" />
 							{/if}
 						</button>
 					</div>
-				</form>
-			</div>
+				</div>
+			</form>
 		</div>
 	</div>
 </Modal>

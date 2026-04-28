@@ -74,6 +74,85 @@ async def get_current_timestamp(
         return json.dumps({"error": str(e)})
 
 
+async def get_current_time(
+    timezone: Optional[str] = None,
+    __request__: Request = None,
+    __user__: dict = None,
+) -> str:
+    """
+    Get the current date and time in a human-readable form.
+
+    Use this whenever the user asks "what time is it", "today's date",
+    "what day of the week", or needs the current time in a specific timezone.
+
+    :param timezone: Optional IANA timezone name (e.g. "Asia/Shanghai",
+        "America/New_York", "UTC"). If omitted, the server's local timezone
+        is used.
+    :return: JSON string with date, time, weekday, timezone, iso and
+        unix timestamp fields.
+    """
+    try:
+        import datetime
+
+        tz = None
+        tz_source = "server_local"
+        if timezone:
+            try:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(timezone)
+                tz_source = timezone
+            except Exception as e:
+                return json.dumps(
+                    {
+                        "error": f"Invalid timezone '{timezone}': {e}. "
+                        "Use IANA names like 'Asia/Shanghai' or 'UTC'."
+                    },
+                    ensure_ascii=False,
+                )
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_local = now_utc.astimezone(tz) if tz else now_utc.astimezone()
+
+        weekdays_en = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+        weekdays_zh = [
+            "星期一",
+            "星期二",
+            "星期三",
+            "星期四",
+            "星期五",
+            "星期六",
+            "星期日",
+        ]
+        wd = now_local.weekday()
+
+        return json.dumps(
+            {
+                "date": now_local.strftime("%Y-%m-%d"),
+                "time": now_local.strftime("%H:%M:%S"),
+                "datetime": now_local.strftime("%Y-%m-%d %H:%M:%S"),
+                "weekday": weekdays_en[wd],
+                "weekday_zh": weekdays_zh[wd],
+                "timezone": tz_source,
+                "utc_offset": now_local.strftime("%z"),
+                "iso": now_local.isoformat(),
+                "unix_timestamp": int(now_local.timestamp()),
+            },
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        log.exception(f"get_current_time error: {e}")
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
 async def calculate_timestamp(
     days_ago: int = 0,
     weeks_ago: int = 0,

@@ -192,16 +192,18 @@
 
 <!-- Header with title and period selector -->
 <div
-	class="pt-0.5 pb-1 gap-1 flex flex-row justify-between items-center sticky top-0 z-10 bg-white dark:bg-gray-900"
+	class="pt-1 pb-3 gap-3 flex flex-row justify-between items-center sticky top-0 z-10 bg-white dark:bg-gray-900"
 >
-	<div class="text-lg font-medium px-0.5">
-		{$i18n.t('Analytics')}
+	<div class="flex items-center gap-3">
+		<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+			{$i18n.t('Analytics')}
+		</div>
 	</div>
 	<div class="flex items-center gap-2">
 		{#if groups.length > 0}
 			<select
 				bind:value={selectedGroupId}
-				class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-none text-right"
+				class="w-fit pr-8 rounded-xl px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 outline-none text-right"
 			>
 				<option value={null}>{$i18n.t('All Users')}</option>
 				{#each groups as group}
@@ -211,7 +213,7 @@
 		{/if}
 		<select
 			bind:value={selectedPeriod}
-			class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-none text-right"
+			class="w-fit pr-8 rounded-xl px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 outline-none text-right"
 		>
 			{#each periods as period}
 				<option value={period.value}>{period.label}</option>
@@ -230,31 +232,25 @@
 
 <!-- Summary stats -->
 {#if !loading}
-	<div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 px-0.5 pb-2">
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300"
-				>{summary.total_messages.toLocaleString()}</span
-			>
-			{$i18n.t('messages')}</span
-		>
+	<div class="flex flex-wrap gap-2 px-0.5 pb-3">
+		<span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+			<span class="font-semibold text-gray-900 dark:text-gray-100">{summary.total_messages.toLocaleString()}</span>
+			{$i18n.t('messages')}
+		</span>
 		<Tooltip content={$i18n.t('Token counts are estimates and may not reflect actual API usage')}>
-			<span class="cursor-help"
-				><span class="font-medium text-gray-900 dark:text-gray-300"
-					>{formatNumber(totalTokens.total)}</span
-				>
-				{$i18n.t('tokens')}</span
-			>
+			<span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 cursor-help">
+				<span class="font-semibold text-gray-900 dark:text-gray-100">{formatNumber(totalTokens.total)}</span>
+				{$i18n.t('tokens')}
+			</span>
 		</Tooltip>
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300"
-				>{summary.total_chats.toLocaleString()}</span
-			>
-			{$i18n.t('chats')}</span
-		>
-		<span
-			><span class="font-medium text-gray-900 dark:text-gray-300">{summary.total_users}</span>
-			{$i18n.t('users')}</span
-		>
+		<span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+			<span class="font-semibold text-gray-900 dark:text-gray-100">{summary.total_chats.toLocaleString()}</span>
+			{$i18n.t('chats')}
+		</span>
+		<span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+			<span class="font-semibold text-gray-900 dark:text-gray-100">{summary.total_users}</span>
+			{$i18n.t('users')}
+		</span>
 	</div>
 
 	<!-- Daily usage chart -->
@@ -273,7 +269,7 @@
 		]}
 		{@const periodMap = { '24h': 'hour', '7d': 'week', '30d': 'month', '90d': 'year', all: 'all' }}
 		<div class="mb-4">
-			<div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 px-0.5">
+			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{selectedPeriod === '24h' ? $i18n.t('Hourly Messages') : $i18n.t('Daily Messages')}
 			</div>
 			<ChartLine
@@ -295,7 +291,7 @@
 	<div class="grid md:grid-cols-2 gap-4">
 		<!-- Model Usage Table -->
 		<div>
-			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">
+			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{$i18n.t('Model Usage')}
 			</div>
 			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
@@ -425,7 +421,7 @@
 
 		<!-- User Activity Table -->
 		<div>
-			<div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 px-0.5">
+			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{$i18n.t('User Activity')}
 			</div>
 			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">

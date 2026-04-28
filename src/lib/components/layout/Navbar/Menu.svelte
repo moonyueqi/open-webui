@@ -65,7 +65,7 @@
 			.filter((m) => m.content.length > 0);
 	};
 
-	const getRoleName = (role) => (role === 'user' ? '用户' : '助手');
+	const getRoleName = (role) => (role === 'user' ? '用户' : '智能预报员');
 
 	const getChatAsText = async () => {
 		const msgs = getCleanMessages(chat);
@@ -324,7 +324,7 @@
 				<div class="flex items-center">{$i18n.t('Copy')}</div>
 			</DropdownMenu.Item>
 
-			{#if !$temporaryChatEnabled && chat?.id}
+			{#if false && !$temporaryChatEnabled && chat?.id}
 				<hr class="border-gray-50/30 dark:border-gray-800/30 my-1" />
 
 				<!-- Folders 功能已禁用
@@ -365,22 +365,26 @@
 				{/if}
 			-->
 
-				<DropdownMenu.Item
-					draggable="false"
-					class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
-					on:click={() => {
-						archiveChatHandler();
-					}}
-				>
-					<ArchiveBox className="size-4" strokeWidth="1.5" />
-					<div class="flex items-center">{$i18n.t('Archive')}</div>
-				</DropdownMenu.Item>
+			<!-- 归档功能已禁用
+			<DropdownMenu.Item
+				draggable="false"
+				class="flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+				on:click={() => {
+					archiveChatHandler();
+				}}
+			>
+				<ArchiveBox className="size-4" strokeWidth="1.5" />
+				<div class="flex items-center">{$i18n.t('Archive')}</div>
+			</DropdownMenu.Item>
+			-->
 
-				<hr class="border-gray-50/30 dark:border-gray-800/30 my-1" />
+			<!-- 添加标签功能已禁用
+			<hr class="border-gray-50/30 dark:border-gray-800/30 my-1" />
 
-				<div class="flex p-1">
-					<Tags chatId={chat.id} />
-				</div>
+			<div class="flex p-1">
+				<Tags chatId={chat.id} />
+			</div>
+			-->
 			{/if}
 		</DropdownMenu.Content>
 	</div>

@@ -1,21 +1,17 @@
 <script lang="ts">
 	import { marked } from 'marked';
 
-	import { getContext, tick } from 'svelte';
-	import dayjs from '$lib/dayjs';
+	import { getContext } from 'svelte';
 
-	import { mobile, settings, user } from '$lib/stores';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { settings, user } from '$lib/stores';
+	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import { copyToClipboard, sanitizeResponseContent } from '$lib/utils';
-	import ArrowUpTray from '$lib/components/icons/ArrowUpTray.svelte';
+	import { sanitizeResponseContent } from '$lib/utils';
 	import Check from '$lib/components/icons/Check.svelte';
-	import ModelItemMenu from './ModelItemMenu.svelte';
-	import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
-	import { toast } from 'svelte-sonner';
+	import Pin from '$lib/components/icons/Pin.svelte';
+	import PinSlash from '$lib/components/icons/PinSlash.svelte';
 	import Tag from '$lib/components/icons/Tag.svelte';
-	import Label from '$lib/components/icons/Label.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -24,23 +20,11 @@
 	export let index: number = -1;
 	export let value: string = '';
 
-	export let unloadModelHandler: (modelValue: string) => void = () => {};
-	export let pinModelHandler: (modelId: string) => void = () => {};
+	export let setDefaultModelHandler: (modelId: string) => void = () => {};
 
 	export let onClick: () => void = () => {};
 
-	const copyLinkHandler = async (model) => {
-		const baseUrl = window.location.origin;
-		const res = await copyToClipboard(`${baseUrl}/?model=${encodeURIComponent(model.id)}`);
-
-		if (res) {
-			toast.success($i18n.t('Copied link to clipboard'));
-		} else {
-			toast.error($i18n.t('Failed to copy link'));
-		}
-	};
-
-	let showMenu = false;
+	$: isDefault = ($settings?.models ?? [])[0] === item.model?.id;
 </script>
 
 <button
@@ -87,7 +71,12 @@
 			</div>
 
 			<div class="flex items-center">
-				<Tooltip content={`${item.label} (${item.value})`} placement="top-start">
+				<Tooltip
+					content={item.model?.info?.meta?.description
+						? `<div class="text-xs font-semibold mb-1">${item.label}</div><div class="text-xs">${marked.parse(sanitizeResponseContent(item.model.info.meta.description).replaceAll('\n', '<br>'))}</div>`
+						: `${item.label} (${item.value})`}
+					placement="top-start"
+				>
 					<div class="line-clamp-1">
 						{item.label}
 					</div>
@@ -113,25 +102,6 @@
 								<span class=" text-xs font-medium text-gray-600 dark:text-gray-400 line-clamp-1"
 									>{item.model.ollama?.details?.parameter_size ?? ''}</span
 								>
-							</Tooltip>
-						</div>
-					{/if}
-					{#if item.model.ollama?.expires_at && new Date(item.model.ollama?.expires_at * 1000) > new Date()}
-						<div class="flex items-center translate-y-[0.5px] px-0.5">
-							<Tooltip
-								content={`${$i18n.t('Unloads {{FROM_NOW}}', {
-									FROM_NOW: dayjs(item.model.ollama?.expires_at * 1000).fromNow()
-								})}`}
-								className="self-end"
-							>
-								<div class=" flex items-center">
-									<span class="relative flex size-2">
-										<span
-											class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
-										/>
-										<span class="relative inline-flex rounded-full size-2 bg-green-500" />
-									</span>
-								</div>
 							</Tooltip>
 						</div>
 					{/if}
@@ -224,51 +194,35 @@
 						</div>
 					</Tooltip>
 				{/if}
+
+				<Tooltip
+					content={isDefault ? $i18n.t('Remove as default') : $i18n.t('Set as default')}
+					className="flex-shrink-0 {isDefault ? 'opacity-100' : 'group-hover/item:opacity-100 opacity-0'}"
+				>
+					<button
+						aria-label={isDefault ? $i18n.t('Remove as default') : $i18n.t('Set as default')}
+						class="flex translate-y-[1px] transition {isDefault ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'}"
+						on:click={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							if (!isDefault) {
+								onClick();
+							}
+							setDefaultModelHandler(item.model?.id);
+						}}
+					>
+						{#if isDefault}
+							<PinSlash className="size-3" />
+						{:else}
+							<Pin className="size-3" />
+						{/if}
+					</button>
+				</Tooltip>
 			</div>
 		</div>
 	</div>
 
 	<div class="ml-auto pl-2 pr-1 flex items-center gap-1.5 shrink-0">
-		{#if $user?.role === 'admin' && item.model.owned_by === 'ollama' && item.model.ollama?.expires_at && new Date(item.model.ollama?.expires_at * 1000) > new Date()}
-			<Tooltip
-				content={`${$i18n.t('Eject')}`}
-				className="flex-shrink-0 group-hover/item:opacity-100 opacity-0 "
-			>
-				<button
-					class="flex"
-					aria-label={$i18n.t('Eject model')}
-					on:click={(e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						unloadModelHandler(item.value);
-					}}
-				>
-					<ArrowUpTray className="size-3" />
-				</button>
-			</Tooltip>
-		{/if}
-
-		<ModelItemMenu
-			bind:show={showMenu}
-			model={item.model}
-			{pinModelHandler}
-			copyLinkHandler={() => {
-				copyLinkHandler(item.model);
-			}}
-		>
-			<button
-				aria-label={`${$i18n.t('More Options')}`}
-				class="flex"
-				on:click={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					showMenu = !showMenu;
-				}}
-			>
-				<EllipsisHorizontal />
-			</button>
-		</ModelItemMenu>
-
 		{#if value === item.value}
 			<div>
 				<Check className="size-3" />

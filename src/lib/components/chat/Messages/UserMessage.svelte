@@ -326,41 +326,41 @@
 						/>
 					</div>
 
-					<div class=" mt-2 mb-1 flex justify-between text-sm font-medium">
-						<div>
-							<button
-								id="save-edit-message-button"
-								class="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 transition rounded-3xl"
-								on:click={() => {
-									editMessageConfirmHandler(false);
-								}}
-							>
-								{$i18n.t('Save')}
-							</button>
-						</div>
-
-						<div class="flex space-x-1.5">
-							<button
-								id="close-edit-message-button"
-								class="px-3.5 py-1.5 bg-white dark:bg-gray-900 hover:bg-gray-100 text-gray-800 dark:text-gray-100 transition rounded-3xl"
-								on:click={() => {
-									cancelEditMessage();
-								}}
-							>
-								{$i18n.t('Cancel')}
-							</button>
-
-							<button
-								id="confirm-edit-message-button"
-								class="px-3.5 py-1.5 bg-gray-900 dark:bg-white hover:bg-gray-850 text-gray-100 dark:text-gray-800 transition rounded-3xl"
-								on:click={() => {
-									editMessageConfirmHandler();
-								}}
-							>
-								{$i18n.t('Send')}
-							</button>
-						</div>
+				<div class=" mt-2 mb-1 flex justify-between text-xs font-medium">
+					<div>
+						<button
+							id="save-edit-message-button"
+							class="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 transition rounded-lg"
+							on:click={() => {
+								editMessageConfirmHandler(false);
+							}}
+						>
+							{$i18n.t('Save')}
+						</button>
 					</div>
+
+					<div class="flex space-x-1.5">
+						<button
+							id="close-edit-message-button"
+							class="px-3.5 py-1.5 bg-white dark:bg-gray-900 hover:bg-gray-100 text-gray-800 dark:text-gray-100 transition rounded-lg"
+							on:click={() => {
+								cancelEditMessage();
+							}}
+						>
+							{$i18n.t('Cancel')}
+						</button>
+
+						<button
+							id="confirm-edit-message-button"
+							class="px-3.5 py-1.5 bg-gray-900 dark:bg-white hover:bg-gray-850 text-gray-100 dark:text-gray-800 transition rounded-lg"
+							on:click={() => {
+								editMessageConfirmHandler();
+							}}
+						>
+							{$i18n.t('Send')}
+						</button>
+					</div>
+				</div>
 				</div>
 			{:else if message.content !== ''}
 				<div class="w-full">

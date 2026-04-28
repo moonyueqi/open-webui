@@ -90,6 +90,7 @@ from open_webui.routers import (
     models,
     knowledge,
     prompts,
+    prompt_categories,
     evaluations,
     skills,
     tools,
@@ -585,20 +586,6 @@ class SPAStaticFiles(StaticFiles):
                 raise ex
 
 
-if LOG_FORMAT != "json":
-    print(rf"""
- ██████╗ ██████╗ ███████╗███╗   ██╗    ██╗    ██╗███████╗██████╗ ██╗   ██╗██╗
-██╔═══██╗██╔══██╗██╔════╝████╗  ██║    ██║    ██║██╔════╝██╔══██╗██║   ██║██║
-██║   ██║██████╔╝█████╗  ██╔██╗ ██║    ██║ █╗ ██║█████╗  ██████╔╝██║   ██║██║
-██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║    ██║███╗██║██╔══╝  ██╔══██╗██║   ██║██║
-╚██████╔╝██║     ███████╗██║ ╚████║    ╚███╔███╔╝███████╗██████╔╝╚██████╔╝██║
- ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝     ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝
-
-
-v{VERSION} - building the best AI user interface.
-{f"Commit: {WEBUI_BUILD_HASH}" if WEBUI_BUILD_HASH != "dev-build" else ""}
-https://github.com/open-webui/open-webui
-""")
 
 
 @asynccontextmanager
@@ -619,8 +606,7 @@ async def lifespan(app: FastAPI):
     # Create admin account from env vars if specified and no users exist
     if WEBUI_ADMIN_EMAIL and WEBUI_ADMIN_PASSWORD:
         if create_admin_user(WEBUI_ADMIN_EMAIL, WEBUI_ADMIN_PASSWORD, WEBUI_ADMIN_NAME):
-            # Disable signup since we now have an admin
-            app.state.config.ENABLE_SIGNUP = False
+            pass
 
     # This should be blocking (sync) so functions are not deactivated on first /get_models calls
     # when the first user lands on the / route.
@@ -1543,6 +1529,7 @@ app.include_router(chats.router, prefix="/api/v1/chats", tags=["chats"])
 app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
 app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(prompts.router, prefix="/api/v1/prompts", tags=["prompts"])
+app.include_router(prompt_categories.router, prefix="/api/v1/prompt-categories", tags=["prompt-categories"])
 app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
 
@@ -1785,12 +1772,17 @@ async def chat_completion(
                 "stream_delta_chunk_size": stream_delta_chunk_size,
                 "reasoning_tags": reasoning_tags,
                 "function_calling": (
-                    "native"
+                    # Backend default: enable native function calling unless
+                    # the chat-level or model-level params explicitly opt out
+                    # by setting function_calling to "default" (or any other
+                    # non-native value). Missing / null is treated as native.
+                    "default"
                     if (
-                        form_data.get("params", {}).get("function_calling") == "native"
-                        or model_info_params.get("function_calling") == "native"
+                        form_data.get("params", {}).get("function_calling")
+                        == "default"
+                        or model_info_params.get("function_calling") == "default"
                     )
-                    else "default"
+                    else "native"
                 ),
             },
         }
@@ -1841,6 +1833,19 @@ async def chat_completion(
         )
 
     async def process_chat(request, form_data, user, metadata, model):
+        # Emit active=true as soon as this task runs so a very fast completion cannot
+        # deliver chat:active false (finally) before true (previously sent after create_task).
+        if (
+            metadata.get("session_id")
+            and metadata.get("chat_id")
+            and metadata.get("message_id")
+        ):
+            try:
+                _emitter = get_event_emitter(metadata, update_db=False)
+                if _emitter:
+                    await _emitter({"type": "chat:active", "data": {"active": True}})
+            except Exception as e:
+                log.debug(f"Error emitting chat:active true: {e}")
         try:
             form_data, metadata, events = await process_chat_payload(
                 request, form_data, user, metadata, model
@@ -1931,16 +1936,12 @@ async def chat_completion(
         and metadata.get("chat_id")
         and metadata.get("message_id")
     ):
-        # Asynchronous Chat Processing
+        # Asynchronous Chat Processing (chat:active true is emitted at process_chat entry)
         task_id, _ = await create_task(
             request.app.state.redis,
             process_chat(request, form_data, user, metadata, model),
             id=metadata["chat_id"],
         )
-        # Emit chat:active=true when task starts
-        event_emitter = get_event_emitter(metadata, update_db=False)
-        if event_emitter:
-            await event_emitter({"type": "chat:active", "data": {"active": True}})
         return {"status": True, "task_id": task_id}
     else:
         return await process_chat(request, form_data, user, metadata, model)

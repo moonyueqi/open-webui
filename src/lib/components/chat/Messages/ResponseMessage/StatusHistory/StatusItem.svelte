@@ -100,28 +100,26 @@
 					{/each}
 				</div>
 			</div>
-		{:else if status?.action === 'sources_retrieved' && status?.count !== undefined}
-			<div class="flex flex-col justify-center -space-y-0.5">
-				<div
-					class="{(done || status?.done) === false
-						? 'shimmer'
-						: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
-				>
-					{#if status.count === 0}
-						{$i18n.t('No sources found')}
-					{:else if status.count === 1}
-						{$i18n.t('Retrieved 1 source')}
-					{:else}
-						<!-- {$i18n.t('Source')} -->
-						<!-- {$i18n.t('No source available')} -->
-						<!-- {$i18n.t('No distance available')} -->
-						<!-- {$i18n.t('Retrieved {{count}} sources')} -->
-						{$i18n.t('Retrieved {{count}} sources', {
-							count: status.count
-						})}
-					{/if}
-				</div>
+	{:else if status?.action === 'sources_retrieved' && status?.count !== undefined}
+		<!-- "Retrieved X sources" display disabled
+		<div class="flex flex-col justify-center -space-y-0.5">
+			<div
+				class="{(done || status?.done) === false
+					? 'shimmer'
+					: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+			>
+				{#if status.count === 0}
+					{$i18n.t('No sources found')}
+				{:else if status.count === 1}
+					{$i18n.t('Retrieved 1 source')}
+				{:else}
+					{$i18n.t('Retrieved {{count}} sources', {
+						count: status.count
+					})}
+				{/if}
 			</div>
+		</div>
+		-->
 		{:else}
 			<div class="flex flex-col justify-center -space-y-0.5">
 				<div

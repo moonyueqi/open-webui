@@ -187,31 +187,37 @@
 				data-selected={idx === selectedIdx}
 			>
 				<div class="  text-black dark:text-gray-100 flex items-center gap-1">
-					<Tooltip
-						content={item?.legacy
-							? $i18n.t('Legacy')
-							: item?.type === 'file'
-								? `${item?.collection?.name} > ${$i18n.t('File')}`
-								: item?.type === 'collection'
-									? $i18n.t('Collection')
-									: ''}
-						placement="top"
-					>
-						{#if item?.type === 'collection'}
-							<Database className="size-4" />
-						{:else if item?.type === 'folder'}
-							<Folder className="size-4" />
-						{:else}
-							<DocumentPage className="size-4" />
-						{/if}
-					</Tooltip>
+				<Tooltip
+					content={item?.legacy
+						? $i18n.t('Legacy')
+						: item?.type === 'file'
+							? `${item?.collection?.name} > ${$i18n.t('File')}`
+							: item?.type === 'collection'
+								? $i18n.t('Collection')
+								: ''}
+					placement="top"
+				>
+					{#if item?.type === 'collection'}
+						<Database className="size-4" />
+					{:else if item?.type === 'folder'}
+						<Folder className="size-4" />
+					{:else}
+						<DocumentPage className="size-4" />
+					{/if}
+				</Tooltip>
 
-					<Tooltip content={`${decodeString(item?.name)}`} placement="top-start">
-						<div class="line-clamp-1 flex-1">
-							{decodeString(item?.name)}
-						</div>
-					</Tooltip>
-				</div>
+				<Tooltip content={`${decodeString(item?.name)}`} placement="top-start">
+					<div class="line-clamp-1 flex-1">
+						{decodeString(item?.name)}
+					</div>
+				</Tooltip>
+
+				{#if item?.type === 'collection' && item?.user?.name}
+					<div class="text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-1">
+						{item.user.name}
+					</div>
+				{/if}
+			</div>
 			</button>
 		{/if}
 	{/each}

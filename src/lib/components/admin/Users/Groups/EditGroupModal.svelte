@@ -6,11 +6,9 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
 	import General from './General.svelte';
-	import Permissions from './Permissions.svelte';
 	import Users from './Users.svelte';
 	import { DEFAULT_PERMISSIONS } from '$lib/constants/permissions';
 	import UserPlusSolid from '$lib/components/icons/UserPlusSolid.svelte';
-	import WrenchSolid from '$lib/components/icons/WrenchSolid.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 
@@ -21,17 +19,13 @@
 	export let edit = false;
 
 	export let group = null;
-	export let defaultPermissions = {};
-
-	export let custom = true;
-
-	export let tabs = ['general', 'permissions', 'users'];
+	export let groups = [];
 
 	let selectedTab = 'general';
 	let loading = false;
 	let showDeleteConfirmDialog = false;
-
 	let userCount = 0;
+	let nameError = '';
 
 	export let name = '';
 	export let description = '';
@@ -39,7 +33,23 @@
 
 	export let permissions = DEFAULT_PERMISSIONS;
 
+	$: {
+		if (name.trim()) {
+			const duplicate = groups.find(
+				(g) => g.name.toLowerCase() === name.trim().toLowerCase() && (!edit || g.id !== group?.id)
+			);
+			nameError = duplicate ? $i18n.t('A group with this name already exists') : '';
+		} else {
+			nameError = '';
+		}
+	}
+
 	const submitHandler = async () => {
+		if (nameError) {
+			toast.error(nameError);
+			return;
+		}
+
 		loading = true;
 
 		const group = {
@@ -59,28 +69,36 @@
 		if (group) {
 			name = group.name;
 			description = group.description;
-			const loadedPermissions = group?.permissions ?? {};
-			// Create fresh object from defaults, then overlay loaded values
 			permissions = {
-				workspace: { ...DEFAULT_PERMISSIONS.workspace, ...loadedPermissions.workspace },
-				sharing: { ...DEFAULT_PERMISSIONS.sharing, ...loadedPermissions.sharing },
-				access_grants: { ...DEFAULT_PERMISSIONS.access_grants, ...loadedPermissions.access_grants },
-				chat: { ...DEFAULT_PERMISSIONS.chat, ...loadedPermissions.chat },
-				features: { ...DEFAULT_PERMISSIONS.features, ...loadedPermissions.features },
-				settings: { ...DEFAULT_PERMISSIONS.settings, ...loadedPermissions.settings }
+				workspace: { ...DEFAULT_PERMISSIONS.workspace, ...(group?.permissions?.workspace ?? {}) },
+				sharing: { ...DEFAULT_PERMISSIONS.sharing, ...(group?.permissions?.sharing ?? {}) },
+				access_grants: { ...DEFAULT_PERMISSIONS.access_grants, ...(group?.permissions?.access_grants ?? {}) },
+				chat: { ...DEFAULT_PERMISSIONS.chat, ...(group?.permissions?.chat ?? {}) },
+				features: { ...DEFAULT_PERMISSIONS.features, ...(group?.permissions?.features ?? {}) }
 			};
 			data = group?.data ?? {};
-
-			userCount = group?.member_count ?? 0;
+		} else {
+			name = '';
+			description = '';
+			data = {};
+			permissions = {
+				workspace: { ...DEFAULT_PERMISSIONS.workspace },
+				sharing: { ...DEFAULT_PERMISSIONS.sharing },
+				access_grants: { ...DEFAULT_PERMISSIONS.access_grants },
+				chat: { ...DEFAULT_PERMISSIONS.chat },
+				features: { ...DEFAULT_PERMISSIONS.features }
+			};
+			nameError = '';
 		}
 	};
 
 	$: if (show) {
+		selectedTab = 'general';
+		userCount = group?.member_count ?? 0;
 		init();
 	}
 
 	onMount(() => {
-		selectedTab = tabs[0];
 		init();
 	});
 </script>
@@ -93,22 +111,18 @@
 	}}
 />
 
-<Modal size="lg" bind:show>
+<Modal size={edit ? 'lg' : 'sm'} bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 mb-1.5">
-			<div class=" text-lg font-medium self-center font-primary">
-				{#if custom}
-					{#if edit}
-						{$i18n.t('Edit User Group')}
-					{:else}
-						{$i18n.t('Add User Group')}
-					{/if}
+		<div class="flex justify-between items-center dark:text-gray-100 px-5 pt-4 pb-3">
+			<div class="text-lg font-semibold font-primary">
+				{#if edit}
+					{$i18n.t('Edit User Group')}
 				{:else}
-					{$i18n.t('Edit Default Permissions')}
+					{$i18n.t('Add User Group')}
 				{/if}
 			</div>
 			<button
-				class="self-center"
+				class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 				on:click={() => {
 					show = false;
 				}}
@@ -117,8 +131,8 @@
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-4 pb-4 md:space-x-4 dark:text-gray-200">
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
+		<div class="flex flex-col md:flex-row w-full px-5 pb-5 md:space-x-4 dark:text-gray-200">
+			<div class="flex flex-col w-full">
 				<form
 					class="flex flex-col w-full"
 					on:submit={(e) => {
@@ -126,166 +140,123 @@
 						submitHandler();
 					}}
 				>
-					<div class="flex flex-col lg:flex-row w-full h-full pb-2 lg:space-x-4">
-						<div
-							id="admin-settings-tabs-container"
-							class="tabs flex flex-row overflow-x-auto gap-2.5 max-w-full lg:gap-1 lg:flex-col lg:flex-none lg:w-40 dark:text-gray-200 text-sm font-medium text-left scrollbar-none"
-						>
-							{#if tabs.includes('general')}
+					{#if edit}
+						<div class="flex flex-col lg:flex-row w-full h-full pb-2 lg:space-x-5">
+							<div
+								class="tabs flex flex-row overflow-x-auto gap-1 max-w-full lg:flex-col lg:flex-none lg:w-40 dark:text-gray-200 text-sm font-medium text-left scrollbar-none mb-3 lg:mb-0"
+							>
 								<button
-									class="px-0.5 py-1 max-w-fit w-fit rounded-lg flex-1 lg:flex-none flex text-right transition {selectedTab ===
-									'general'
-										? ''
-										: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+									class="px-3 py-2.5 min-w-fit rounded-xl flex items-center gap-3 transition-all duration-200 select-none {selectedTab === 'general'
+										? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700/50'
+										: 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/60 dark:hover:bg-gray-800/40'}"
 									on:click={() => {
 										selectedTab = 'general';
 									}}
 									type="button"
 								>
-									<div class=" self-center mr-2">
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 16 16"
-											fill="currentColor"
-											class="w-4 h-4"
-										>
-											<path
-												fill-rule="evenodd"
-												d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-1.081a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-1.08 1.32c.25.417.44.873.561 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l1.082 1.322a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.322-1.08c-.416.25-.872.44-1.356.561l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562L4.108 13.37a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l1.08-1.32a4.971 4.971 0 0 1-.561-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356L2.629 4.107a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033L5.43 3.71a4.97 4.97 0 0 1 1.356-.561l.17-1.699ZM6 8c0 .538.212 1.026.558 1.385l.057.057a2 2 0 0 0 2.828-2.828l-.058-.056A2 2 0 0 0 6 8Z"
-												clip-rule="evenodd"
-											/>
-										</svg>
-									</div>
-									<div class=" self-center">{$i18n.t('General')}</div>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 16 16"
+										fill="currentColor"
+										class="size-4 flex-shrink-0 {selectedTab === 'general' ? 'text-blue-600 dark:text-blue-400' : ''}"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-1.081a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-1.08 1.32c.25.417.44.873.561 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l1.082 1.322a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.322-1.08c-.416.25-.872.44-1.356.561l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562L4.108 13.37a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l1.08-1.32a4.971 4.971 0 0 1-.561-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356L2.629 4.107a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033L5.43 3.71a4.97 4.97 0 0 1 1.356-.561l.17-1.699ZM6 8c0 .538.212 1.026.558 1.385l.057.057a2 2 0 0 0 2.828-2.828l-.058-.056A2 2 0 0 0 6 8Z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+									<span>{$i18n.t('General')}</span>
 								</button>
-							{/if}
 
-							{#if tabs.includes('permissions')}
 								<button
-									class="px-0.5 py-1 max-w-fit w-fit rounded-lg flex-1 lg:flex-none flex text-right transition {selectedTab ===
-									'permissions'
-										? ''
-										: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
-									on:click={() => {
-										selectedTab = 'permissions';
-									}}
-									type="button"
-								>
-									<div class=" self-center mr-2">
-										<WrenchSolid />
-									</div>
-									<div class=" self-center">{$i18n.t('Permissions')}</div>
-								</button>
-							{/if}
-
-							{#if tabs.includes('users')}
-								<button
-									class="px-0.5 py-1 max-w-fit w-fit rounded-lg flex-1 lg:flex-none flex text-right transition {selectedTab ===
-									'users'
-										? ''
-										: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+									class="px-3 py-2.5 min-w-fit rounded-xl flex items-center gap-3 transition-all duration-200 select-none {selectedTab === 'users'
+										? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700/50'
+										: 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/60 dark:hover:bg-gray-800/40'}"
 									on:click={() => {
 										selectedTab = 'users';
 									}}
 									type="button"
 								>
-									<div class=" self-center mr-2">
-										<UserPlusSolid />
-									</div>
-									<div class=" self-center">{$i18n.t('Users')}</div>
+								<span class="flex-shrink-0 {selectedTab === 'users' ? 'text-violet-600 dark:text-violet-400' : ''}">
+									<UserPlusSolid />
+								</span>
+								<span>{$i18n.t('Users')}</span>
+								{#if userCount > 0}
+									<span class="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-md">{userCount}</span>
+								{/if}
 								</button>
-							{/if}
-						</div>
+							</div>
 
-						<div class="flex-1 mt-1 lg:mt-1 lg:h-[30rem] lg:max-h-[30rem] flex flex-col">
+							<div class="flex-1 mt-1 lg:mt-0 lg:h-[30rem] lg:max-h-[30rem] flex flex-col">
 							<div class="w-full h-full overflow-y-auto scrollbar-hidden">
-								{#if selectedTab == 'general'}
+								{#if selectedTab === 'general'}
 									<General
 										bind:name
 										bind:description
 										bind:data
+										{nameError}
 										{edit}
 										onDelete={() => {
 											showDeleteConfirmDialog = true;
 										}}
 									/>
-								{:else if selectedTab == 'permissions'}
-									<Permissions bind:permissions {defaultPermissions} />
-								{:else if selectedTab == 'users'}
+								{:else if selectedTab === 'users'}
 									<Users bind:userCount groupId={group?.id} />
 								{/if}
 							</div>
 
-							{#if ['general', 'permissions'].includes(selectedTab)}
-								<div class="flex justify-end pt-3 text-sm font-medium gap-1.5">
-									<button
-										class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
-											? ' cursor-not-allowed'
-											: ''}"
-										type="submit"
-										disabled={loading}
-									>
-										{$i18n.t('Save')}
+							<div class="flex justify-end pt-3 text-sm font-medium gap-2">
+								<button
+									class="px-4 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-xl flex items-center gap-1.5 {loading || nameError
+										? ' cursor-not-allowed opacity-50'
+										: ''}"
+									type="submit"
+									disabled={loading || !!nameError}
+								>
+									{$i18n.t('Save')}
 
-										{#if loading}
-											<div class="ml-2 self-center">
-												<Spinner />
-											</div>
-										{/if}
-									</button>
-								</div>
-							{/if}
+									{#if loading}
+										<Spinner />
+									{/if}
+								</button>
+							</div>
+							</div>
 						</div>
-					</div>
+					{:else}
+						<div class="w-full">
+							<General
+								bind:name
+								bind:description
+								bind:data
+								{nameError}
+								{edit}
+							/>
+						</div>
 
-					<!-- <div
-						class=" tabs flex flex-row overflow-x-auto gap-2.5 text-sm font-medium border-b border-b-gray-800 scrollbar-hidden"
-					>
-						{#if tabs.includes('display')}
+						<div class="flex justify-end pt-4 text-sm font-medium gap-2">
 							<button
-								class="px-0.5 pb-1.5 min-w-fit flex text-right transition border-b-2 {selectedTab ===
-								'display'
-									? ' dark:border-white'
-									: 'border-transparent text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
-								on:click={() => {
-									selectedTab = 'display';
-								}}
+								class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition rounded-xl"
 								type="button"
+								on:click={() => { show = false; }}
 							>
-								{$i18n.t('Display')}
+								{$i18n.t('Cancel')}
 							</button>
-						{/if}
+							<button
+								class="px-4 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-xl flex items-center gap-1.5 {loading || nameError
+									? ' cursor-not-allowed opacity-50'
+									: ''}"
+								type="submit"
+								disabled={loading || !!nameError}
+							>
+								{$i18n.t('Create')}
 
-						{#if tabs.includes('permissions')}
-							<button
-								class="px-0.5 pb-1.5 min-w-fit flex text-right transition border-b-2 {selectedTab ===
-								'permissions'
-									? '  dark:border-white'
-									: 'border-transparent text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
-								on:click={() => {
-									selectedTab = 'permissions';
-								}}
-								type="button"
-							>
-								{$i18n.t('Permissions')}
+								{#if loading}
+									<Spinner />
+								{/if}
 							</button>
-						{/if}
-
-						{#if tabs.includes('users')}
-							<button
-								class="px-0.5 pb-1.5 min-w-fit flex text-right transition border-b-2 {selectedTab ===
-								'users'
-									? ' dark:border-white'
-									: ' border-transparent text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
-								on:click={() => {
-									selectedTab = 'users';
-								}}
-								type="button"
-							>
-								{$i18n.t('Users')} ({userIds.length})
-							</button>
-						{/if}
-					</div> -->
+						</div>
+					{/if}
 				</form>
 			</div>
 		</div>

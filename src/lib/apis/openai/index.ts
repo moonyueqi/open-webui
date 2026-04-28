@@ -278,6 +278,17 @@ export const verifyOpenAIConnection = async (
 	let error = null;
 	let res = null;
 
+	// 用一个内部状态保留 HTTP 状态码，最终拼到 throw 字符串里，
+	// 形如 "OpenAI: [401] Incorrect API key"，让上层可以靠 [401]/[403]/[404]
+	// 进行可靠的错误分类（之前的实现只能 throw 响应体，状态码会丢失）。
+	let httpStatus: number | null = null;
+
+	const extractMessage = (body: any): string => {
+		if (!body) return '';
+		if (typeof body === 'string') return body;
+		return body?.error?.message ?? body?.detail ?? body?.message ?? '';
+	};
+
 	if (direct) {
 		res = await fetch(`${url}/models`, {
 			method: 'GET',
@@ -288,11 +299,27 @@ export const verifyOpenAIConnection = async (
 			}
 		})
 			.then(async (res) => {
-				if (!res.ok) throw await res.json();
+				if (!res.ok) {
+					httpStatus = res.status;
+					let body: any = null;
+					try {
+						body = await res.json();
+					} catch {
+						try {
+							body = await res.text();
+						} catch {
+							body = null;
+						}
+					}
+					throw body;
+				}
 				return res.json();
 			})
 			.catch((err) => {
-				error = `OpenAI: ${err?.error?.message ?? 'Network Problem'}`;
+				const msg = extractMessage(err) || 'Network Problem';
+				error = httpStatus
+					? `OpenAI: [${httpStatus}] ${msg}`
+					: `OpenAI: ${msg}`;
 				return [];
 			});
 
@@ -314,11 +341,29 @@ export const verifyOpenAIConnection = async (
 			})
 		})
 			.then(async (res) => {
-				if (!res.ok) throw await res.json();
+				if (!res.ok) {
+					// /openai/verify 在上游非 200 时会原样透传上游状态码（401/403/404…），
+					// 因此这里的 res.status 通常就是真实的上游状态码，可直接用于分类。
+					httpStatus = res.status;
+					let body: any = null;
+					try {
+						body = await res.json();
+					} catch {
+						try {
+							body = await res.text();
+						} catch {
+							body = null;
+						}
+					}
+					throw body;
+				}
 				return res.json();
 			})
 			.catch((err) => {
-				error = `OpenAI: ${err?.error?.message ?? 'Network Problem'}`;
+				const msg = extractMessage(err) || 'Network Problem';
+				error = httpStatus
+					? `OpenAI: [${httpStatus}] ${msg}`
+					: `OpenAI: ${msg}`;
 				return [];
 			});
 

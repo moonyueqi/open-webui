@@ -2,6 +2,7 @@
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { onMount, tick, getContext } from 'svelte';
+	import { page } from '$app/stores';
 
 	const i18n = getContext('i18n');
 
@@ -26,7 +27,12 @@
 
 		if (res) {
 			toast.success($i18n.t('Prompt created successfully'));
-			await goto('/workspace/prompts');
+			const categoryId = $page.url.searchParams.get('category_id');
+			if (categoryId) {
+				await goto(`/workspace/prompts/categories/${categoryId}`);
+			} else {
+				await goto('/workspace/prompts');
+			}
 		}
 	};
 

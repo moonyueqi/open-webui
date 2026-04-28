@@ -1,193 +1,114 @@
 <script lang="ts">
+	import dayjs from 'dayjs';
+	import relativeTime from 'dayjs/plugin/relativeTime';
+	dayjs.extend(relativeTime);
+
 	import { toast } from 'svelte-sonner';
-	import fileSaver from 'file-saver';
-	const { saveAs } = fileSaver;
 
 	import { goto } from '$app/navigation';
-	import { onMount, getContext, tick, onDestroy } from 'svelte';
+	import { onMount, getContext, tick } from 'svelte';
 	import { WEBUI_NAME, config, user } from '$lib/stores';
 
 	import {
-		createNewPrompt,
-		deletePromptById,
-		togglePromptById,
-		getPromptItems,
-		getPromptTags
-	} from '$lib/apis/prompts';
-	import { capitalizeFirstLetter, slugify, copyToClipboard } from '$lib/utils';
+		getPromptCategories,
+		deletePromptCategoryById
+	} from '$lib/apis/prompt-categories';
+	import { capitalizeFirstLetter } from '$lib/utils';
 
-	import PromptMenu from './Prompts/PromptMenu.svelte';
-	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
-	import Clipboard from '../icons/Clipboard.svelte';
-	import Check from '../icons/Check.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Search from '../icons/Search.svelte';
 	import Plus from '../icons/Plus.svelte';
-	import ChevronRight from '../icons/ChevronRight.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import GarbageBin from '../icons/GarbageBin.svelte';
-	import ViewSelector from './common/ViewSelector.svelte';
-	import TagSelector from './common/TagSelector.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
-	import Switch from '../common/Switch.svelte';
 	import Pagination from '../common/Pagination.svelte';
+	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
+	import ViewSelector from './common/ViewSelector.svelte';
 
 	let shiftKey = false;
-
 	const i18n = getContext('i18n');
-	let promptsImportInputElement: HTMLInputElement;
 	let loaded = false;
 
-	let importFiles = null;
 	let query = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
-	let prompts = null;
-	let tags = [];
-	let total = null;
+	let categories: any[] | null = null;
+	let total: number | null = null;
 	let loading = false;
 
 	let showDeleteConfirm = false;
-	let deletePrompt = null;
-
-	let tagsContainerElement: HTMLDivElement;
-	let viewOption = '';
-	let selectedTag = '';
-	let copiedId: string | null = null;
+	let deleteCategory: any = null;
 
 	let page = 1;
+	let viewOption = '';
 
-	// Debounce only query changes
-	$: if (query !== undefined) {
-		loading = true;
+	$: if (loaded && query !== undefined) {
 		clearTimeout(searchDebounceTimer);
 		searchDebounceTimer = setTimeout(() => {
-			getPromptList();
+			page = 1;
+			getCategoryList();
 		}, 300);
 	}
 
-	// Immediate response to page/filter changes
-	$: if (page && selectedTag !== undefined && viewOption !== undefined) {
-		getPromptList();
+	$: if (loaded && viewOption !== undefined) {
+		page = 1;
+		getCategoryList();
 	}
 
-	const getPromptList = async () => {
-		if (!loaded) return;
+	$: if (loaded && page) {
+		getCategoryList();
+	}
 
+	const getCategoryList = async () => {
 		loading = true;
 		try {
-			const res = await getPromptItems(
-				localStorage.token,
-				query,
-				viewOption,
-				selectedTag,
-				null,
-				null,
-				page
-			).catch((error) => {
+			const res = await getPromptCategories(localStorage.token, page, viewOption, query).catch((error) => {
 				toast.error(`${error}`);
 				return null;
 			});
 
 			if (res) {
-				prompts = res.items;
+				categories = res.items;
 				total = res.total;
-
-				// get tags
-				tags = await getPromptTags(localStorage.token).catch((error) => {
-					toast.error(`${error}`);
-					return [];
-				});
+			} else {
+				categories = [];
+				total = 0;
 			}
 		} catch (err) {
 			console.error(err);
+			categories = [];
+			total = 0;
 		} finally {
 			loading = false;
 		}
 	};
 
-	const shareHandler = async (prompt) => {
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/prompts/create`, '_blank');
-		window.addEventListener(
-			'message',
-			(event) => {
-				if (event.origin !== url) return;
-				if (event.data === 'loaded') {
-					tab.postMessage(JSON.stringify(prompt), '*');
-				}
-			},
-			false
-		);
-	};
-
-	const cloneHandler = async (prompt) => {
-		const clonedPrompt = { ...prompt };
-
-		clonedPrompt.title = `${clonedPrompt.title} (Clone)`;
-		const baseCommand = clonedPrompt.command.startsWith('/')
-			? clonedPrompt.command.substring(1)
-			: clonedPrompt.command;
-		clonedPrompt.command = slugify(`${baseCommand} clone`);
-
-		sessionStorage.prompt = JSON.stringify(clonedPrompt);
-		goto('/workspace/prompts/create');
-	};
-
-	const exportHandler = async (prompt) => {
-		let blob = new Blob([JSON.stringify([prompt])], {
-			type: 'application/json'
-		});
-		saveAs(blob, `prompt-export-${Date.now()}.json`);
-	};
-
-	const copyHandler = async (prompt) => {
-		const res = await copyToClipboard(prompt.content);
-		if (res) {
-			copiedId = prompt.command;
-			setTimeout(() => {
-				copiedId = null;
-			}, 2000);
-		}
-	};
-
-	const deleteHandler = async (prompt) => {
-		const command = prompt.command;
-
-		const res = await deletePromptById(localStorage.token, prompt.id).catch((err) => {
-			toast.error(err);
+	const deleteHandler = async (category: any) => {
+		const res = await deletePromptCategoryById(localStorage.token, category.id).catch((err) => {
+			toast.error(`${err}`);
 			return null;
 		});
 
 		if (res) {
-			toast.success($i18n.t(`Deleted {{name}}`, { name: command }));
+			toast.success($i18n.t('Deleted {{name}}', { name: category.name }));
 		}
 
 		page = 1;
-		getPromptList();
+		getCategoryList();
 	};
 
 	onMount(async () => {
-		viewOption = localStorage?.workspaceViewOption || '';
 		loaded = true;
+		await getCategoryList();
 
-		const onKeyDown = (event) => {
-			if (event.key === 'Shift') {
-				shiftKey = true;
-			}
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Shift') shiftKey = true;
 		};
-
-		const onKeyUp = (event) => {
-			if (event.key === 'Shift') {
-				shiftKey = false;
-			}
+		const onKeyUp = (event: KeyboardEvent) => {
+			if (event.key === 'Shift') shiftKey = false;
 		};
-
 		const onBlur = () => {
 			shiftKey = false;
 		};
@@ -203,10 +124,6 @@
 			window.removeEventListener('blur', onBlur);
 		};
 	});
-
-	onDestroy(() => {
-		clearTimeout(searchDebounceTimer);
-	});
 </script>
 
 <svelte:head>
@@ -218,127 +135,79 @@
 {#if loaded}
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}
-		title={$i18n.t('Delete prompt?')}
+		title={$i18n.t('Delete category?')}
 		on:confirm={() => {
-			deleteHandler(deletePrompt);
+			deleteHandler(deleteCategory);
 		}}
 	>
-		<div class=" text-sm text-gray-500 truncate">
-			{$i18n.t('This will delete')} <span class="  font-medium">{deletePrompt.command}</span>.
+		<div class="text-sm text-gray-500 truncate">
+			{$i18n.t('This will delete')} <span class="font-medium">{deleteCategory?.name}</span>.
 		</div>
 	</DeleteConfirmDialog>
 
-	<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
-		<input
-			id="prompts-import-input"
-			bind:this={promptsImportInputElement}
-			bind:files={importFiles}
-			type="file"
-			accept=".json"
-			hidden
-			on:change={() => {
-				console.log(importFiles);
-				if (!importFiles || importFiles.length === 0) return;
-
-				const reader = new FileReader();
-				reader.onload = async (event) => {
-					const savedPrompts = JSON.parse(event.target.result);
-					console.log(savedPrompts);
-
-					try {
-						for (const prompt of savedPrompts) {
-							await createNewPrompt(localStorage.token, {
-								command: prompt.command,
-								name: prompt.name,
-								content: prompt.content
-							}).catch((error) => {
-								toast.error(typeof error === 'string' ? error : JSON.stringify(error));
-								return null;
-							});
-						}
-
-						page = 1;
-						await getPromptList();
-					} finally {
-						importFiles = null;
-						promptsImportInputElement.value = '';
-					}
-				};
-
-				reader.readAsText(importFiles[0]);
-			}}
-		/>
-		<div class="flex justify-between items-center">
-			<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
-				<div>
-					{$i18n.t('Prompts')}
+	<div class="flex flex-col h-full min-h-0 overflow-hidden">
+		<div class="flex flex-col gap-2 px-1 mt-1.5 mb-4 shrink-0">
+			<div class="flex justify-between items-center">
+				<div class="flex items-center gap-3 shrink-0">
+					<div
+						class="flex items-center justify-center w-9 h-9 rounded-xl bg-violet-500/10 dark:bg-violet-500/15"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="size-5 text-violet-600 dark:text-violet-400"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"
+							/>
+						</svg>
+					</div>
+					<div>
+						<div class="text-xl font-semibold">{$i18n.t('Prompts')}</div>
+						{#if total !== null}
+							<div class="text-xs text-gray-500 dark:text-gray-400">
+								{total}
+								{$i18n.t('categories')}
+							</div>
+						{/if}
+					</div>
 				</div>
 
-				<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-					{total ?? ''}
+				<div class="flex w-full justify-end gap-1.5">
+					<a
+						class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
+						href="/workspace/prompts/categories/create"
+					>
+						<Plus className="size-3.5" strokeWidth="2.5" />
+						<div class="hidden md:block text-xs">{$i18n.t('New Category')}</div>
+					</a>
 				</div>
-			</div>
-
-			<div class="flex w-full justify-end gap-1.5">
-				{#if $user?.role === 'admin' || $user?.permissions?.workspace?.prompts_import}
-					<button
-						class="flex text-xs items-center space-x-1 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-200 transition"
-						on:click={() => {
-							promptsImportInputElement.click();
-						}}
-					>
-						<div class=" self-center font-medium line-clamp-1">
-							{$i18n.t('Import')}
-						</div>
-					</button>
-				{/if}
-
-				{#if total && ($user?.role === 'admin' || $user?.permissions?.workspace?.prompts_export)}
-					<button
-						class="flex text-xs items-center space-x-1 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-200 transition"
-						on:click={async () => {
-							let blob = new Blob([JSON.stringify(prompts)], {
-								type: 'application/json'
-							});
-							saveAs(blob, `prompts-export-${Date.now()}.json`);
-						}}
-					>
-						<div class=" self-center font-medium line-clamp-1">
-							{$i18n.t('Export')}
-						</div>
-					</button>
-				{/if}
-				<a
-					class=" px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
-					href="/workspace/prompts/create"
-				>
-					<Plus className="size-3" strokeWidth="2.5" />
-
-					<div class=" hidden md:block md:ml-1 text-xs">{$i18n.t('New Prompt')}</div>
-				</a>
 			</div>
 		</div>
-	</div>
 
-	<div
-		class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
-	>
-		<div class=" flex w-full space-x-2 py-0.5 px-3.5 pb-2">
-			<div class="flex flex-1">
-				<div class=" self-center ml-1 mr-3">
-					<Search className="size-3.5" />
-				</div>
-				<input
-					class=" w-full text-sm pr-4 py-1 rounded-r-xl outline-hidden bg-transparent"
-					bind:value={query}
-					aria-label={$i18n.t('Search Prompts')}
-					placeholder={$i18n.t('Search Prompts')}
-				/>
-
-				{#if query}
-					<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
+		<div
+			class="py-2.5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm min-h-0 flex flex-col overflow-hidden"
+			style="flex: 1 1 0; max-height: calc(100% - 7rem);"
+		>
+			<div class="flex w-full space-x-2 py-0.5 px-4 pb-2.5 shrink-0">
+				<div
+					class="flex flex-1 items-center bg-gray-50 dark:bg-gray-850 rounded-xl px-3 py-1.5 transition focus-within:ring-2 focus-within:ring-gray-300/50 dark:focus-within:ring-gray-600/50 focus-within:bg-white dark:focus-within:bg-gray-900"
+				>
+					<Search className="size-3.5 text-gray-400 shrink-0" />
+					<input
+						class="w-full text-sm py-0.5 pl-2 outline-hidden bg-transparent placeholder:text-gray-400"
+						bind:value={query}
+						aria-label={$i18n.t('Search Categories')}
+						placeholder={$i18n.t('Search Categories')}
+					/>
+					{#if query}
 						<button
-							class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+							class="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition ml-1"
 							aria-label={$i18n.t('Clear search')}
 							on:click={() => {
 								query = '';
@@ -346,212 +215,162 @@
 						>
 							<XMark className="size-3" strokeWidth="2" />
 						</button>
-					</div>
-				{/if}
+					{/if}
+				</div>
 			</div>
-		</div>
 
-		<div
-			class="px-3 flex w-full bg-transparent overflow-x-auto scrollbar-none -mx-1"
-			on:wheel={(e) => {
-				if (e.deltaY !== 0) {
-					e.preventDefault();
-					e.currentTarget.scrollLeft += e.deltaY;
-				}
-			}}
-		>
 			<div
-				class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1.5 whitespace-nowrap"
-				bind:this={tagsContainerElement}
+				class="px-3.5 flex w-full bg-transparent overflow-x-auto scrollbar-none shrink-0"
+				on:wheel={(e) => {
+					if (e.deltaY !== 0) {
+						e.preventDefault();
+						e.currentTarget.scrollLeft += e.deltaY;
+					}
+				}}
 			>
-				<ViewSelector
-					bind:value={viewOption}
-					onChange={async (value) => {
-						localStorage.workspaceViewOption = value;
-						page = 1;
-						await tick();
-					}}
-				/>
-
-				{#if (tags ?? []).length > 0}
-					<TagSelector
-						bind:value={selectedTag}
-						items={tags.map((tag) => ({ value: tag, label: tag }))}
-					/>
-				{/if}
+				<div class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1 whitespace-nowrap">
+					<ViewSelector bind:value={viewOption} />
+				</div>
 			</div>
-		</div>
 
-		{#if prompts === null || loading}
-			<div class="w-full h-full flex justify-center items-center my-16 mb-24">
-				<Spinner className="size-5" />
-			</div>
-		{:else if (prompts ?? []).length !== 0}
-			<!-- Before they call, I will answer; while they are yet speaking, I will hear. -->
-			<div class="gap-2 grid my-2 px-3 lg:grid-cols-2">
-				{#each prompts as prompt (prompt.id)}
-					<a
-						class=" flex space-x-4 cursor-pointer text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
-						href={`/workspace/prompts/${prompt.id}`}
-					>
-						<div class=" flex flex-col flex-1 space-x-4 cursor-pointer w-full pl-1">
-							<div class="flex items-center justify-between w-full mb-0.5">
-								<div class="flex items-center gap-2">
-									<div class="font-medium line-clamp-1 capitalize">{prompt.name}</div>
-									<div class="text-xs overflow-hidden text-ellipsis line-clamp-1 text-gray-500">
-										/{prompt.command}
+			{#if categories === null || loading}
+				<div class="w-full flex justify-center items-center py-16 flex-1">
+					<Spinner className="size-5" />
+				</div>
+			{:else if (categories ?? []).length !== 0}
+				<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hidden mt-2 px-3">
+					<div class="gap-2.5 grid lg:grid-cols-2">
+						{#each categories as category (category.id)}
+							<a
+								class="group flex text-left w-full px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm"
+								href={`/workspace/prompts/categories/${category.id}`}
+							>
+								<div class="flex items-start gap-3 flex-1 min-w-0">
+									<div
+										class="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-500/10 shrink-0 mt-0.5 group-hover:bg-violet-100 dark:group-hover:bg-violet-500/20 transition-colors"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke-width="1.5"
+											stroke="currentColor"
+											class="size-5 text-violet-600 dark:text-violet-400"
+										>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+											/>
+										</svg>
+									</div>
+									<div class="flex-1 min-w-0">
+										<div class="flex items-center justify-between w-full mb-1">
+											<div class="flex items-center gap-2 min-w-0">
+												<Tooltip content={category?.description ?? category.name}>
+													<div class="font-semibold text-sm line-clamp-1">{category.name}</div>
+												</Tooltip>
+											</div>
+											{#if !category.write_access}
+												<Badge type="muted" content={$i18n.t('Read Only')} />
+											{/if}
+										</div>
+
+									<div
+										class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1.5"
+									>
+										{#if category?.user?.name}
+											<Tooltip
+												content={category?.user?.email ?? $i18n.t('Deleted User')}
+												className="flex shrink-0"
+												placement="top-start"
+											>
+												<span class="shrink-0">
+													{$i18n.t('By {{name}}', {
+														name: capitalizeFirstLetter(
+															category?.user?.name ??
+																category?.user?.email ??
+																$i18n.t('Deleted User')
+														)
+													})}
+												</span>
+											</Tooltip>
+										{/if}
+
+									{#if category.updated_at}
+										<span class="text-gray-300 dark:text-gray-600">·</span>
+										<Tooltip content={dayjs(category.updated_at * 1000).format('LLLL')}>
+											<span class="shrink-0">
+												{$i18n.t('Updated')} {dayjs(category.updated_at * 1000).fromNow()}
+											</span>
+										</Tooltip>
+									{/if}
+
+									<span class="text-gray-300 dark:text-gray-600">·</span>
+									<span class="shrink-0">
+										{$i18n.t('{{count}} prompt(s)', { count: category.prompt_count ?? 0 })}
+									</span>
+									</div>
 									</div>
 								</div>
-								{#if !prompt.write_access}
-									<Badge type="muted" content={$i18n.t('Read Only')} />
-								{/if}
-							</div>
-
-							<div class="flex gap-1 text-xs">
-								<Tooltip
-									content={prompt?.user?.email ?? $i18n.t('Deleted User')}
-									className="flex shrink-0"
-									placement="top-start"
+							{#if category.write_access}
+								<div
+									class="flex flex-row gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity"
 								>
-									<div class="shrink-0 text-gray-500">
-										{$i18n.t('By {{name}}', {
-											name: capitalizeFirstLetter(
-												prompt?.user?.name ?? prompt?.user?.email ?? $i18n.t('Deleted User')
-											)
-										})}
-									</div>
-								</Tooltip>
-
-								<div>·</div>
-
-								{#if prompt.content}
-									<Tooltip content={prompt.content} placement="top">
-										<div class="line-clamp-1">
-											{prompt.content}
-										</div>
-									</Tooltip>
-								{/if}
-							</div>
-						</div>
-						<div class="flex flex-row gap-0.5 self-center">
-							{#if shiftKey}
-								<Tooltip content={$i18n.t('Delete')}>
-									<button
-										class="self-center w-fit text-sm px-2 py-2 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-										type="button"
-										aria-label={$i18n.t('Delete')}
-										on:click={() => {
-											deleteHandler(prompt);
-										}}
-									>
-										<GarbageBin />
-									</button>
-								</Tooltip>
-							{:else}
-								<Tooltip content={$i18n.t('Copy Prompt')}>
-									<button
-										class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-										type="button"
-										aria-label={$i18n.t('Copy Prompt')}
-										on:click={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											copyHandler(prompt);
-										}}
-									>
-										{#if copiedId === prompt.command}
-											<Check className="size-4" strokeWidth="1.5" />
-										{:else}
-											<Clipboard className="size-4" strokeWidth="1.5" />
-										{/if}
-									</button>
-								</Tooltip>
-								<PromptMenu
-									shareHandler={() => {
-										shareHandler(prompt);
-									}}
-									cloneHandler={() => {
-										cloneHandler(prompt);
-									}}
-									exportHandler={() => {
-										exportHandler(prompt);
-									}}
-									deleteHandler={async () => {
-										deletePrompt = prompt;
-										showDeleteConfirm = true;
-									}}
-									onClose={() => {}}
-								>
-									<button
-										class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
-										type="button"
-									>
-										<EllipsisHorizontal className="size-5" />
-									</button>
-								</PromptMenu>
-
-								<button on:click|stopPropagation|preventDefault>
-									<Tooltip
-										content={prompt.is_active !== false ? $i18n.t('Enabled') : $i18n.t('Disabled')}
-									>
-										<Switch
-											bind:state={prompt.is_active}
-											on:change={async () => {
-												togglePromptById(localStorage.token, prompt.id);
+									<Tooltip content={$i18n.t('Delete')}>
+										<button
+											class="self-center w-fit text-sm px-2 py-2 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+											type="button"
+											aria-label={$i18n.t('Delete')}
+											on:click|preventDefault|stopPropagation={() => {
+												deleteCategory = category;
+												showDeleteConfirm = true;
 											}}
-										/>
+										>
+											<GarbageBin />
+										</button>
 									</Tooltip>
-								</button>
+								</div>
 							{/if}
-						</div>
-					</a>
-				{/each}
-			</div>
+							</a>
+						{/each}
+					</div>
 
-			{#if total > 30}
-				<div class="flex justify-center mt-4 mb-2">
-					<Pagination bind:page count={total} perPage={30} />
+					{#if total && total > 30}
+						<div class="flex justify-center mt-4 mb-2">
+							<Pagination bind:page count={total} perPage={30} />
+						</div>
+					{/if}
+				</div>
+			{:else}
+				<div class="w-full flex flex-col justify-center items-center py-20 flex-1">
+					<div class="max-w-sm text-center">
+						<div
+							class="flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 mx-auto mb-4"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke-width="1.5"
+								stroke="currentColor"
+								class="size-8 text-gray-400"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+								/>
+							</svg>
+						</div>
+						<div class="text-base font-semibold mb-1.5">
+							{$i18n.t('No categories found')}
+						</div>
+					</div>
 				</div>
 			{/if}
-		{:else}
-			<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-				<div class="max-w-md text-center">
-					<div class=" text-3xl mb-3">😕</div>
-					<div class=" text-lg font-medium mb-1">{$i18n.t('No prompts found')}</div>
-					<div class=" text-gray-500 text-center text-xs">
-						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
-					</div>
-				</div>
-			</div>
-		{/if}
-	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<div class=" my-16">
-			<div class=" text-xl font-medium mb-1 line-clamp-1">
-				{$i18n.t('Made by Open WebUI Community')}
-			</div>
-
-			<a
-				class=" flex cursor-pointer items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-850 w-full mb-2 px-3.5 py-1.5 rounded-xl transition"
-				href="https://openwebui.com/prompts"
-				target="_blank"
-			>
-				<div class=" self-center">
-					<div class=" font-medium line-clamp-1">{$i18n.t('Discover a prompt')}</div>
-					<div class=" text-sm line-clamp-1">
-						{$i18n.t('Discover, download, and explore custom prompts')}
-					</div>
-				</div>
-
-				<div>
-					<div>
-						<ChevronRight />
-					</div>
-				</div>
-			</a>
 		</div>
-	{/if}
+	</div>
 {:else}
 	<div class="w-full h-full flex justify-center items-center">
 		<Spinner className="size-5" />

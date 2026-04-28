@@ -3,6 +3,7 @@
 	import { getContext, onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { flyAndScale } from '$lib/utils/transitions';
+	import { toast } from 'svelte-sonner';
 
 	import { config, user, tools as _tools, mobile, knowledge } from '$lib/stores';
 	import { getKnowledgeBases } from '$lib/apis/knowledge';
@@ -15,6 +16,7 @@
 	import Camera from '$lib/components/icons/Camera.svelte';
 	import Note from '$lib/components/icons/Note.svelte';
 	import Clip from '$lib/components/icons/Clip.svelte';
+	import Photo from '$lib/components/icons/Photo.svelte';
 	import ChatBubbleOval from '$lib/components/icons/ChatBubbleOval.svelte';
 	import Refresh from '$lib/components/icons/Refresh.svelte';
 	import Agile from '$lib/components/icons/Agile.svelte';
@@ -26,10 +28,15 @@
 	import Chats from './InputMenu/Chats.svelte';
 	// import Notes from './InputMenu/Notes.svelte'; // Notes feature disabled
 	import Knowledge from './InputMenu/Knowledge.svelte';
-	import AttachWebpageModal from './AttachWebpageModal.svelte';
-	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
-
 	const i18n = getContext('i18n');
+
+	const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.epub,.mobi,.rtf,.json,.xml,.yaml,.yml,.html,.htm';
+	const DOCUMENT_MAX_SIZE_MB = 100;
+	const DOCUMENT_MAX_COUNT = 10;
+
+	const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.bmp,.webp,.gif';
+	const IMAGE_MAX_SIZE_MB = 10;
+	const IMAGE_MAX_COUNT = 10;
 
 	export let files = [];
 
@@ -37,7 +44,8 @@
 	export let fileUploadCapableModels: string[] = [];
 
 	export let screenCaptureHandler: Function;
-	export let uploadFilesHandler: Function;
+	export let uploadDocumentsHandler: Function;
+	export let uploadImagesHandler: Function;
 	export let inputFilesHandler: Function;
 
 	export let uploadGoogleDriveHandler: Function;
@@ -49,15 +57,10 @@
 	let show = false;
 	let tab = '';
 
-	let showAttachWebpageModal = false;
-
 	let fileUploadEnabled = true;
 	$: fileUploadEnabled =
 		fileUploadCapableModels.length === selectedModels.length &&
 		($user?.role === 'admin' || $user?.permissions?.chat?.file_upload);
-
-	let webUploadEnabled = true;
-	$: webUploadEnabled = $user?.role === 'admin' || ($user?.permissions?.chat?.web_upload ?? true);
 
 	$: if (!fileUploadEnabled && files.length > 0) {
 		files = [];
@@ -92,13 +95,6 @@
 	};
 </script>
 
-<AttachWebpageModal
-	bind:show={showAttachWebpageModal}
-	onSubmit={(e) => {
-		onUpload(e);
-	}}
-/>
-
 <!-- Hidden file input used to open the camera on mobile -->
 <input
 	id="camera-input"
@@ -130,83 +126,55 @@
 			align="start"
 			transition={flyAndScale}
 		>
-			{#if tab === ''}
-				<div in:fly={{ x: -20, duration: 150 }}>
-					<Tooltip
-						content={fileUploadCapableModels.length !== selectedModels.length
-							? $i18n.t('Model(s) do not support file upload')
-							: !fileUploadEnabled
-								? $i18n.t('You do not have permission to upload files.')
-								: ''}
-						className="w-full"
+		{#if tab === ''}
+			<div in:fly={{ x: -20, duration: 150 }}>
+				<Tooltip
+					content={fileUploadCapableModels.length !== selectedModels.length
+						? $i18n.t('Model(s) do not support file upload')
+						: !fileUploadEnabled
+							? $i18n.t('You do not have permission to upload files.')
+							: $i18n.t('Upload up to {{maxCount}} files (max {{maxSize}} MB each). Supports PDF / Word / Excel / PPT / TXT / Markdown / CSV and more.', { maxCount: DOCUMENT_MAX_COUNT, maxSize: DOCUMENT_MAX_SIZE_MB })}
+					className="w-full"
+				>
+					<DropdownMenu.Item
+						class="flex gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl {!fileUploadEnabled
+							? 'opacity-50'
+							: ''}"
+						on:click={() => {
+							if (fileUploadEnabled) {
+								uploadDocumentsHandler();
+							}
+						}}
 					>
-						<DropdownMenu.Item
-							class="flex gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl {!fileUploadEnabled
-								? 'opacity-50'
-								: ''}"
-							on:click={() => {
-								if (fileUploadEnabled) {
-									uploadFilesHandler();
-								}
-							}}
-						>
-							<Clip />
+						<DocumentArrowUp />
 
-							<div class="line-clamp-1">{$i18n.t('Upload Files')}</div>
-						</DropdownMenu.Item>
-					</Tooltip>
+						<div class="line-clamp-1">{$i18n.t('Upload Documents')}</div>
+					</DropdownMenu.Item>
+				</Tooltip>
 
-					<Tooltip
-						content={fileUploadCapableModels.length !== selectedModels.length
-							? $i18n.t('Model(s) do not support file upload')
-							: !fileUploadEnabled
-								? $i18n.t('You do not have permission to upload files.')
-								: ''}
-						className="w-full"
+				<Tooltip
+					content={fileUploadCapableModels.length !== selectedModels.length
+						? $i18n.t('Model(s) do not support file upload')
+						: !fileUploadEnabled
+							? $i18n.t('You do not have permission to upload files.')
+							: $i18n.t('Upload up to {{maxCount}} images (max {{maxSize}} MB each). Supports JPEG / JPG / PNG / BMP / WEBP / GIF.', { maxCount: IMAGE_MAX_COUNT, maxSize: IMAGE_MAX_SIZE_MB })}
+					className="w-full"
+				>
+					<DropdownMenu.Item
+						class="flex gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl {!fileUploadEnabled
+							? 'opacity-50'
+							: ''}"
+						on:click={() => {
+							if (fileUploadEnabled) {
+								uploadImagesHandler();
+							}
+						}}
 					>
-						<DropdownMenu.Item
-							class="flex gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50  rounded-xl {!fileUploadEnabled
-								? 'opacity-50'
-								: ''}"
-							on:click={() => {
-								if (fileUploadEnabled) {
-									if (!detectMobile()) {
-										screenCaptureHandler();
-									} else {
-										const cameraInputElement = document.getElementById('camera-input');
+						<Photo />
 
-										if (cameraInputElement) {
-											cameraInputElement.click();
-										}
-									}
-								}
-							}}
-						>
-							<Camera />
-							<div class=" line-clamp-1">{$i18n.t('Capture')}</div>
-						</DropdownMenu.Item>
-					</Tooltip>
-
-					<Tooltip
-						content={!webUploadEnabled
-							? $i18n.t('You do not have permission to upload web content.')
-							: ''}
-						className="w-full"
-					>
-						<DropdownMenu.Item
-							class="flex gap-2 items-center px-3 py-1.5 text-sm select-none cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl {!webUploadEnabled
-								? 'opacity-50'
-								: ''}"
-							on:click={() => {
-								if (webUploadEnabled) {
-									showAttachWebpageModal = true;
-								}
-							}}
-						>
-							<GlobeAlt />
-							<div class="line-clamp-1">{$i18n.t('Attach Webpage')}</div>
-						</DropdownMenu.Item>
-					</Tooltip>
+						<div class="line-clamp-1">{$i18n.t('Upload Images')}</div>
+					</DropdownMenu.Item>
+				</Tooltip>
 
 				<!-- Notes feature disabled
 				{#if $config?.features?.enable_notes ?? false}

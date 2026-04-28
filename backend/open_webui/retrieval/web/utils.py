@@ -487,12 +487,26 @@ class SafePlaywrightURLLoader(PlaywrightURLLoader, RateLimitMixin, URLProcessing
         self.trust_env = trust_env
         self.playwright_timeout = playwright_timeout
 
+    def _extract_page_text(self, page) -> str:
+        """Extract visible text from page, preferring body inner_text over evaluator."""
+        try:
+            for selector in self.remove_selectors or []:
+                elements = page.locator(selector).all()
+                for element in elements:
+                    if element.is_visible():
+                        element.evaluate("el => el.remove()")
+            text = page.inner_text("body")
+            if text and text.strip():
+                return text.strip()
+        except Exception:
+            pass
+        return ""
+
     def lazy_load(self) -> Iterator[Document]:
         """Safely load URLs synchronously with support for remote browser."""
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            # Use remote browser if ws_endpoint is provided, otherwise use local browser
             if self.playwright_ws_url:
                 browser = p.chromium.connect(self.playwright_ws_url)
             else:
@@ -502,11 +516,23 @@ class SafePlaywrightURLLoader(PlaywrightURLLoader, RateLimitMixin, URLProcessing
                 try:
                     self._safe_process_url_sync(url)
                     page = browser.new_page()
-                    response = page.goto(url, timeout=self.playwright_timeout)
+                    response = page.goto(
+                        url,
+                        timeout=self.playwright_timeout,
+                        wait_until="domcontentloaded",
+                    )
                     if response is None:
                         raise ValueError(f"page.goto() returned None for url {url}")
 
-                    text = self.evaluator.evaluate(page, browser, response)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass
+
+                    text = self._extract_page_text(page)
+                    if not text:
+                        text = self.evaluator.evaluate(page, browser, response)
+
                     metadata = {"source": url}
                     yield Document(page_content=text, metadata=metadata)
                 except Exception as e:
@@ -521,7 +547,6 @@ class SafePlaywrightURLLoader(PlaywrightURLLoader, RateLimitMixin, URLProcessing
         from playwright.async_api import async_playwright
 
         async with async_playwright() as p:
-            # Use remote browser if ws_endpoint is provided, otherwise use local browser
             if self.playwright_ws_url:
                 browser = await p.chromium.connect(self.playwright_ws_url)
             else:
@@ -533,11 +558,23 @@ class SafePlaywrightURLLoader(PlaywrightURLLoader, RateLimitMixin, URLProcessing
                 try:
                     await self._safe_process_url(url)
                     page = await browser.new_page()
-                    response = await page.goto(url, timeout=self.playwright_timeout)
+                    response = await page.goto(
+                        url,
+                        timeout=self.playwright_timeout,
+                        wait_until="domcontentloaded",
+                    )
                     if response is None:
                         raise ValueError(f"page.goto() returned None for url {url}")
 
-                    text = await self.evaluator.evaluate_async(page, browser, response)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass
+
+                    text = self._extract_page_text(page)
+                    if not text:
+                        text = await self.evaluator.evaluate_async(page, browser, response)
+
                     metadata = {"source": url}
                     yield Document(page_content=text, metadata=metadata)
                 except Exception as e:
@@ -674,7 +711,7 @@ def get_web_loader(
         "trust_env": trust_env,
     }
 
-    if WEB_LOADER_ENGINE.value == "" or WEB_LOADER_ENGINE.value == "safe_web":
+    if WEB_LOADER_ENGINE.value == "safe_web":
         WebLoaderClass = SafeWebBaseLoader
 
         request_kwargs = {}
@@ -690,7 +727,7 @@ def get_web_loader(
         if request_kwargs:
             web_loader_args["requests_kwargs"] = request_kwargs
 
-    if WEB_LOADER_ENGINE.value == "playwright":
+    if WEB_LOADER_ENGINE.value == "" or WEB_LOADER_ENGINE.value == "playwright":
         WebLoaderClass = SafePlaywrightURLLoader
         web_loader_args["playwright_timeout"] = PLAYWRIGHT_TIMEOUT.value
         if PLAYWRIGHT_WS_URL.value:

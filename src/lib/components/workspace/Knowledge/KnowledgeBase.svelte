@@ -48,13 +48,23 @@
 	import SyncConfirmDialog from '../../common/ConfirmDialog.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
+	import ArrowLeft from '$lib/components/icons/ArrowLeft.svelte';
 	import LockClosed from '$lib/components/icons/LockClosed.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
+	import XMark from '$lib/components/icons/XMark.svelte';
 	import FilesOverlay from '$lib/components/chat/MessageInput/FilesOverlay.svelte';
 	import DropdownOptions from '$lib/components/common/DropdownOptions.svelte';
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import AttachWebpageModal from '$lib/components/chat/MessageInput/AttachWebpageModal.svelte';
+
+	const ALLOWED_FILE_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.epub,.mobi,.rtf,.json,.xml,.yaml,.yml,.html,.htm,.odt,.msg,.rst,.go,.py,.java,.sh,.bat,.ps1,.js,.ts,.css,.cpp,.hpp,.h,.c,.cs,.sql,.log,.ini,.pl,.pm,.r,.dart,.php,.lua,.conf,.rb,.rs,.scala,.swift,.vue,.svelte,.ex,.exs,.erl,.tsx,.jsx';
+	const ALLOWED_EXTENSIONS = new Set(ALLOWED_FILE_ACCEPT.split(',').map(ext => ext.replace('.', '').toLowerCase()));
+
+	const isAllowedFile = (filename: string) => {
+		const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+		return ALLOWED_EXTENSIONS.has(ext);
+	};
 
 	let largeScreen = true;
 
@@ -366,8 +376,8 @@
 		const dirHandle = await window.showDirectoryPicker();
 		let totalFiles = 0;
 		let uploadedFiles = 0;
+		let skippedFiles = 0;
 
-		// Function to update the UI with the progress
 		const updateProgress = () => {
 			const percentage = (uploadedFiles / totalFiles) * 100;
 			toast.info(
@@ -379,16 +389,17 @@
 			);
 		};
 
-		// Recursive function to count all files excluding hidden ones
 		async function countFiles(dirHandle) {
 			for await (const entry of dirHandle.values()) {
-				// Skip hidden files and directories
 				if (entry.name.startsWith('.')) continue;
 
 				if (entry.kind === 'file') {
-					totalFiles++;
+					if (isAllowedFile(entry.name)) {
+						totalFiles++;
+					} else {
+						skippedFiles++;
+					}
 				} else if (entry.kind === 'directory') {
-					// Only process non-hidden directories
 					if (!entry.name.startsWith('.')) {
 						await countFiles(entry);
 					}
@@ -396,18 +407,17 @@
 			}
 		}
 
-		// Recursive function to process directories excluding hidden files and folders
 		async function processDirectory(dirHandle, path = '') {
 			for await (const entry of dirHandle.values()) {
-				// Skip hidden files and directories
 				if (entry.name.startsWith('.')) continue;
 
 				const entryPath = path ? `${path}/${entry.name}` : entry.name;
 
-				// Skip if the path contains any hidden folders
 				if (hasHiddenFolder(entryPath)) continue;
 
 				if (entry.kind === 'file') {
+					if (!isAllowedFile(entry.name)) continue;
+
 					const file = await entry.getFile();
 					const fileWithPath = new File([file], entryPath, { type: file.type });
 
@@ -415,7 +425,6 @@
 					uploadedFiles++;
 					updateProgress();
 				} else if (entry.kind === 'directory') {
-					// Only process non-hidden directories
 					if (!entry.name.startsWith('.')) {
 						await processDirectory(entry, entryPath);
 					}
@@ -424,6 +433,11 @@
 		}
 
 		await countFiles(dirHandle);
+		if (skippedFiles > 0) {
+			toast.warning(
+				$i18n.t('{{count}} file(s) skipped due to unsupported file type.', { count: skippedFiles })
+			);
+		}
 		updateProgress();
 
 		if (totalFiles > 0) {
@@ -436,7 +450,6 @@
 	// Firefox fallback implementation using traditional file input
 	const handleFirefoxUpload = async () => {
 		return new Promise((resolve, reject) => {
-			// Create hidden file input
 			const input = document.createElement('input');
 			input.type = 'file';
 			input.webkitdirectory = true;
@@ -444,19 +457,25 @@
 			input.multiple = true;
 			input.style.display = 'none';
 
-			// Add input to DOM temporarily
 			document.body.appendChild(input);
 
 			input.onchange = async () => {
 				try {
-					const files = Array.from(input.files)
-						// Filter out files from hidden folders
+					const allFiles = Array.from(input.files)
 						.filter((file) => !hasHiddenFolder(file.webkitRelativePath));
+
+					const files = allFiles.filter((file) => isAllowedFile(file.name));
+					const skipped = allFiles.length - files.length;
+
+					if (skipped > 0) {
+						toast.warning(
+							$i18n.t('{{count}} file(s) skipped due to unsupported file type.', { count: skipped })
+						);
+					}
 
 					let totalFiles = files.length;
 					let uploadedFiles = 0;
 
-					// Function to update the UI with the progress
 					const updateProgress = () => {
 						const percentage = (uploadedFiles / totalFiles) * 100;
 						toast.info(
@@ -470,9 +489,7 @@
 
 					updateProgress();
 
-					// Process all files
 					for (const file of files) {
-						// Skip hidden files (additional check)
 						if (!file.name.startsWith('.')) {
 							const relativePath = file.webkitRelativePath || file.name;
 							const fileWithPath = new File([file], relativePath, { type: file.type });
@@ -483,7 +500,6 @@
 						}
 					}
 
-					// Clean up
 					document.body.removeChild(input);
 					resolve();
 				} catch (error) {
@@ -496,7 +512,6 @@
 				reject(error);
 			};
 
-			// Trigger file picker
 			input.click();
 		});
 	};
@@ -608,8 +623,8 @@
 		}
 
 		debounceTimeout = setTimeout(async () => {
-			if (knowledge.name.trim() === '' || knowledge.description.trim() === '') {
-				toast.error($i18n.t('Please fill in all fields.'));
+			if (knowledge.name.trim() === '') {
+				toast.error($i18n.t('Please enter a knowledge base name.'));
 				return;
 			}
 
@@ -664,16 +679,18 @@
 			for (const item of items) {
 				if (item.isFile) {
 					item.file((file) => {
-						uploadFileHandler(file);
+						if (isAllowedFile(file.name)) {
+							uploadFileHandler(file);
+						} else {
+							toast.warning($i18n.t('Skipped unsupported file: {{name}}', { name: file.name }));
+						}
 					});
 					continue;
 				}
 
-				// Not sure why you have to call webkitGetAsEntry and isDirectory seperate, but it won't work if you try item.webkitGetAsEntry().isDirectory
 				const wkentry = item.webkitGetAsEntry();
 				const isDirectory = wkentry.isDirectory;
 				if (isDirectory) {
-					// Read the directory
 					wkentry.createReader().readEntries(
 						(entries) => {
 							handleUploadingFileFolder(entries);
@@ -683,9 +700,12 @@
 						}
 					);
 				} else {
-					toast.info($i18n.t('Uploading file...'));
-					uploadFileHandler(item.getAsFile());
-					toast.success($i18n.t('File uploaded!'));
+					const file = item.getAsFile();
+					if (file && isAllowedFile(file.name)) {
+						uploadFileHandler(file);
+					} else if (file) {
+						toast.warning($i18n.t('Skipped unsupported file: {{name}}', { name: file.name }));
+					}
 				}
 			}
 		};
@@ -812,6 +832,7 @@
 	type="file"
 	multiple
 	hidden
+	accept={ALLOWED_FILE_ACCEPT}
 	on:change={async () => {
 		if (inputFiles && inputFiles.length > 0) {
 			for (const file of inputFiles) {
@@ -830,7 +851,7 @@
 	}}
 />
 
-<div class="flex flex-col w-full h-full min-h-full" id="collection-container">
+<div class="flex flex-col w-full flex-1 min-h-0" id="collection-container">
 	{#if id && knowledge}
 		<AccessControlModal
 			bind:show={showAccessControlModal}
@@ -849,14 +870,31 @@
 			}}
 			accessRoles={['read', 'write']}
 		/>
-		<div class="w-full px-2">
-			<div class=" flex w-full">
-				<div class="flex-1">
-					<div class="flex items-center justify-between w-full">
-						<div class="w-full flex justify-between items-center">
+
+		<div class="flex flex-col gap-2 px-1 mt-1.5 mb-4 shrink-0">
+			<div class="flex justify-between items-center">
+				<div class="flex items-center gap-3 min-w-0 flex-1">
+					<button
+						class="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors shrink-0"
+						aria-label={$i18n.t('Back')}
+						on:click={() => {
+							goto('/workspace/knowledge');
+						}}
+					>
+						<ArrowLeft className="size-4 text-gray-600 dark:text-gray-300" strokeWidth="2" />
+					</button>
+
+					<div class="flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 shrink-0">
+						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 text-emerald-600 dark:text-emerald-400">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+						</svg>
+					</div>
+
+					<div class="min-w-0 flex-1">
+						<div class="flex items-center gap-2">
 							<input
 								type="text"
-								class="text-left w-full text-lg bg-transparent outline-hidden flex-1"
+								class="text-xl font-semibold bg-transparent outline-hidden border-none p-0 focus:ring-0"
 								bind:value={knowledge.name}
 								aria-label={$i18n.t('Knowledge Name')}
 								placeholder={$i18n.t('Knowledge Name')}
@@ -865,69 +903,52 @@
 									changeDebounceHandler();
 								}}
 							/>
-
-							<div class="shrink-0 mr-2.5">
-								{#if fileItemsTotal}
-									<div class="text-xs text-gray-500">
-										<!-- {$i18n.t('{{COUNT}} files')} -->
-										{$i18n.t('{{COUNT}} files', {
-											COUNT: fileItemsTotal
-										})}
-									</div>
-								{/if}
-							</div>
 						</div>
-
-						{#if knowledge?.write_access}
-							<div class="self-center shrink-0">
-								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-									type="button"
-									on:click={() => {
-										showAccessControlModal = true;
-									}}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5" />
-
-									<div class="text-sm font-medium shrink-0">
-										{$i18n.t('Access')}
-									</div>
-								</button>
-							</div>
-						{:else}
-							<div class="text-xs shrink-0 text-gray-500">
-								{$i18n.t('Read Only')}
-							</div>
-						{/if}
+						<div class="flex items-center gap-2">
+							<input
+								type="text"
+								class="text-xs text-gray-500 dark:text-gray-400 bg-transparent outline-hidden border-none p-0 w-full focus:ring-0"
+								bind:value={knowledge.description}
+								aria-label={$i18n.t('Knowledge Description')}
+								placeholder={$i18n.t('Knowledge Description')}
+								disabled={!knowledge?.write_access}
+								on:input={() => {
+									changeDebounceHandler();
+								}}
+							/>
+						</div>
 					</div>
+				</div>
 
-					<div class="flex w-full">
-						<input
-							type="text"
-							class="text-left text-xs w-full text-gray-500 bg-transparent outline-hidden"
-							bind:value={knowledge.description}
-							aria-label={$i18n.t('Knowledge Description')}
-							placeholder={$i18n.t('Knowledge Description')}
-							disabled={!knowledge?.write_access}
-							on:input={() => {
-								changeDebounceHandler();
+				<div class="flex items-center gap-1.5">
+					{#if knowledge?.write_access}
+						<button
+							class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
+							type="button"
+							on:click={() => {
+								showAccessControlModal = true;
 							}}
-						/>
-					</div>
+						>
+							<LockClosed strokeWidth="2.5" className="size-3.5" />
+							<div class="hidden md:block text-xs">{$i18n.t('Access')}</div>
+						</button>
+					{:else}
+						<div class="px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 border border-gray-200/60 dark:border-gray-700/60">
+							{$i18n.t('Read Only')}
+						</div>
+					{/if}
 				</div>
 			</div>
 		</div>
 
 		<div
-			class="mt-2 mb-2.5 py-2 -mx-0 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30 flex-1"
+			class="pt-2.5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden"
 		>
-			<div class="px-3.5 flex flex-1 items-center w-full space-x-2 py-0.5 pb-2">
-				<div class="flex flex-1 items-center">
-					<div class=" self-center ml-1 mr-3">
-						<Search className="size-3.5" />
-					</div>
+			<div class="flex w-full space-x-2 py-0.5 px-4 pb-2.5 shrink-0">
+				<div class="flex flex-1 items-center bg-gray-50 dark:bg-gray-850 rounded-xl px-3 py-1.5 transition focus-within:ring-2 focus-within:ring-gray-300/50 dark:focus-within:ring-gray-600/50 focus-within:bg-white dark:focus-within:bg-gray-900">
+					<Search className="size-3.5 text-gray-400 shrink-0" />
 					<input
-						class=" w-full text-sm pr-4 py-1 rounded-r-xl outline-hidden bg-transparent"
+						class="w-full text-sm py-0.5 pl-2 outline-hidden bg-transparent placeholder:text-gray-400"
 						bind:value={query}
 						aria-label={$i18n.t('Search Collection')}
 						placeholder={$i18n.t('Search Collection')}
@@ -935,31 +956,42 @@
 							selectedFileId = null;
 						}}
 					/>
-
-					{#if knowledge?.write_access}
-						<div>
-							<AddContentMenu
-								onUpload={(data) => {
-									if (data.type === 'directory') {
-										uploadDirectoryHandler();
-									} else if (data.type === 'web') {
-										showAddWebpageModal = true;
-									} else if (data.type === 'text') {
-										showAddTextContentModal = true;
-									} else {
-										document.getElementById('files-input').click();
-									}
-								}}
-								onSync={() => {
-									showSyncConfirmModal = true;
-								}}
-							/>
-						</div>
+					{#if query}
+						<button
+							class="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition ml-1"
+							aria-label={$i18n.t('Clear search')}
+							on:click={() => {
+								query = '';
+							}}
+						>
+							<XMark className="size-3" strokeWidth="2" />
+						</button>
 					{/if}
 				</div>
+
+				{#if knowledge?.write_access}
+					<div class="shrink-0">
+						<AddContentMenu
+							onUpload={(data) => {
+								if (data.type === 'directory') {
+									uploadDirectoryHandler();
+								} else if (data.type === 'web') {
+									showAddWebpageModal = true;
+								} else if (data.type === 'text') {
+									showAddTextContentModal = true;
+								} else {
+									document.getElementById('files-input').click();
+								}
+							}}
+							onSync={() => {
+								showSyncConfirmModal = true;
+							}}
+						/>
+					</div>
+				{/if}
 			</div>
 
-			<div class="px-3 flex justify-between">
+			<div class="px-3.5 flex justify-between shrink-0">
 				<div
 					class="flex w-full bg-transparent overflow-x-auto scrollbar-none"
 					on:wheel={(e) => {
@@ -970,11 +1002,11 @@
 					}}
 				>
 					<div
-						class="flex gap-3 w-fit text-center text-sm rounded-full bg-transparent px-0.5 whitespace-nowrap"
+						class="flex gap-2 w-fit text-center text-sm rounded-full bg-transparent px-0.5 whitespace-nowrap"
 					>
 						<DropdownOptions
 							align="start"
-							className="flex w-full items-center gap-2 truncate px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl  placeholder-gray-400 outline-hidden focus:outline-hidden"
+							className="flex w-full items-center gap-2 truncate px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl placeholder-gray-400 outline-hidden focus:outline-hidden"
 							bind:value={viewOption}
 							items={[
 								{ value: null, label: $i18n.t('All') },
@@ -1016,12 +1048,12 @@
 			</div>
 
 			{#if fileItems !== null && fileItemsTotal !== null}
-				<div class="flex flex-row flex-1 gap-3 px-2.5 mt-2">
-					<div class="flex-1 flex">
-						<div class=" flex flex-col w-full space-x-2 rounded-lg h-full">
-							<div class="w-full h-full flex flex-col min-h-full">
+				<div class="flex flex-row flex-1 min-h-0 gap-3 px-2.5 mt-2">
+					<div class="flex-1 flex min-h-0">
+						<div class="flex flex-col w-full rounded-lg min-h-0">
+							<div class="w-full flex-1 flex flex-col min-h-0">
 								{#if fileItems.length > 0}
-									<div class=" flex overflow-y-auto h-full w-full scrollbar-hidden text-xs">
+									<div class="flex-1 min-h-0 overflow-y-auto w-full scrollbar-hidden">
 										<Files
 											files={fileItems}
 											{knowledge}
@@ -1048,12 +1080,19 @@
 									</div>
 
 									{#if fileItemsTotal > 30}
-										<Pagination bind:page={currentPage} count={fileItemsTotal} perPage={30} />
+										<div class="shrink-0">
+											<Pagination bind:page={currentPage} count={fileItemsTotal} perPage={30} />
+										</div>
 									{/if}
 								{:else}
-									<div class="my-3 flex flex-col justify-center text-center text-gray-500 text-xs">
-										<div>
-											{$i18n.t('No content found')}
+									<div class="w-full flex flex-col justify-center items-center py-16 flex-1">
+										<div class="max-w-sm text-center">
+											<div class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-800 mx-auto mb-3">
+												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-gray-400">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+												</svg>
+											</div>
+											<div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{$i18n.t('No content found')}</div>
 										</div>
 									</div>
 								{/if}
@@ -1071,47 +1110,44 @@
 							}}
 						>
 							<div class="flex flex-col justify-start h-full max-h-full">
-								<div class=" flex flex-col w-full h-full max-h-full">
-									<div class="shrink-0 flex items-center p-2">
-										<div class="mr-2">
-											<button
-												class="w-full text-left text-sm p-1.5 rounded-lg dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-gray-850"
-												aria-label={$i18n.t('Close')}
-												on:click={() => {
-													selectedFileId = null;
-													selectedFile = null;
-												}}
-											>
-												<ChevronLeft strokeWidth="2.5" />
-											</button>
-										</div>
-										<div class=" flex-1 text-lg line-clamp-1">
-											{selectedFile?.meta?.name}
+								<div class="flex flex-col w-full h-full max-h-full">
+									<div class="shrink-0 flex items-center p-3 border-b border-gray-100 dark:border-gray-800">
+										<button
+											class="flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition mr-2"
+											aria-label={$i18n.t('Close')}
+											on:click={() => {
+												selectedFileId = null;
+												selectedFile = null;
+											}}
+										>
+											<ChevronLeft strokeWidth="2.5" />
+										</button>
+
+										<div class="flex-1 min-w-0 mr-2">
+											<div class="text-sm font-semibold line-clamp-1">
+												{selectedFile?.meta?.name}
+											</div>
 										</div>
 
 										{#if knowledge?.write_access}
-											<div>
-												<button
-													class="flex self-center w-fit text-sm py-1 px-2.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-													disabled={isSaving}
-													on:click={() => {
-														updateFileContentHandler();
-													}}
-												>
-													{$i18n.t('Save')}
-													{#if isSaving}
-														<div class="ml-2 self-center">
-															<Spinner />
-														</div>
-													{/if}
-												</button>
-											</div>
+											<button
+												class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+												disabled={isSaving}
+												on:click={() => {
+													updateFileContentHandler();
+												}}
+											>
+												{$i18n.t('Save')}
+												{#if isSaving}
+													<Spinner className="size-3" />
+												{/if}
+											</button>
 										{/if}
 									</div>
 
 									{#key selectedFile.id}
 										<textarea
-											class="w-full h-full text-sm outline-none resize-none px-3 py-2"
+											class="w-full h-full text-sm outline-none resize-none px-4 py-3 bg-transparent text-gray-700 dark:text-gray-300"
 											bind:value={selectedFileContent}
 											disabled={!knowledge?.write_access}
 											aria-label={$i18n.t('File content')}
@@ -1124,12 +1160,15 @@
 					{/if}
 				</div>
 			{:else}
-				<div class="my-10">
-					<Spinner className="size-4" />
+				<div class="w-full flex justify-center items-center py-16 flex-1">
+					<Spinner className="size-5" />
 				</div>
 			{/if}
+			<div class="shrink-0 h-2.5"></div>
 		</div>
 	{:else}
-		<Spinner className="size-5" />
+		<div class="w-full h-full flex justify-center items-center">
+			<Spinner className="size-5" />
+		</div>
 	{/if}
 </div>

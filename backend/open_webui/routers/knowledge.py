@@ -6,11 +6,14 @@ from fastapi.concurrency import run_in_threadpool
 import logging
 import io
 import zipfile
+from urllib.parse import quote
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from open_webui.internal.db import get_session
 from open_webui.models.groups import Groups
 from open_webui.models.knowledge import (
+    KnowledgeFile,
     KnowledgeFileListResponse,
     Knowledges,
     KnowledgeForm,
@@ -29,7 +32,7 @@ from open_webui.storage.provider import Storage
 
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.auth import get_verified_user, get_admin_user
-from open_webui.utils.access_control import has_permission, filter_allowed_access_grants
+from open_webui.utils.access_control import require_permission, filter_allowed_access_grants
 from open_webui.models.access_grants import AccessGrants
 
 
@@ -97,11 +100,24 @@ def remove_knowledge_base_metadata_embedding(knowledge_base_id: str) -> bool:
 
 class KnowledgeAccessResponse(KnowledgeUserResponse):
     write_access: Optional[bool] = False
+    file_count: Optional[int] = 0
 
 
 class KnowledgeAccessListResponse(BaseModel):
     items: list[KnowledgeAccessResponse]
     total: int
+
+
+def _get_file_counts(db: Session, knowledge_base_ids: list[str]) -> dict:
+    if not knowledge_base_ids:
+        return {}
+    counts = (
+        db.query(KnowledgeFile.knowledge_id, func.count(KnowledgeFile.id))
+        .filter(KnowledgeFile.knowledge_id.in_(knowledge_base_ids))
+        .group_by(KnowledgeFile.knowledge_id)
+        .all()
+    )
+    return dict(counts)
 
 
 @router.get("/", response_model=KnowledgeAccessListResponse)
@@ -128,7 +144,6 @@ async def get_knowledge_bases(
         user.id, filter=filter, skip=skip, limit=limit, db=db
     )
 
-    # Batch-fetch writable knowledge IDs in a single query instead of N has_access calls
     knowledge_base_ids = [knowledge_base.id for knowledge_base in result.items]
     writable_knowledge_base_ids = AccessGrants.get_accessible_resource_ids(
         user_id=user.id,
@@ -138,6 +153,7 @@ async def get_knowledge_bases(
         user_group_ids=user_group_ids,
         db=db,
     )
+    file_counts = _get_file_counts(db, knowledge_base_ids)
 
     return KnowledgeAccessListResponse(
         items=[
@@ -148,6 +164,7 @@ async def get_knowledge_bases(
                     or (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
                     or knowledge_base.id in writable_knowledge_base_ids
                 ),
+                file_count=file_counts.get(knowledge_base.id, 0),
             )
             for knowledge_base in result.items
         ],
@@ -186,7 +203,6 @@ async def search_knowledge_bases(
         user.id, filter=filter, skip=skip, limit=limit, db=db
     )
 
-    # Batch-fetch writable knowledge IDs in a single query instead of N has_access calls
     knowledge_base_ids = [knowledge_base.id for knowledge_base in result.items]
     writable_knowledge_base_ids = AccessGrants.get_accessible_resource_ids(
         user_id=user.id,
@@ -196,6 +212,7 @@ async def search_knowledge_bases(
         user_group_ids=user_group_ids,
         db=db,
     )
+    file_counts = _get_file_counts(db, knowledge_base_ids)
 
     return KnowledgeAccessListResponse(
         items=[
@@ -206,6 +223,7 @@ async def search_knowledge_bases(
                     or (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
                     or knowledge_base.id in writable_knowledge_base_ids
                 ),
+                file_count=file_counts.get(knowledge_base.id, 0),
             )
             for knowledge_base in result.items
         ],
@@ -251,15 +269,16 @@ async def create_new_knowledge(
     user=Depends(get_verified_user),
 ):
     # NOTE: We intentionally do NOT use Depends(get_session) here.
-    # Database operations (has_permission, filter_allowed_access_grants, insert_new_knowledge) manage their own sessions.
+    # Database operations (require_permission, filter_allowed_access_grants, insert_new_knowledge) manage their own sessions.
     # This prevents holding a connection during embed_knowledge_base_metadata()
     # which makes external embedding API calls (1-5+ seconds).
-    if user.role != "admin" and not has_permission(
-        user.id, "workspace.knowledge", request.app.state.config.USER_PERMISSIONS
-    ):
+    require_permission(user, "workspace.knowledge", request)
+
+    existing = Knowledges.get_knowledge_by_user_id_and_name(user.id, form_data.name)
+    if existing:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.KNOWLEDGE_NAME_TAKEN,
         )
 
     form_data.access_grants = filter_allowed_access_grants(
@@ -478,13 +497,29 @@ async def update_knowledge_by_id(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    form_data.access_grants = filter_allowed_access_grants(
-        request.app.state.config.USER_PERMISSIONS,
-        user.id,
-        user.role,
-        form_data.access_grants,
-        "sharing.public_knowledge",
-    )
+    if form_data.name != knowledge.name:
+        existing = Knowledges.get_knowledge_by_user_id_and_name(
+            knowledge.user_id, form_data.name
+        )
+        if existing and existing.id != id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.KNOWLEDGE_NAME_TAKEN,
+            )
+
+    # Only the owner / admin can change access grants. A `write` collaborator
+    # may only edit content; ignore any access_grants they try to push through
+    # this content-update endpoint to prevent privilege escalation.
+    if knowledge.user_id != user.id and user.role != "admin":
+        form_data.access_grants = None
+    else:
+        form_data.access_grants = filter_allowed_access_grants(
+            request.app.state.config.USER_PERMISSIONS,
+            user.id,
+            user.role,
+            form_data.access_grants,
+            "sharing.public_knowledge",
+        )
 
     knowledge = Knowledges.update_knowledge_by_id(id=id, form_data=form_data)
     if knowledge:
@@ -530,17 +565,9 @@ async def update_knowledge_access_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        knowledge.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="knowledge",
-            resource_id=knowledge.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    # Only the resource owner or an admin may modify access grants.
+    # A user with `write` permission can edit content but cannot change who has access.
+    if knowledge.user_id != user.id and user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -1127,8 +1154,15 @@ async def export_knowledge_by_id(
     safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in knowledge.name)
     zip_filename = f"{safe_name}.zip"
 
+    # Use RFC 5987 encoding for non-ASCII filenames
+    ascii_fallback = "".join(c if ord(c) < 128 else "_" for c in zip_filename)
+    encoded_filename = quote(zip_filename)
+    content_disposition = (
+        f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+    )
+
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={zip_filename}"},
+        headers={"Content-Disposition": content_disposition},
     )

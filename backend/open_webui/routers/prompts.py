@@ -18,11 +18,50 @@ from open_webui.models.prompt_history import (
 )
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission, filter_allowed_access_grants
+from open_webui.utils.access_control import require_permission, filter_allowed_access_grants
 from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
 from open_webui.internal.db import get_session
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+
+def _user_has_prompt_access(
+    user,
+    prompt,
+    permission: str,
+    db: Session,
+    user_group_ids: Optional[set[str]] = None,
+) -> bool:
+    """Check whether a user has the given permission on a prompt.
+
+    Access is granted when the user is the owner, an admin, has a direct
+    access_grant on the prompt itself, OR has the corresponding access_grant
+    on the prompt's parent category (permissions are inherited from category
+    to prompt so that sharing a whole category also shares its prompts).
+    """
+    if user.role == "admin":
+        return True
+    if prompt.user_id == user.id:
+        return True
+    if AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="prompt",
+        resource_id=prompt.id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    if getattr(prompt, "category_id", None) and AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="prompt_category",
+        resource_id=prompt.category_id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    return False
 
 
 class PromptVersionUpdateForm(BaseModel):
@@ -125,6 +164,24 @@ async def get_prompt_list(
         db=db,
     )
 
+    # Also batch-check writable categories so that write access inherited from
+    # the parent category is respected in the list view.
+    category_ids = list(
+        {prompt.category_id for prompt in result.items if prompt.category_id}
+    )
+    writable_category_ids = (
+        AccessGrants.get_accessible_resource_ids(
+            user_id=user.id,
+            resource_type="prompt_category",
+            resource_ids=category_ids,
+            permission="write",
+            user_group_ids=user_group_ids,
+            db=db,
+        )
+        if category_ids
+        else set()
+    )
+
     return PromptAccessListResponse(
         items=[
             PromptAccessResponse(
@@ -133,6 +190,10 @@ async def get_prompt_list(
                     (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
                     or user.id == prompt.user_id
                     or prompt.id in writable_prompt_ids
+                    or (
+                        prompt.category_id
+                        and prompt.category_id in writable_category_ids
+                    )
                 ),
             )
             for prompt in result.items
@@ -153,38 +214,25 @@ async def create_new_prompt(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if user.role != "admin" and not (
-        has_permission(
-            user.id,
-            "workspace.prompts",
-            request.app.state.config.USER_PERMISSIONS,
-            db=db,
-        )
-        or has_permission(
-            user.id,
-            "workspace.prompts_import",
-            request.app.state.config.USER_PERMISSIONS,
-            db=db,
-        )
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
+    require_permission(
+        user, ["workspace.prompts", "workspace.prompts_import"], request, db=db
+    )
 
-    prompt = Prompts.get_prompt_by_command(form_data.command, db=db)
-    if prompt is None:
-        prompt = Prompts.insert_new_prompt(user.id, form_data, db=db)
+    if form_data.command:
+        existing = Prompts.get_prompt_by_command(form_data.command, db=db)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.COMMAND_TAKEN,
+            )
 
-        if prompt:
-            return prompt
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ERROR_MESSAGES.DEFAULT(),
-        )
+    prompt = Prompts.insert_new_prompt(user.id, form_data, db=db)
+
+    if prompt:
+        return prompt
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail=ERROR_MESSAGES.COMMAND_TAKEN,
+        detail=ERROR_MESSAGES.DEFAULT(),
     )
 
 
@@ -199,32 +247,14 @@ async def get_prompt_by_command(
 ):
     prompt = Prompts.get_prompt_by_command(command, db=db)
 
-    if prompt:
-        if (
-            user.role == "admin"
-            or prompt.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="prompt",
-                resource_id=prompt.id,
-                permission="read",
-                db=db,
-            )
-        ):
-            return PromptAccessResponse(
-                **prompt.model_dump(),
-                write_access=(
-                    (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                    or user.id == prompt.user_id
-                    or AccessGrants.has_access(
-                        user_id=user.id,
-                        resource_type="prompt",
-                        resource_id=prompt.id,
-                        permission="write",
-                        db=db,
-                    )
-                ),
-            )
+    if prompt and _user_has_prompt_access(user, prompt, "read", db=db):
+        return PromptAccessResponse(
+            **prompt.model_dump(),
+            write_access=(
+                (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
+                or _user_has_prompt_access(user, prompt, "write", db=db)
+            ),
+        )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -243,32 +273,14 @@ async def get_prompt_by_id(
 ):
     prompt = Prompts.get_prompt_by_id(prompt_id, db=db)
 
-    if prompt:
-        if (
-            user.role == "admin"
-            or prompt.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="prompt",
-                resource_id=prompt.id,
-                permission="read",
-                db=db,
-            )
-        ):
-            return PromptAccessResponse(
-                **prompt.model_dump(),
-                write_access=(
-                    (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                    or user.id == prompt.user_id
-                    or AccessGrants.has_access(
-                        user_id=user.id,
-                        resource_type="prompt",
-                        resource_id=prompt.id,
-                        permission="write",
-                        db=db,
-                    )
-                ),
-            )
+    if prompt and _user_has_prompt_access(user, prompt, "read", db=db):
+        return PromptAccessResponse(
+            **prompt.model_dump(),
+            write_access=(
+                (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
+                or _user_has_prompt_access(user, prompt, "write", db=db)
+            ),
+        )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -296,31 +308,34 @@ async def update_prompt_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Is the user the original creator, in a group with write access, or an admin
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    # Write access can come from: ownership, admin role, direct grant on the
+    # prompt, or an inherited grant on the parent category.
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
     # Check for command collision if command is being changed
-    if form_data.command != prompt.command:
+    if form_data.command and form_data.command != prompt.command:
         existing_prompt = Prompts.get_prompt_by_command(form_data.command, db=db)
         if existing_prompt and existing_prompt.id != prompt.id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Command '/{form_data.command}' is already in use by another prompt",
             )
+
+    # Fill in command from existing prompt if not provided
+    if not form_data.command:
+        form_data.command = prompt.command
+    if not form_data.name:
+        form_data.name = prompt.name
+
+    # Only the owner / admin can change access grants. A `write` collaborator
+    # may only edit content; ignore any access_grants pushed via the
+    # content-update endpoint to prevent privilege escalation.
+    if prompt.user_id != user.id and user.role != "admin":
+        form_data.access_grants = None
 
     # Use the ID from the found prompt
     updated_prompt = Prompts.update_prompt_by_id(prompt.id, form_data, user.id, db=db)
@@ -354,17 +369,7 @@ async def update_prompt_metadata(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -405,17 +410,7 @@ async def set_prompt_version(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -457,17 +452,9 @@ async def update_prompt_access_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    # Only the resource owner or an admin may modify access grants.
+    # A user with `write` permission can edit content but cannot change who has access.
+    if prompt.user_id != user.id and user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -503,17 +490,7 @@ async def toggle_prompt_active(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -545,17 +522,7 @@ async def delete_prompt_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        prompt.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -588,18 +555,7 @@ async def get_prompt_history(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Check read access
-    if not (
-        user.role == "admin"
-        or prompt.user_id == user.id
-        or AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="read",
-            db=db,
-        )
-    ):
+    if not _user_has_prompt_access(user, prompt, "read", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -627,18 +583,7 @@ async def get_prompt_history_entry(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Check read access
-    if not (
-        user.role == "admin"
-        or prompt.user_id == user.id
-        or AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="read",
-            db=db,
-        )
-    ):
+    if not _user_has_prompt_access(user, prompt, "read", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -670,18 +615,7 @@ async def delete_prompt_history_entry(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Check write access
-    if not (
-        user.role == "admin"
-        or prompt.user_id == user.id
-        or AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="write",
-            db=db,
-        )
-    ):
+    if not _user_has_prompt_access(user, prompt, "write", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -721,18 +655,7 @@ async def get_prompt_diff(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Check read access
-    if not (
-        user.role == "admin"
-        or prompt.user_id == user.id
-        or AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="prompt",
-            resource_id=prompt.id,
-            permission="read",
-            db=db,
-        )
-    ):
+    if not _user_has_prompt_access(user, prompt, "read", db=db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,

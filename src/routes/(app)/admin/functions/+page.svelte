@@ -1,3 +1,4 @@
+<!-- Functions page disabled
 <script>
 	import { onMount } from 'svelte';
 	import { functions } from '$lib/stores';
@@ -17,3 +18,4 @@
 {#if $functions !== null}
 	<Functions />
 {/if}
+-->

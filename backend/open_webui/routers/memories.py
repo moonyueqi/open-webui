@@ -10,7 +10,7 @@ from open_webui.utils.auth import get_verified_user
 from open_webui.internal.db import get_session
 from sqlalchemy.orm import Session
 
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 from open_webui.constants import ERROR_MESSAGES
 
 log = logging.getLogger(__name__)
@@ -35,13 +35,7 @@ async def get_memories(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     return Memories.get_memories_by_user_id(user.id, db=db)
 
@@ -75,17 +69,18 @@ async def add_memory(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     memory = Memories.insert_new_memory(user.id, form_data.content)
 
-    vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+    try:
+        vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+    except Exception as e:
+        log.exception(f"Embedding failed in add_memory: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
+        )
 
     VECTOR_DB_CLIENT.upsert(
         collection_name=f"user-memory-{user.id}",
@@ -128,19 +123,22 @@ async def query_memory(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     memories = Memories.get_memories_by_user_id(user.id)
     if not memories:
-        raise HTTPException(status_code=404, detail="No memories found for user")
+        raise HTTPException(status_code=404, detail="未找到该用户的记忆。")
 
-    vector = await request.app.state.EMBEDDING_FUNCTION(form_data.content, user=user)
+    try:
+        vector = await request.app.state.EMBEDDING_FUNCTION(
+            form_data.content, user=user
+        )
+    except Exception as e:
+        log.exception(f"Embedding failed in query_memory: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
+        )
 
     results = VECTOR_DB_CLIENT.search(
         collection_name=f"user-memory-{user.id}",
@@ -173,25 +171,25 @@ async def reset_memory_from_vector_db(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     VECTOR_DB_CLIENT.delete_collection(f"user-memory-{user.id}")
 
     memories = Memories.get_memories_by_user_id(user.id)
 
-    # Generate vectors in parallel
-    vectors = await asyncio.gather(
-        *[
-            request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
-            for memory in memories
-        ]
-    )
+    try:
+        vectors = await asyncio.gather(
+            *[
+                request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+                for memory in memories
+            ]
+        )
+    except Exception as e:
+        log.exception(f"Embedding failed in reset_memory_from_vector_db: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
+        )
 
     VECTOR_DB_CLIENT.upsert(
         collection_name=f"user-memory-{user.id}",
@@ -229,13 +227,7 @@ async def delete_memory_by_user_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     result = Memories.delete_memories_by_user_id(user.id, db=db)
 
@@ -271,22 +263,25 @@ async def update_memory_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     memory = Memories.update_memory_by_id_and_user_id(
         memory_id, user.id, form_data.content
     )
     if memory is None:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail="未找到该记忆。")
 
     if form_data.content is not None:
-        vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+        try:
+            vector = await request.app.state.EMBEDDING_FUNCTION(
+                memory.content, user=user
+            )
+        except Exception as e:
+            log.exception(f"Embedding failed in update_memory_by_id: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
+            )
 
         VECTOR_DB_CLIENT.upsert(
             collection_name=f"user-memory-{user.id}",
@@ -324,13 +319,7 @@ async def delete_memory_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not has_permission(
-        user.id, "features.memories", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.memories", request)
 
     result = Memories.delete_memory_by_id_and_user_id(memory_id, user.id, db=db)
 

@@ -1,8 +1,5 @@
 <script lang="ts">
-	import { getAllTags } from '$lib/apis/chats';
-	import { folders, tags } from '$lib/stores';
-	import { getContext, createEventDispatcher, onMount, onDestroy, tick } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import { getContext, createEventDispatcher } from 'svelte';
 	import Search from '$lib/components/icons/Search.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 
@@ -16,6 +13,7 @@
 	export let onFocus = () => {};
 	export let onKeydown = (e) => {};
 
+	/* 搜索选项功能已禁用 - 仅按标题搜索
 	let selectedIdx = 0;
 	let selectedOption = null;
 
@@ -191,6 +189,9 @@
 		await tags.set(await getAllTags(localStorage.token));
 		loading = false;
 	};
+	搜索选项功能已禁用 */
+
+	let focused = false;
 
 	const clearSearchInput = () => {
 		value = '';
@@ -199,14 +200,14 @@
 </script>
 
 <div class="px-1 mb-1 flex justify-center space-x-2 relative z-10" id="search-container">
-	<div class="flex w-full rounded-xl" id="chat-search">
-		<div class="self-center py-2 rounded-l-xl bg-transparent dark:text-gray-300">
+	<div class="flex w-full rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700" id="chat-search">
+		<div class="self-center pl-2.5 py-2 bg-transparent text-gray-400 dark:text-gray-400">
 			<Search />
 		</div>
 
 		<input
 			id="search-input"
-			class="w-full rounded-r-xl py-1.5 pl-2.5 text-sm bg-transparent dark:text-gray-300 outline-hidden"
+			class="w-full rounded-r-lg py-1.5 pl-2.5 pr-2 text-sm bg-transparent dark:text-gray-300 outline-hidden placeholder-gray-400 dark:placeholder-gray-500"
 			placeholder={placeholder ? placeholder : $i18n.t('Search')}
 			autocomplete="off"
 			maxlength="500"
@@ -217,77 +218,21 @@
 			on:click={() => {
 				if (!focused) {
 					onFocus();
-					hovering = false;
-
 					focused = true;
-					initTags();
 				}
 			}}
 			on:blur={() => {
-				if (!hovering) {
-					focused = false;
-				}
+				focused = false;
 			}}
 			on:keydown={(e) => {
-				if (e.key === 'Enter') {
-					if (filteredItems.length > 0) {
-						const itemElement = document.getElementById(`search-item-${selectedIdx}`);
-						itemElement.click();
-						return;
-					}
-
-					if (filteredOptions.length > 0) {
-						const optionElement = document.getElementById(`search-option-${selectedIdx}`);
-						optionElement.click();
-						return;
-					}
-				}
-
-				if (e.key === 'ArrowUp') {
-					e.preventDefault();
-					selectedIdx = Math.max(0, selectedIdx - 1);
-				} else if (e.key === 'ArrowDown') {
-					e.preventDefault();
-
-					if (filteredItems.length > 0) {
-						if (selectedIdx === filteredItems.length - 1) {
-							focused = false;
-						} else {
-							selectedIdx = Math.min(selectedIdx + 1, filteredItems.length - 1);
-						}
-					} else {
-						if (selectedIdx === filteredOptions.length - 1) {
-							focused = false;
-						} else {
-							selectedIdx = Math.min(selectedIdx + 1, filteredOptions.length - 1);
-						}
-					}
-				} else {
-					// if the user types something, reset to the top selection.
-					if (!focused) {
-						onFocus();
-						hovering = false;
-
-						focused = true;
-						initTags();
-					}
-
-					selectedIdx = 0;
-				}
-
-				const item = document.querySelector(`[data-selected="true"]`);
-				item?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-
-				if (!document.getElementById('search-options-container')) {
-					onKeydown(e);
-				}
+				onKeydown(e);
 			}}
 		/>
 
 		{#if showClearButton && value}
-			<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
+			<div class="self-center pr-2 translate-y-[0.5px] bg-transparent">
 				<button
-					class="p-0.5 rounded-full hover:bg-sidebar-hover dark:hover:bg-gray-900 transition"
+					class="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition"
 					on:click={clearSearchInput}
 				>
 					<XMark className="size-3" strokeWidth="2" />
@@ -295,95 +240,4 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if focused && (filteredOptions.length > 0 || filteredItems.length > 0)}
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
-		<div
-			class="absolute top-0 mt-8 left-0 right-1 border border-gray-100 dark:border-gray-900 bg-gray-50 dark:bg-gray-950 rounded-2xl z-10 shadow-lg"
-			id="search-options-container"
-			in:fade={{ duration: 50 }}
-			on:mouseenter={() => {
-				hovering = true;
-				selectedIdx = null;
-			}}
-			on:mouseleave={() => {
-				hovering = false;
-				selectedIdx = 0;
-			}}
-		>
-			<div class="px-3 py-2.5 text-xs group">
-				{#if filteredItems.length > 0}
-					<div class="px-1 font-medium dark:text-gray-300 text-gray-700 mb-1 capitalize">
-						{selectedOption}
-					</div>
-
-					<div class="max-h-60 overflow-auto">
-						{#each filteredItems as item, itemIdx}
-							<button
-								class=" px-1.5 py-0.5 flex gap-1 hover:bg-sidebar-hover dark:hover:bg-gray-900 w-full rounded {selectedIdx ===
-								itemIdx
-									? 'bg-gray-100 dark:bg-gray-900'
-									: ''}"
-								data-selected={selectedIdx === itemIdx}
-								id="search-item-{itemIdx}"
-								on:click|stopPropagation={async () => {
-									const words = value.split(' ');
-
-									words.pop();
-									words.push(`${item.type}:${item.id} `);
-
-									value = words.join(' ');
-
-									filteredItems = [];
-									dispatch('input');
-								}}
-							>
-								<div class="dark:text-gray-300 text-gray-700 font-medium line-clamp-1 shrink-0">
-									{item.name}
-								</div>
-
-								<div class=" text-gray-500 line-clamp-1">
-									{item.id}
-								</div>
-							</button>
-						{/each}
-					</div>
-				{:else if filteredOptions.length > 0}
-					<div class="px-1 font-medium dark:text-gray-300 text-gray-700 mb-1">
-						{$i18n.t('Search options')}
-					</div>
-
-					<div class=" max-h-60 overflow-auto">
-						{#each filteredOptions as option, optionIdx}
-							<button
-								class=" px-1.5 py-0.5 flex gap-1 hover:bg-sidebar-hover dark:hover:bg-gray-900 w-full rounded {selectedIdx ===
-								optionIdx
-									? 'bg-gray-100 dark:bg-gray-900'
-									: ''}"
-								id="search-option-{optionIdx}"
-								on:click|stopPropagation={async () => {
-									const words = value.split(' ');
-
-									words.pop();
-									words.push(`${option.name}`);
-
-									selectedOption = option.name.replace(':', '');
-
-									value = words.join(' ');
-
-									dispatch('input');
-								}}
-							>
-								<div class="dark:text-gray-300 text-gray-700 font-medium">{option.name}</div>
-
-								<div class=" text-gray-500 line-clamp-1">
-									{option.description}
-								</div>
-							</button>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</div>
-	{/if}
 </div>

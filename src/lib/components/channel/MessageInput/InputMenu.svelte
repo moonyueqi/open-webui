@@ -9,6 +9,8 @@
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import DocumentArrowUpSolid from '$lib/components/icons/DocumentArrowUpSolid.svelte';
+	import DocumentArrowUp from '$lib/components/icons/DocumentArrowUp.svelte';
+	import Photo from '$lib/components/icons/Photo.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import GlobeAltSolid from '$lib/components/icons/GlobeAltSolid.svelte';
 	import WrenchSolid from '$lib/components/icons/WrenchSolid.svelte';
@@ -19,7 +21,8 @@
 	const i18n = getContext('i18n');
 
 	export let screenCaptureHandler: Function;
-	export let uploadFilesHandler: Function;
+	export let uploadDocumentsHandler: Function;
+	export let uploadImagesHandler: Function;
 
 	export let onClose: Function = () => {};
 
@@ -53,25 +56,29 @@
 			align="start"
 			transition={flyAndScale}
 		>
-			<DropdownMenu.Item
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
-				on:click={() => {
-					uploadFilesHandler();
-				}}
-			>
-				<Clip />
-				<div class="line-clamp-1">{$i18n.t('Upload Files')}</div>
-			</DropdownMenu.Item>
+			<Tooltip content={$i18n.t('Upload up to {{maxCount}} files (max {{maxSize}} MB each). Supports PDF / Word / Excel / PPT / TXT / Markdown / CSV and more.', { maxCount: 10, maxSize: 100 })}>
+				<DropdownMenu.Item
+					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
+					on:click={() => {
+						uploadDocumentsHandler();
+					}}
+				>
+					<DocumentArrowUp />
+					<div class="line-clamp-1">{$i18n.t('Upload Documents')}</div>
+				</DropdownMenu.Item>
+			</Tooltip>
 
-			<DropdownMenu.Item
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50  rounded-xl"
-				on:click={() => {
-					screenCaptureHandler();
-				}}
-			>
-				<Camera />
-				<div class=" line-clamp-1">{$i18n.t('Capture')}</div>
-			</DropdownMenu.Item>
+			<Tooltip content={$i18n.t('Upload up to {{maxCount}} images (max {{maxSize}} MB each). Supports JPEG / JPG / PNG / BMP / WEBP / GIF.', { maxCount: 10, maxSize: 10 })}>
+				<DropdownMenu.Item
+					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl"
+					on:click={() => {
+						uploadImagesHandler();
+					}}
+				>
+					<Photo />
+					<div class="line-clamp-1">{$i18n.t('Upload Images')}</div>
+				</DropdownMenu.Item>
+			</Tooltip>
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>

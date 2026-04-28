@@ -2,8 +2,11 @@ from typing import Optional, Set, Union, List, Dict, Any
 from open_webui.models.users import Users, UserModel
 from open_webui.models.groups import Groups
 
+from fastapi import HTTPException, Request
+from starlette import status
 
 from open_webui.config import DEFAULT_USER_PERMISSIONS
+from open_webui.constants import ERROR_MESSAGES
 import json
 
 
@@ -105,6 +108,32 @@ def has_permission(
         default_permissions, DEFAULT_USER_PERMISSIONS
     )
     return get_permission(default_permissions, permission_hierarchy)
+
+
+def require_permission(
+    user: UserModel,
+    permission_key: Union[str, List[str]],
+    request: Request,
+    db: Optional[Any] = None,
+) -> None:
+    """
+    Unified permission gate: admin always passes; otherwise delegates to has_permission.
+    Raises HTTP 403 when the user lacks the required permission.
+
+    ``permission_key`` may be a single string or a list of strings.  When a
+    list is given the check passes if the user holds *any* of the listed
+    permissions (OR semantics).
+    """
+    if user.role == "admin":
+        return
+
+    keys = [permission_key] if isinstance(permission_key, str) else permission_key
+    perms = request.app.state.config.USER_PERMISSIONS
+    if not any(has_permission(user.id, k, perms, db=db) for k in keys):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
 
 
 def has_access(

@@ -20,9 +20,36 @@ class ExternalReranker(BaseReranker):
         timeout: Optional[int] = None,
     ):
         self.api_key = api_key
-        self.url = url
+        self.url = self._normalize_url(url)
         self.model = model
         self.timeout = timeout
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """
+        Accept either a base URL (e.g. ``https://api.siliconflow.cn/v1``)
+        or a full rerank endpoint (e.g. ``https://api.siliconflow.cn/v1/rerank``)
+        and always return the full rerank endpoint.
+
+        This keeps the configuration consistent with the embedding model
+        (where users provide a base URL) while remaining backward compatible
+        with existing setups that already point to ``/rerank`` directly.
+        """
+        if not url:
+            return url
+
+        normalized = url.rstrip("/")
+
+        lower = normalized.lower()
+        if (
+            lower.endswith("/rerank")
+            or lower.endswith("/reranker")
+            or "/rerank/" in lower
+            or "/reranker/" in lower
+        ):
+            return normalized
+
+        return f"{normalized}/rerank"
 
     def predict(
         self, sentences: List[Tuple[str, str]], user=None

@@ -1,3 +1,4 @@
+<!-- Functions edit page disabled
 <script>
 	import { toast } from 'svelte-sonner';
 	import { onMount, getContext } from 'svelte';
@@ -95,3 +96,4 @@
 		</div>
 	</div>
 {/if}
+-->

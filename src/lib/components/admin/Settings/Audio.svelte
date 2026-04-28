@@ -8,12 +8,16 @@
 		getAudioConfig,
 		updateAudioConfig,
 		getModels as _getModels,
-		getVoices as _getVoices
+		getVoices as _getVoices,
+		verifySTTModel,
+		verifyTTSModel,
+		type ModelVerifyResult
 	} from '$lib/apis/audio';
 	import { config, settings } from '$lib/stores';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
+	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	import { TTS_RESPONSE_SPLIT } from '$lib/types';
 
@@ -24,6 +28,100 @@
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
 	export let saveHandler: () => void;
+
+	let loaded = false;
+
+	let verifyingSTT = false;
+	let verifyingTTS = false;
+
+	// 与"嵌入 / 重排序"模型验证保持一致：直接消费后端返回的结构化 stage，
+	// 翻译成统一的友好提示（不需要再拼接上游错误字符串）。
+	const showModelVerifyError = (result: ModelVerifyResult, modelName: string) => {
+		const stage = result.stage ?? 'model';
+		const map: Record<string, string> = {
+			connection: $i18n.t('Cannot reach the server, please check the URL or your network'),
+			auth: $i18n.t('API key is missing, invalid, or has no permission'),
+			endpoint: $i18n.t('Endpoint not found, please check the URL'),
+			timeout: $i18n.t('Request timed out, please try again later'),
+			model: $i18n.t('Model "{{model}}" is unavailable, please check the model name', {
+				model: modelName
+			}),
+			input: $i18n.t('Please fill in URL and model name')
+		};
+		toast.error(map[stage] ?? map.model);
+	};
+
+	const runVerifySTT = async () => {
+		verifyingSTT = true;
+		try {
+			const result = await verifySTTModel(localStorage.token, {
+				url: STT_OPENAI_API_BASE_URL.replace(/\/$/, ''),
+				key: STT_OPENAI_API_KEY ?? '',
+				model: STT_MODEL
+			});
+
+			if (result.ok) {
+				toast.success($i18n.t('Verified: model "{{model}}" is available', { model: STT_MODEL }));
+			} else {
+				showModelVerifyError(result, STT_MODEL);
+			}
+		} finally {
+			verifyingSTT = false;
+		}
+	};
+
+	const verifySTTHandler = async () => {
+		if (!STT_OPENAI_API_BASE_URL) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		if (!STT_MODEL) {
+			toast.error($i18n.t('Please fill in the STT model name first'));
+			return;
+		}
+		if (!STT_OPENAI_API_KEY) {
+			toast.error($i18n.t('Please fill in the API key first'));
+			return;
+		}
+
+		await runVerifySTT();
+	};
+
+	const runVerifyTTS = async () => {
+		verifyingTTS = true;
+		try {
+			const result = await verifyTTSModel(localStorage.token, {
+				url: TTS_OPENAI_API_BASE_URL.replace(/\/$/, ''),
+				key: TTS_OPENAI_API_KEY ?? '',
+				model: TTS_MODEL
+			});
+
+			if (result.ok) {
+				toast.success($i18n.t('Verified: model "{{model}}" is available', { model: TTS_MODEL }));
+			} else {
+				showModelVerifyError(result, TTS_MODEL);
+			}
+		} finally {
+			verifyingTTS = false;
+		}
+	};
+
+	const verifyTTSHandler = async () => {
+		if (!TTS_OPENAI_API_BASE_URL) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		if (!TTS_MODEL) {
+			toast.error($i18n.t('Please fill in the TTS model name first'));
+			return;
+		}
+		if (!TTS_OPENAI_API_KEY) {
+			toast.error($i18n.t('Please fill in the API key first'));
+			return;
+		}
+
+		await runVerifyTTS();
+	};
 
 	// Audio
 	let TTS_OPENAI_API_BASE_URL = '';
@@ -167,7 +265,7 @@
 			TTS_OPENAI_PARAMS = JSON.stringify(res?.tts?.OPENAI_PARAMS ?? '', null, 2);
 			TTS_API_KEY = res.tts.API_KEY;
 
-			TTS_ENGINE = res.tts.ENGINE;
+			TTS_ENGINE = res.tts.ENGINE || 'openai';
 			TTS_MODEL = res.tts.MODEL;
 			TTS_VOICE = res.tts.VOICE;
 
@@ -180,7 +278,7 @@
 			STT_OPENAI_API_BASE_URL = res.stt.OPENAI_API_BASE_URL;
 			STT_OPENAI_API_KEY = res.stt.OPENAI_API_KEY;
 
-			STT_ENGINE = res.stt.ENGINE;
+			STT_ENGINE = res.stt.ENGINE || 'openai';
 			STT_MODEL = res.stt.MODEL;
 			STT_SUPPORTED_CONTENT_TYPES = (res?.stt?.SUPPORTED_CONTENT_TYPES ?? []).join(',');
 			STT_WHISPER_MODEL = res.stt.WHISPER_MODEL;
@@ -197,6 +295,8 @@
 
 		await getVoices();
 		await getModels();
+
+		loaded = true;
 	});
 </script>
 
@@ -208,84 +308,108 @@
 	}}
 >
 	<div class=" space-y-3 overflow-y-scroll scrollbar-hidden h-full">
+		{#if !loaded}
+			<div class="flex h-full w-full items-center justify-center">
+				<Spinner />
+			</div>
+		{:else}
 		<div class="flex flex-col gap-3">
 			<div>
-				<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Speech-to-Text')}</div>
+				<div class=" mt-0.5 mb-2 text-base font-medium">{$i18n.t('Speech-to-Text')}</div>
 
-				<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-				{#if STT_ENGINE !== 'web'}
-					<div class="mb-2">
-						<div class=" mb-1.5 text-xs font-medium">{$i18n.t('Supported MIME Types')}</div>
-						<div class="flex w-full">
-							<div class="flex-1">
-								<input
-									class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-									bind:value={STT_SUPPORTED_CONTENT_TYPES}
-									placeholder={$i18n.t(
-										'e.g., audio/wav,audio/mpeg,video/* (leave blank for defaults)'
-									)}
-								/>
-							</div>
-						</div>
-					</div>
-				{/if}
-
-				<div class="mb-2 py-0.5 flex w-full justify-between">
-					<div class=" self-center text-xs font-medium">{$i18n.t('Speech-to-Text Engine')}</div>
-					<div class="flex items-center relative">
-						<select
-							class="cursor-pointer w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
-							bind:value={STT_ENGINE}
-							placeholder={$i18n.t('Select an engine')}
-						>
-							<option value="">{$i18n.t('Whisper (Local)')}</option>
-							<option value="openai">{$i18n.t('OpenAI')}</option>
-							<option value="web">{$i18n.t('Web API')}</option>
-							<option value="deepgram">{$i18n.t('Deepgram')}</option>
-							<option value="azure">{$i18n.t('Azure AI Speech')}</option>
-							<option value="mistral">{$i18n.t('MistralAI')}</option>
-						</select>
-					</div>
-				</div>
+				<hr class=" border-gray-100/30 dark:border-gray-850/30 mb-3" />
 
 				{#if STT_ENGINE === 'openai'}
-					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<input
-								class="flex-1 w-full bg-transparent outline-hidden"
-								placeholder={$i18n.t('API Base URL')}
-								bind:value={STT_OPENAI_API_BASE_URL}
-								required
-							/>
-
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={STT_OPENAI_API_KEY} />
+					<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5">
+						<div class="flex items-center justify-between mb-3">
+							<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+								{$i18n.t('STT Model')}
+							</div>
+							<Tooltip content={$i18n.t('Verify')}>
+								<button
+									class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+									type="button"
+									on:click={verifySTTHandler}
+									disabled={verifyingSTT || !STT_OPENAI_API_BASE_URL}
+								>
+									{#if verifyingSTT}
+										<Spinner className="size-3.5" />
+									{:else}
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+											aria-hidden="true"
+											class="size-3.5"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									{/if}
+									<span>{$i18n.t('Verify')}</span>
+								</button>
+							</Tooltip>
 						</div>
-					</div>
-
-					<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-					<div>
-						<div class=" mb-1.5 text-xs font-medium">{$i18n.t('STT Model')}</div>
-						<div class="flex w-full">
-							<div class="flex-1">
+						<div class="flex flex-col gap-3">
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Base URL')}
+								</label>
 								<input
-									list="model-list"
-									class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-									bind:value={STT_MODEL}
-									placeholder={$i18n.t('Select a model')}
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									placeholder={$i18n.t('API Base URL')}
+									bind:value={STT_OPENAI_API_BASE_URL}
+									required
 								/>
-
-								<datalist id="model-list">
-									<option value="whisper-1" />
-								</datalist>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Key')}
+								</label>
+								<div
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+								>
+									<SensitiveInput
+										placeholder={$i18n.t('API Key')}
+										bind:value={STT_OPENAI_API_KEY}
+										required={false}
+										outerClassName="flex flex-1 bg-transparent items-center"
+										inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+										showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+									/>
+								</div>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('STT Model')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={STT_MODEL}
+									placeholder={$i18n.t('Set STT model (e.g. {{model}})', {
+										model: 'whisper-1'
+									})}
+								/>
 							</div>
 						</div>
 					</div>
 				{:else if STT_ENGINE === 'deepgram'}
 					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={STT_DEEPGRAM_API_KEY} />
+						<div class="mt-1 mb-1">
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={STT_DEEPGRAM_API_KEY}
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
 						</div>
 					</div>
 
@@ -315,12 +439,19 @@
 					</div>
 				{:else if STT_ENGINE === 'azure'}
 					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<SensitiveInput
-								placeholder={$i18n.t('API Key')}
-								bind:value={STT_AZURE_API_KEY}
-								required
-							/>
+						<div class="mt-1 mb-1">
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={STT_AZURE_API_KEY}
+									required
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
 						</div>
 
 						<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
@@ -379,15 +510,25 @@
 					</div>
 				{:else if STT_ENGINE === 'mistral'}
 					<div>
-						<div class="mt-1 flex gap-2 mb-1">
+						<div class="mt-1 mb-1 flex flex-col gap-2">
 							<input
-								class="flex-1 w-full bg-transparent outline-hidden"
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 								placeholder={$i18n.t('API Base URL')}
 								bind:value={STT_MISTRAL_API_BASE_URL}
 								required
 							/>
 
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={STT_MISTRAL_API_KEY} />
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={STT_MISTRAL_API_KEY}
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
 						</div>
 					</div>
 
@@ -498,63 +639,163 @@
 			</div>
 
 			<div>
-				<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Text-to-Speech')}</div>
+				<div class=" mt-0.5 mb-2 text-base font-medium">{$i18n.t('Text-to-Speech')}</div>
 
-				<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-				<div class="mb-2 py-0.5 flex w-full justify-between">
-					<div class=" self-center text-xs font-medium">{$i18n.t('Text-to-Speech Engine')}</div>
-					<div class="flex items-center relative">
-						<select
-							class="w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
-							bind:value={TTS_ENGINE}
-							placeholder={$i18n.t('Select a mode')}
-							on:change={async (e) => {
-								await updateConfigHandler();
-								await getVoices();
-								await getModels();
-
-								if (e.target?.value === 'openai') {
-									TTS_VOICE = 'alloy';
-									TTS_MODEL = 'tts-1';
-								} else {
-									TTS_VOICE = '';
-									TTS_MODEL = '';
-								}
-							}}
-						>
-							<option value="">{$i18n.t('Web API')}</option>
-							<option value="transformers">{$i18n.t('Transformers')} ({$i18n.t('Local')})</option>
-							<option value="openai">{$i18n.t('OpenAI')}</option>
-							<option value="elevenlabs">{$i18n.t('ElevenLabs')}</option>
-							<option value="azure">{$i18n.t('Azure AI Speech')}</option>
-						</select>
-					</div>
-				</div>
+				<hr class=" border-gray-100/30 dark:border-gray-850/30 mb-3" />
 
 				{#if TTS_ENGINE === 'openai'}
-					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<input
-								class="flex-1 w-full bg-transparent outline-hidden"
-								placeholder={$i18n.t('API Base URL')}
-								bind:value={TTS_OPENAI_API_BASE_URL}
-								required
-							/>
-
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={TTS_OPENAI_API_KEY} />
+					<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5">
+						<div class="flex items-center justify-between mb-3">
+							<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+								{$i18n.t('TTS Model')}
+							</div>
+							<Tooltip content={$i18n.t('Verify')}>
+								<button
+									class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+									type="button"
+									on:click={verifyTTSHandler}
+									disabled={verifyingTTS || !TTS_OPENAI_API_BASE_URL}
+								>
+									{#if verifyingTTS}
+										<Spinner className="size-3.5" />
+									{:else}
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+											aria-hidden="true"
+											class="size-3.5"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									{/if}
+									<span>{$i18n.t('Verify')}</span>
+								</button>
+							</Tooltip>
+						</div>
+						<div class="flex flex-col gap-3">
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Base URL')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									placeholder={$i18n.t('API Base URL')}
+									bind:value={TTS_OPENAI_API_BASE_URL}
+									required
+								/>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Key')}
+								</label>
+								<div
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+								>
+									<SensitiveInput
+										placeholder={$i18n.t('API Key')}
+										bind:value={TTS_OPENAI_API_KEY}
+										required={false}
+										outerClassName="flex flex-1 bg-transparent items-center"
+										inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+										showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+									/>
+								</div>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('TTS Voice')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={TTS_VOICE}
+									placeholder={$i18n.t('Set TTS voice (e.g. {{voice}})', {
+										voice: 'alloy'
+									})}
+								/>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('TTS Model')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={TTS_MODEL}
+									placeholder={$i18n.t('Set TTS model (e.g. {{model}})', {
+										model: 'tts-1'
+									})}
+								/>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('Additional Parameters')}
+								</label>
+								<Textarea
+									className="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={TTS_OPENAI_PARAMS}
+									placeholder={$i18n.t('Enter additional parameters in JSON format')}
+									minSize={100}
+								/>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('Response splitting')}
+								</label>
+								<select
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									aria-label={$i18n.t('Select how to split message text for TTS requests')}
+									bind:value={TTS_SPLIT_ON}
+								>
+									{#each Object.values(TTS_RESPONSE_SPLIT) as split}
+										<option value={split}
+											>{$i18n.t(split.charAt(0).toUpperCase() + split.slice(1))}</option
+										>
+									{/each}
+								</select>
+								<div class="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+									{$i18n.t(
+										"Control how message text is split for TTS requests. 'Punctuation' splits into sentences, 'paragraphs' splits into paragraphs, and 'none' keeps the message as a single string."
+									)}
+								</div>
+							</div>
 						</div>
 					</div>
 				{:else if TTS_ENGINE === 'elevenlabs'}
 					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={TTS_API_KEY} required />
+						<div class="mt-1 mb-1">
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={TTS_API_KEY}
+									required
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
 						</div>
 					</div>
 				{:else if TTS_ENGINE === 'azure'}
 					<div>
-						<div class="mt-1 flex gap-2 mb-1">
-							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={TTS_API_KEY} required />
+						<div class="mt-1 mb-1">
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={TTS_API_KEY}
+									required
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
 						</div>
 
 						<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
@@ -650,63 +891,6 @@
 								</a>
 							</div>
 						</div>
-					{:else if TTS_ENGINE === 'openai'}
-						<div class=" flex gap-2">
-							<div class="w-full">
-								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Voice')}</div>
-								<div class="flex w-full">
-									<div class="flex-1">
-										<input
-											list="voice-list"
-											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-											bind:value={TTS_VOICE}
-											placeholder={$i18n.t('Select a voice')}
-										/>
-
-										<datalist id="voice-list">
-											{#each voices as voice}
-												<option value={voice.id}>{voice.name}</option>
-											{/each}
-										</datalist>
-									</div>
-								</div>
-							</div>
-							<div class="w-full">
-								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Model')}</div>
-								<div class="flex w-full">
-									<div class="flex-1">
-										<input
-											list="tts-model-list"
-											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-											bind:value={TTS_MODEL}
-											placeholder={$i18n.t('Select a model')}
-										/>
-
-										<datalist id="tts-model-list">
-											{#each models as model}
-												<option value={model.id} class="bg-gray-50 dark:bg-gray-700" />
-											{/each}
-										</datalist>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
-							<div class="w-full">
-								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('Additional Parameters')}</div>
-								<div class="flex w-full">
-									<div class="flex-1">
-										<Textarea
-											className="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-											bind:value={TTS_OPENAI_PARAMS}
-											placeholder={$i18n.t('Enter additional parameters in JSON format')}
-											minSize={100}
-										/>
-									</div>
-								</div>
-							</div>
-						</div>
 					{:else if TTS_ENGINE === 'elevenlabs'}
 						<div class=" flex gap-2">
 							<div class="w-full">
@@ -794,33 +978,13 @@
 					{/if}
 				</div>
 
-				<div class="pt-0.5 flex w-full justify-between">
-					<div class="self-center text-xs font-medium">{$i18n.t('Response splitting')}</div>
-					<div class="flex items-center relative">
-						<select
-							class="w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
-							aria-label={$i18n.t('Select how to split message text for TTS requests')}
-							bind:value={TTS_SPLIT_ON}
-						>
-							{#each Object.values(TTS_RESPONSE_SPLIT) as split}
-								<option value={split}
-									>{$i18n.t(split.charAt(0).toUpperCase() + split.slice(1))}</option
-								>
-							{/each}
-						</select>
-					</div>
-				</div>
-				<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
-					{$i18n.t(
-						"Control how message text is split for TTS requests. 'Punctuation' splits into sentences, 'paragraphs' splits into paragraphs, and 'none' keeps the message as a single string."
-					)}
-				</div>
 			</div>
 		</div>
+		{/if}
 	</div>
-	<div class="flex justify-end text-sm font-medium">
+	<div class="flex justify-end pt-3 text-sm font-medium">
 		<button
-			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 			type="submit"
 		>
 			{$i18n.t('Save')}

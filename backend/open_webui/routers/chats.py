@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 
 log = logging.getLogger(__name__)
 
@@ -534,13 +534,7 @@ async def delete_all_user_chats(
     db: Session = Depends(get_session),
 ):
 
-    if user.role == "user" and not has_permission(
-        user.id, "chat.delete", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "chat.delete", request)
 
     result = Chats.delete_chats_by_user_id(user.id, db=db)
     return result
@@ -1126,13 +1120,7 @@ async def delete_chat_by_id(
 
         return result
     else:
-        if not has_permission(
-            user.id, "chat.delete", request.app.state.config.USER_PERMISSIONS
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-            )
+        require_permission(user, "chat.delete", request)
 
         chat = Chats.get_chat_by_id_and_user_id(id, user.id, db=db)
         if not chat:
@@ -1331,15 +1319,7 @@ async def share_chat_by_id(
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
-    if (user.role != "admin") and (
-        not has_permission(
-            user.id, "chat.share", request.app.state.config.USER_PERMISSIONS
-        )
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "chat.share", request)
 
     chat = Chats.get_chat_by_id_and_user_id(id, user.id, db=db)
 

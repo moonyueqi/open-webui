@@ -263,7 +263,7 @@ export const updateKnowledgeById = async (token: string, id: string, form: Knowl
 		},
 		body: JSON.stringify({
 			name: form?.name ? form.name : undefined,
-			description: form?.description ? form.description : undefined,
+			description: form?.description != null ? form.description : undefined,
 			data: form?.data ? form.data : undefined,
 			access_grants: form.access_grants
 		})

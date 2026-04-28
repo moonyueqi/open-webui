@@ -11,7 +11,7 @@ from open_webui.models.access_grants import AccessGrantModel, AccessGrants
 
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import BigInteger, Boolean, Column, String, Text, JSON, or_, func, cast
+from sqlalchemy import BigInteger, Boolean, Column, String, Text, JSON, func, cast
 
 ####################
 # Prompts DB Schema
@@ -31,6 +31,7 @@ class Prompt(Base):
     tags = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
     version_id = Column(Text, nullable=True)  # Points to active history entry
+    category_id = Column(Text, nullable=True)
     created_at = Column(BigInteger, nullable=True)
     updated_at = Column(BigInteger, nullable=True)
 
@@ -46,6 +47,7 @@ class PromptModel(BaseModel):
     tags: Optional[list[str]] = None
     is_active: Optional[bool] = True
     version_id: Optional[str] = None
+    category_id: Optional[str] = None
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
@@ -78,8 +80,8 @@ class PromptAccessListResponse(BaseModel):
 
 class PromptForm(BaseModel):
 
-    command: str
-    name: str  # Changed from title
+    command: Optional[str] = None
+    name: Optional[str] = None
     content: str
     data: Optional[dict] = None
     meta: Optional[dict] = None
@@ -88,6 +90,7 @@ class PromptForm(BaseModel):
     version_id: Optional[str] = None  # Active version
     commit_message: Optional[str] = None  # For history tracking
     is_production: Optional[bool] = True  # Whether to set new version as production
+    category_id: Optional[str] = None
 
 
 class PromptsTable:
@@ -118,17 +121,21 @@ class PromptsTable:
         now = int(time.time())
         prompt_id = str(uuid.uuid4())
 
+        auto_name = form_data.name or f"prompt-{prompt_id[:8]}"
+        auto_command = form_data.command or f"prompt-{prompt_id[:8]}"
+
         prompt = PromptModel(
             id=prompt_id,
             user_id=user_id,
-            command=form_data.command,
-            name=form_data.name,
+            command=auto_command,
+            name=auto_name,
             content=form_data.content,
             data=form_data.data or {},
             meta=form_data.meta or {},
             tags=form_data.tags or [],
             access_grants=[],
             is_active=True,
+            category_id=form_data.category_id,
             created_at=now,
             updated_at=now,
         )
@@ -146,9 +153,9 @@ class PromptsTable:
                 if result:
                     current_access_grants = self._get_access_grants(prompt_id, db=db)
                     snapshot = {
-                        "name": form_data.name,
+                        "name": auto_name,
                         "content": form_data.content,
-                        "command": form_data.command,
+                        "command": auto_command,
                         "data": form_data.data or {},
                         "meta": form_data.meta or {},
                         "tags": form_data.tags or [],
@@ -279,13 +286,7 @@ class PromptsTable:
                 query_key = filter.get("query")
                 if query_key:
                     query = query.filter(
-                        or_(
-                            Prompt.name.ilike(f"%{query_key}%"),
-                            Prompt.command.ilike(f"%{query_key}%"),
-                            Prompt.content.ilike(f"%{query_key}%"),
-                            User.name.ilike(f"%{query_key}%"),
-                            User.email.ilike(f"%{query_key}%"),
-                        )
+                        Prompt.name.ilike(f"%{query_key}%")
                     )
 
                 view_option = filter.get("view_option")
@@ -387,15 +388,17 @@ class PromptsTable:
                 parent_id = latest_history.id if latest_history else None
                 current_access_grants = self._get_access_grants(prompt.id, db=db)
 
+                update_name = form_data.name or prompt.name
+
                 # Check if content changed to decide on history creation
                 content_changed = (
-                    prompt.name != form_data.name
+                    prompt.name != update_name
                     or prompt.content != form_data.content
                     or form_data.access_grants is not None
                 )
 
                 # Update prompt fields
-                prompt.name = form_data.name
+                prompt.name = update_name
                 prompt.content = form_data.content
                 prompt.data = form_data.data or prompt.data
                 prompt.meta = form_data.meta or prompt.meta
@@ -411,7 +414,7 @@ class PromptsTable:
                 # Create history entry only if content changed
                 if content_changed:
                     snapshot = {
-                        "name": form_data.name,
+                        "name": update_name,
                         "content": form_data.content,
                         "command": command,
                         "data": form_data.data or {},
@@ -476,6 +479,9 @@ class PromptsTable:
 
                 if form_data.tags is not None:
                     prompt.tags = form_data.tags
+
+                if form_data.category_id is not None:
+                    prompt.category_id = form_data.category_id
 
                 if form_data.access_grants is not None:
                     AccessGrants.set_access_grants(

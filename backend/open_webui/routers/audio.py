@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -35,7 +36,7 @@ from pydantic import BaseModel
 
 from open_webui.utils.misc import strict_match_mime_type
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 from open_webui.utils.headers import include_user_info_headers
 from open_webui.config import (
     WHISPER_MODEL_AUTO_UPDATE,
@@ -338,13 +339,7 @@ async def speech(request: Request, user=Depends(get_verified_user)):
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if user.role != "admin" and not has_permission(
-        user.id, "chat.tts", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "chat.tts", request)
 
     body = await request.body()
     name = hashlib.sha256(
@@ -365,7 +360,9 @@ async def speech(request: Request, user=Depends(get_verified_user)):
         payload = json.loads(body.decode("utf-8"))
     except Exception as e:
         log.exception(e)
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        raise HTTPException(
+            status_code=400, detail=ERROR_MESSAGES.INVALID_AUDIO_PAYLOAD
+        )
 
     r = None
     if request.app.state.config.TTS_ENGINE == "openai":
@@ -376,9 +373,16 @@ async def speech(request: Request, user=Depends(get_verified_user)):
             async with aiohttp.ClientSession(
                 timeout=timeout, trust_env=True
             ) as session:
+                tts_extra_params = dict(
+                    request.app.state.config.TTS_OPENAI_PARAMS or {}
+                )
+                # 默认朗读语速兜底为 1.3，避免 CosyVoice 等模型默认语速偏慢；
+                # 用户在「额外参数」中显式设置 speed 时以用户为准。
+                tts_extra_params.setdefault("speed", 1.3)
+
                 payload = {
                     **payload,
-                    **(request.app.state.config.TTS_OPENAI_PARAMS or {}),
+                    **tts_extra_params,
                 }
 
                 headers = {
@@ -407,24 +411,19 @@ async def speech(request: Request, user=Depends(get_verified_user)):
 
         except Exception as e:
             log.exception(e)
-            detail = None
 
             status_code = 500
-            detail = f"Open WebUI: Server Connection Error"
-
             if r is not None:
                 status_code = r.status
-
                 try:
                     res = await r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error']}"
+                    log.error(f"TTS OpenAI external error: {res}")
                 except Exception:
-                    detail = f"External: {e}"
+                    log.error(f"TTS OpenAI external error: {e}")
 
             raise HTTPException(
                 status_code=status_code,
-                detail=detail,
+                detail=ERROR_MESSAGES.TTS_FAILED,
             )
 
     elif request.app.state.config.TTS_ENGINE == "elevenlabs":
@@ -433,7 +432,7 @@ async def speech(request: Request, user=Depends(get_verified_user)):
         if voice_id not in get_available_voices(request):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid voice id",
+                detail=ERROR_MESSAGES.INVALID_VOICE_ID,
             )
 
         try:
@@ -467,19 +466,16 @@ async def speech(request: Request, user=Depends(get_verified_user)):
 
         except Exception as e:
             log.exception(e)
-            detail = None
-
             try:
                 if r.status != 200:
                     res = await r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
+                    log.error(f"TTS ElevenLabs external error: {res}")
             except Exception:
-                detail = f"External: {e}"
+                log.error(f"TTS ElevenLabs external error: {e}")
 
             raise HTTPException(
                 status_code=getattr(r, "status", 500) if r else 500,
-                detail=detail if detail else "Open WebUI: Server Connection Error",
+                detail=ERROR_MESSAGES.TTS_FAILED,
             )
 
     elif request.app.state.config.TTS_ENGINE == "azure":
@@ -487,7 +483,9 @@ async def speech(request: Request, user=Depends(get_verified_user)):
             payload = json.loads(body.decode("utf-8"))
         except Exception as e:
             log.exception(e)
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+            raise HTTPException(
+                status_code=400, detail=ERROR_MESSAGES.INVALID_AUDIO_PAYLOAD
+            )
 
         region = request.app.state.config.TTS_AZURE_SPEECH_REGION or "eastus"
         base_url = request.app.state.config.TTS_AZURE_SPEECH_BASE_URL
@@ -526,19 +524,16 @@ async def speech(request: Request, user=Depends(get_verified_user)):
 
         except Exception as e:
             log.exception(e)
-            detail = None
-
             try:
                 if r.status != 200:
                     res = await r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
+                    log.error(f"TTS Azure external error: {res}")
             except Exception:
-                detail = f"External: {e}"
+                log.error(f"TTS Azure external error: {e}")
 
             raise HTTPException(
                 status_code=getattr(r, "status", 500) if r else 500,
-                detail=detail if detail else "Open WebUI: Server Connection Error",
+                detail=ERROR_MESSAGES.TTS_FAILED,
             )
 
     elif request.app.state.config.TTS_ENGINE == "transformers":
@@ -547,7 +542,9 @@ async def speech(request: Request, user=Depends(get_verified_user)):
             payload = json.loads(body.decode("utf-8"))
         except Exception as e:
             log.exception(e)
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+            raise HTTPException(
+                status_code=400, detail=ERROR_MESSAGES.INVALID_AUDIO_PAYLOAD
+            )
 
         import torch
         import soundfile as sf
@@ -664,16 +661,14 @@ def transcription_handler(request, file_path, metadata, user=None):
         except Exception as e:
             log.exception(e)
 
-            detail = None
             if r is not None:
                 try:
                     res = r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
+                    log.error(f"STT OpenAI external error: {res}")
                 except Exception:
-                    detail = f"External: {e}"
+                    log.error(f"STT OpenAI external error: {e}")
 
-            raise Exception(detail if detail else "Open WebUI: Server Connection Error")
+            raise Exception(ERROR_MESSAGES.STT_FAILED)
 
     elif request.app.state.config.STT_ENGINE == "deepgram":
         try:
@@ -723,9 +718,7 @@ def transcription_handler(request, file_path, metadata, user=None):
                 ].get("transcript", "")
             except (KeyError, IndexError) as e:
                 log.error(f"Malformed response from Deepgram: {str(e)}")
-                raise Exception(
-                    "Failed to parse Deepgram response - unexpected response format"
-                )
+                raise Exception(ERROR_MESSAGES.STT_FAILED)
             data = {"text": transcript.strip()}
 
             # Save transcript
@@ -737,27 +730,27 @@ def transcription_handler(request, file_path, metadata, user=None):
 
         except Exception as e:
             log.exception(e)
-            detail = None
             if r is not None:
                 try:
                     res = r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
+                    log.error(f"STT Deepgram external error: {res}")
                 except Exception:
-                    detail = f"External: {e}"
-            raise Exception(detail if detail else "Open WebUI: Server Connection Error")
+                    log.error(f"STT Deepgram external error: {e}")
+            raise Exception(ERROR_MESSAGES.STT_FAILED)
 
     elif request.app.state.config.STT_ENGINE == "azure":
         # Check file exists and size
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=400, detail="Audio file not found")
+            raise HTTPException(
+                status_code=400, detail=ERROR_MESSAGES.AUDIO_FILE_NOT_FOUND
+            )
 
         # Check file size (Azure has a larger limit of 200MB)
         file_size = os.path.getsize(file_path)
         if file_size > AZURE_MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=400,
-                detail=f"File size exceeds Azure's limit of {AZURE_MAX_FILE_SIZE_MB}MB",
+                detail=ERROR_MESSAGES.AUDIO_FILE_TOO_LARGE(f"{AZURE_MAX_FILE_SIZE_MB}MB"),
             )
 
         api_key = request.app.state.config.AUDIO_STT_AZURE_API_KEY
@@ -788,7 +781,7 @@ def transcription_handler(request, file_path, metadata, user=None):
         if not api_key or not region:
             raise HTTPException(
                 status_code=400,
-                detail="Azure API key is required for Azure STT",
+                detail=ERROR_MESSAGES.STT_CONFIG_MISSING("Azure"),
             )
 
         r = None
@@ -844,39 +837,38 @@ def transcription_handler(request, file_path, metadata, user=None):
             return data
 
         except (KeyError, IndexError, ValueError) as e:
-            log.exception("Error parsing Azure response")
+            log.exception(f"Error parsing Azure response: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to parse Azure response: {str(e)}",
+                detail=ERROR_MESSAGES.STT_FAILED,
             )
         except requests.exceptions.RequestException as e:
             log.exception(e)
-            detail = None
-
             try:
                 if r is not None and r.status_code != 200:
                     res = r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
+                    log.error(f"STT Azure external error: {res}")
             except Exception:
-                detail = f"External: {e}"
+                log.error(f"STT Azure external error: {e}")
 
             raise HTTPException(
                 status_code=getattr(r, "status_code", 500) if r else 500,
-                detail=detail if detail else "Open WebUI: Server Connection Error",
+                detail=ERROR_MESSAGES.STT_FAILED,
             )
 
     elif request.app.state.config.STT_ENGINE == "mistral":
         # Check file exists
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=400, detail="Audio file not found")
+            raise HTTPException(
+                status_code=400, detail=ERROR_MESSAGES.AUDIO_FILE_NOT_FOUND
+            )
 
         # Check file size
         file_size = os.path.getsize(file_path)
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=400,
-                detail=f"File size exceeds limit of {MAX_FILE_SIZE_MB}MB",
+                detail=ERROR_MESSAGES.AUDIO_FILE_TOO_LARGE(f"{MAX_FILE_SIZE_MB}MB"),
             )
 
         api_key = request.app.state.config.AUDIO_STT_MISTRAL_API_KEY
@@ -891,7 +883,7 @@ def transcription_handler(request, file_path, metadata, user=None):
         if not api_key:
             raise HTTPException(
                 status_code=400,
-                detail="Mistral API key is required for Mistral STT",
+                detail=ERROR_MESSAGES.STT_CONFIG_MISSING("Mistral"),
             )
 
         r = None
@@ -918,7 +910,7 @@ def transcription_handler(request, file_path, metadata, user=None):
                         log.error("Audio conversion failed")
                         raise HTTPException(
                             status_code=500,
-                            detail="Audio conversion failed. Chat completions API requires mp3 or wav format.",
+                            detail=ERROR_MESSAGES.AUDIO_FORMAT_INVALID,
                         )
 
                 # Read and encode audio file as base64
@@ -1024,28 +1016,23 @@ def transcription_handler(request, file_path, metadata, user=None):
             return data
 
         except ValueError as e:
-            log.exception("Error parsing Mistral response")
+            log.exception(f"Error parsing Mistral response: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to parse Mistral response: {str(e)}",
+                detail=ERROR_MESSAGES.STT_FAILED,
             )
         except requests.exceptions.RequestException as e:
             log.exception(e)
-            detail = None
-
             try:
                 if r is not None and r.status_code != 200:
                     res = r.json()
-                    if "error" in res:
-                        detail = f"External: {res['error'].get('message', '')}"
-                    else:
-                        detail = f"External: {r.text}"
+                    log.error(f"STT Mistral external error: {res}")
             except Exception:
-                detail = f"External: {e}"
+                log.error(f"STT Mistral external error: {e}")
 
             raise HTTPException(
                 status_code=getattr(r, "status_code", 500) if r else 500,
-                detail=detail if detail else "Open WebUI: Server Connection Error",
+                detail=ERROR_MESSAGES.STT_FAILED,
             )
 
 
@@ -1088,9 +1075,10 @@ def transcribe(
                 try:
                     results.append(future.result())
                 except Exception as transcribe_exc:
+                    log.exception(f"Error transcribing chunk: {transcribe_exc}")
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Error transcribing chunk: {transcribe_exc}",
+                        detail=ERROR_MESSAGES.STT_FAILED,
                     )
     finally:
         # Clean up only the temporary chunks, never the original file
@@ -1175,13 +1163,7 @@ def transcription(
     language: Optional[str] = Form(None),
     user=Depends(get_verified_user),
 ):
-    if user.role != "admin" and not has_permission(
-        user.id, "chat.stt", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "chat.stt", request)
     log.info(f"file.content_type: {file.content_type}")
     stt_supported_content_types = getattr(
         request.app.state.config, "STT_SUPPORTED_CONTENT_TYPES", []
@@ -1231,7 +1213,7 @@ def transcription(
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Transcription failed.",
+                detail=ERROR_MESSAGES.STT_FAILED,
             )
 
     except Exception as e:
@@ -1239,7 +1221,7 @@ def transcription(
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Transcription failed.",
+            detail=ERROR_MESSAGES.STT_FAILED,
         )
 
 
@@ -1401,3 +1383,122 @@ async def get_voices(request: Request, user=Depends(get_verified_user)):
             {"id": k, "name": v} for k, v in get_available_voices(request).items()
         ]
     }
+
+
+##########################################
+#
+# Audio model verification (TTS / STT)
+#
+# Lightweight check: only call GET {url}/models on the
+# OpenAI-compatible endpoint, then verify that the configured
+# model id is present in the returned list. Mirrors the embedding /
+# reranking verification flow.
+#
+##########################################
+
+
+class AudioModelVerifyForm(BaseModel):
+    url: str
+    key: Optional[str] = ""
+    model: str
+
+
+def _classify_audio_http_error(status_code: int) -> str:
+    if status_code in (401, 403):
+        return "auth"
+    if status_code == 404:
+        return "endpoint"
+    if status_code in (400, 422):
+        return "model"
+    return "model"
+
+
+async def _verify_audio_model_via_models_list(
+    form_data: AudioModelVerifyForm,
+) -> dict:
+    if not form_data.url:
+        return {"ok": False, "stage": "input", "message": "missing url"}
+    if not form_data.model:
+        return {"ok": False, "stage": "input", "message": "missing model"}
+
+    url = form_data.url.rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {form_data.key or ''}",
+    }
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST)
+        async with aiohttp.ClientSession(
+            trust_env=True, timeout=timeout
+        ) as session:
+            async with session.get(
+                f"{url}/models",
+                headers=headers,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as r:
+                if r.status != 200:
+                    return {
+                        "ok": False,
+                        "stage": _classify_audio_http_error(r.status),
+                        "status": r.status,
+                    }
+
+                try:
+                    data = await r.json(content_type=None)
+                except Exception:
+                    return {
+                        "ok": False,
+                        "stage": "endpoint",
+                        "status": r.status,
+                        "message": "non-JSON response",
+                    }
+
+                items = []
+                if isinstance(data, dict) and isinstance(data.get("data"), list):
+                    items = data["data"]
+                elif isinstance(data, list):
+                    items = data
+
+                ids = []
+                for item in items:
+                    if isinstance(item, dict):
+                        mid = item.get("id") or item.get("name")
+                        if isinstance(mid, str):
+                            ids.append(mid)
+                    elif isinstance(item, str):
+                        ids.append(item)
+
+                if form_data.model in ids:
+                    return {"ok": True, "model": form_data.model}
+
+                return {
+                    "ok": False,
+                    "stage": "model",
+                    "status": r.status,
+                }
+    except aiohttp.ClientConnectorError:
+        return {"ok": False, "stage": "connection"}
+    except aiohttp.ClientSSLError:
+        return {"ok": False, "stage": "connection"}
+    except asyncio.TimeoutError:
+        return {"ok": False, "stage": "timeout"}
+    except aiohttp.ClientError as e:
+        log.exception(f"verify_audio_model client error: {e}")
+        return {"ok": False, "stage": "connection"}
+    except Exception as e:
+        log.exception(f"verify_audio_model error: {e}")
+        return {"ok": False, "stage": "model"}
+
+
+@router.post("/tts/verify")
+async def verify_tts_model(
+    form_data: AudioModelVerifyForm, user=Depends(get_admin_user)
+):
+    return await _verify_audio_model_via_models_list(form_data)
+
+
+@router.post("/stt/verify")
+async def verify_stt_model(
+    form_data: AudioModelVerifyForm, user=Depends(get_admin_user)
+):
+    return await _verify_audio_model_via_models_list(form_data)

@@ -81,7 +81,11 @@ ENV OPENAI_API_KEY="" \
     WEBUI_SECRET_KEY="" \
     SCARF_NO_ANALYTICS=true \
     DO_NOT_TRACK=true \
-    ANONYMIZED_TELEMETRY=false
+    ANONYMIZED_TELEMETRY=false \
+    # Disable per-model access control so every user can use every connected
+    # model out of the box. Override with `-e BYPASS_MODEL_ACCESS_CONTROL=false`
+    # if you need role/grant based gating.
+    BYPASS_MODEL_ACCESS_CONTROL=true
 
 #### Other models #########################################################
 ## whisper TTS model settings ##
@@ -129,6 +133,7 @@ RUN apt-get update && \
     git build-essential pandoc gcc netcat-openbsd curl jq \
     python3-dev \
     ffmpeg libsm6 libxext6 zstd \
+    libreoffice-core libreoffice-writer libreoffice-impress libreoffice-calc \
     && rm -rf /var/lib/apt/lists/*
 
 # install python dependencies

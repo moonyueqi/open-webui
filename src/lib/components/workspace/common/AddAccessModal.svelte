@@ -26,15 +26,13 @@
 </script>
 
 <Modal size="sm" bind:show>
-	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 mb-1.5">
-			<div class="self-center text-base">
-				<div class="flex items-center gap-0.5 shrink-0">
-					{$i18n.t('Add Access')}
-				</div>
-			</div>
+	<div class="px-5 pt-5 pb-4">
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+				{$i18n.t('Add Access')}
+			</h2>
 			<button
-				class="self-center"
+				class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 				on:click={() => {
 					show = false;
 				}}
@@ -43,33 +41,31 @@
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-3 pb-4 md:space-x-4 dark:text-gray-200">
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
-				<form
-					class="flex flex-col w-full"
-					on:submit|preventDefault={() => {
-						submitHandler();
-					}}
-				>
-					<div class="flex flex-col w-full h-full pb-2">
-						<MemberSelector
-							bind:userIds
-							bind:groupIds
-							includeGroups={true}
-							includeUsers={shareUsers}
-						/>
-					</div>
+		<form
+			class="flex flex-col w-full"
+			on:submit|preventDefault={() => {
+				submitHandler();
+			}}
+		>
+			<MemberSelector
+				bind:userIds
+				bind:groupIds
+				includeGroups={true}
+				includeUsers={shareUsers}
+			/>
 
-					<div class="flex justify-end pt-3 text-sm font-medium gap-1.5">
-						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-950 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
-							type="submit"
-						>
-							{$i18n.t('Add')}
-						</button>
-					</div>
-				</form>
+			<div class="flex justify-end mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+				<button
+					class="px-3.5 py-1.5 text-xs font-medium bg-black hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-200 transition rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+					type="submit"
+					disabled={userIds.length === 0 && groupIds.length === 0}
+				>
+					{$i18n.t('Add')}
+					{#if userIds.length > 0 || groupIds.length > 0}
+						<span class="ml-1 opacity-75">({userIds.length + groupIds.length})</span>
+					{/if}
+				</button>
 			</div>
-		</div>
+		</form>
 	</div>
 </Modal>

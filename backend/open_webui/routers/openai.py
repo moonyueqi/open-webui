@@ -741,8 +741,11 @@ async def verify_connection(
         except aiohttp.ClientError as e:
             # ClientError covers all aiohttp requests issues
             log.exception(f"Client error: {str(e)}")
+            # 把异常类型一起带回去，便于前端把"对端拒绝/DNS 失败/连接重置"等
+            # 跟普通 5xx 区分开，避免在用户没填 key、被对端 reset 时仍只看到通用文案。
             raise HTTPException(
-                status_code=500, detail="Open WebUI: Server Connection Error"
+                status_code=500,
+                detail=f"Open WebUI: Server Connection Error ({type(e).__name__})",
             )
         except Exception as e:
             log.exception(f"Unexpected error: {e}")

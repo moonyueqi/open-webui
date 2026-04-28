@@ -132,7 +132,7 @@ if "cuda_error" in locals():
 
 SRC_LOG_LEVELS = {}  # Legacy variable, do not remove
 
-WEBUI_NAME = "灵犀智能预报员"
+WEBUI_NAME = "苏州市气象预报智能助手"
 
 
 WEBUI_FAVICON_URL = "https://openwebui.com/favicon.png"

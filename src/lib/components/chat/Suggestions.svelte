@@ -76,7 +76,7 @@
 				? ' -mt-1'
 				: 'text-center items-center justify-center'}  self-start text-gray-600 dark:text-gray-400"
 		>
-			{$WEBUI_NAME} ‧ v{WEBUI_VERSION}
+			苏州市气象预报智能助手 v0.2.1
 		</div>
 	{/if}
 </div>

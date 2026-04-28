@@ -10,6 +10,9 @@
 
 	import AdvancedParams from './Advanced/AdvancedParams.svelte';
 	import Textarea from '$lib/components/common/Textarea.svelte';
+	import Switch from '$lib/components/common/Switch.svelte';
+	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
+	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	export let saveSettings: Function;
 	export let getModels: Function;
 
@@ -25,18 +28,19 @@
 	let showAdvanced = false;
 
 	const toggleNotification = async () => {
-		const permission = await Notification.requestPermission();
-
-		if (permission === 'granted') {
-			notificationEnabled = !notificationEnabled;
-			saveSettings({ notificationEnabled: notificationEnabled });
-		} else {
-			toast.error(
-				$i18n.t(
-					'Response notifications cannot be activated as the website permissions have been denied. Please visit your browser settings to grant the necessary access.'
-				)
-			);
+		if (notificationEnabled) {
+			const permission = await Notification.requestPermission();
+			if (permission !== 'granted') {
+				notificationEnabled = false;
+				toast.error(
+					$i18n.t(
+						'Response notifications cannot be activated as the website permissions have been denied. Please visit your browser settings to grant the necessary access.'
+					)
+				);
+				return;
+			}
 		}
+		saveSettings({ notificationEnabled: notificationEnabled });
 	};
 
 	let params = {
@@ -195,104 +199,106 @@
 </script>
 
 <div class="flex flex-col h-full justify-between text-sm" id="tab-general">
-	<div class="  overflow-y-scroll max-h-[28rem] md:max-h-full">
-		<div class="">
-			<div class=" mb-1 text-sm font-medium">{$i18n.t('WebUI Settings')}</div>
-
-			<div class="flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">{$i18n.t('Theme')}</div>
-				<div class="flex items-center relative">
-					<select
-						class="w-fit pr-8 rounded-sm py-2 px-2 text-xs bg-transparent text-right {$settings.highContrastMode
-							? ''
-							: 'outline-hidden'}"
-						bind:value={selectedTheme}
-						placeholder={$i18n.t('Select a theme')}
-						on:change={() => themeChangeHandler(selectedTheme)}
-					>
-						<option value="system">⚙️ {$i18n.t('System')}</option>
-						<option value="dark">🌑 {$i18n.t('Dark')}</option>
-						<option value="oled-dark">🌃 {$i18n.t('OLED Dark')}</option>
-						<option value="light">☀️ {$i18n.t('Light')}</option>
-						{#if $config?.features?.enable_easter_eggs}
-							<option value="her">🌷 Her</option>
-						{/if}
-					</select>
-				</div>
-			</div>
-
-			<div class=" flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">{$i18n.t('Language')}</div>
-				<div class="flex items-center relative">
-					<select
-						class="w-fit pr-8 rounded-sm py-2 px-2 text-xs bg-transparent text-right {$settings.highContrastMode
-							? ''
-							: 'outline-hidden'}"
-						bind:value={lang}
-						placeholder={$i18n.t('Select a language')}
-						on:change={(e) => {
-							changeLanguage(lang);
-						}}
-					>
-						{#each languages as language}
-							<option value={language['code']}>{language['title']}</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-			{#if $i18n.language === 'en-US' && !($config?.license_metadata ?? false)}
-				<div
-					class="mb-2 text-xs {($settings?.highContrastMode ?? false)
-						? 'text-gray-800 dark:text-gray-100'
-						: 'text-gray-400 dark:text-gray-500'}"
-				>
-					Couldn't find your language?
-					<a
-						class="font-medium underline {($settings?.highContrastMode ?? false)
-							? 'text-gray-700 dark:text-gray-200'
-							: 'text-gray-300'}"
-						href="https://github.com/open-webui/open-webui/blob/main/docs/CONTRIBUTING.md#-translations-and-internationalization"
-						target="_blank"
-					>
-						Help us translate Open WebUI!
-					</a>
-				</div>
-			{/if}
+	<div class="space-y-3 overflow-y-scroll max-h-[28rem] md:max-h-full">
+		<div>
+			<div class="mb-2 text-sm font-medium">{$i18n.t('WebUI Settings')}</div>
 
 			<div>
-				<div class=" py-0.5 flex w-full justify-between">
-					<div class=" self-center text-xs font-medium">{$i18n.t('Notifications')}</div>
+				<div class="py-0.5 flex w-full justify-between">
+					<div class="self-center text-xs font-medium">{$i18n.t('Theme')}</div>
+					<div class="flex items-center relative">
+						<select
+							class="w-fit pr-8 rounded-sm py-2 px-2 text-xs bg-transparent text-right {$settings.highContrastMode
+								? ''
+								: 'outline-hidden'}"
+							bind:value={selectedTheme}
+							placeholder={$i18n.t('Select a theme')}
+							on:change={() => themeChangeHandler(selectedTheme)}
+						>
+							<option value="system">⚙️ {$i18n.t('System')}</option>
+							<option value="dark">🌑 {$i18n.t('Dark')}</option>
+							<option value="oled-dark">🌃 {$i18n.t('OLED Dark')}</option>
+							<option value="light">☀️ {$i18n.t('Light')}</option>
+							{#if $config?.features?.enable_easter_eggs}
+								<option value="her">🌷 Her</option>
+							{/if}
+						</select>
+					</div>
+				</div>
+			</div>
 
-					<button
-						class="p-1 px-3 text-xs flex rounded-sm transition"
-						on:click={() => {
-							toggleNotification();
-						}}
-						type="button"
-						role="switch"
-						aria-checked={notificationEnabled}
+			<div>
+				<div class="py-0.5 flex w-full justify-between">
+					<div class="self-center text-xs font-medium">{$i18n.t('Language')}</div>
+					<div class="flex items-center relative">
+						<select
+							class="w-fit pr-8 rounded-sm py-2 px-2 text-xs bg-transparent text-right {$settings.highContrastMode
+								? ''
+								: 'outline-hidden'}"
+							bind:value={lang}
+							placeholder={$i18n.t('Select a language')}
+							on:change={(e) => {
+								changeLanguage(lang);
+							}}
+						>
+							{#each languages as language}
+								<option value={language['code']}>{language['title']}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
+
+				{#if $i18n.language === 'en-US' && !($config?.license_metadata ?? false)}
+					<div
+						class="mt-0.5 mb-1 text-xs {($settings?.highContrastMode ?? false)
+							? 'text-gray-800 dark:text-gray-100'
+							: 'text-gray-400 dark:text-gray-500'}"
 					>
-						{#if notificationEnabled === true}
-							<span class="ml-2 self-center">{$i18n.t('On')}</span>
-						{:else}
-							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
-						{/if}
-					</button>
+						Couldn't find your language?
+						<a
+							class="font-medium underline {($settings?.highContrastMode ?? false)
+								? 'text-gray-700 dark:text-gray-200'
+								: 'text-gray-300'}"
+							href="https://github.com/open-webui/open-webui/blob/main/docs/CONTRIBUTING.md#-translations-and-internationalization"
+							target="_blank"
+						>
+							Help us translate Open WebUI!
+						</a>
+					</div>
+				{/if}
+			</div>
+
+			<div>
+				<div class="py-0.5 flex w-full justify-between">
+					<div id="notifications-label" class="self-center text-xs font-medium">
+						{$i18n.t('Notifications')}
+					</div>
+
+					<div class="flex items-center gap-2 p-1">
+						<Switch
+							ariaLabelledbyId="notifications-label"
+							tooltip={true}
+							bind:state={notificationEnabled}
+							on:change={() => {
+								toggleNotification();
+							}}
+						/>
+					</div>
 				</div>
 			</div>
 		</div>
 
 		{#if $user?.role === 'admin' || (($user?.permissions.chat?.controls ?? true) && ($user?.permissions.chat?.system_prompt ?? true))}
-			<hr class="border-gray-100/30 dark:border-gray-850/30 my-3" />
+			<hr class="border-gray-100/30 dark:border-gray-850/30" />
 
 			<div>
-				<div class=" my-2.5 text-sm font-medium">{$i18n.t('System Prompt')}</div>
+				<div class="mb-2 text-sm font-medium">{$i18n.t('System Prompt')}</div>
 				<Textarea
 					bind:value={system}
 					className={'w-full text-sm outline-hidden resize-vertical' +
 						($settings.highContrastMode
 							? ' p-2.5 border-2 border-gray-300 dark:border-gray-700 rounded-lg bg-transparent text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 overflow-y-hidden'
-							: '  dark:text-gray-300 ')}
+							: ' dark:text-gray-300')}
 					rows="4"
 					placeholder={$i18n.t('Enter system prompt here')}
 				/>
@@ -300,23 +306,34 @@
 		{/if}
 
 		{#if $user?.role === 'admin' || (($user?.permissions.chat?.controls ?? true) && ($user?.permissions.chat?.params ?? true))}
-			<div class="mt-2 space-y-3 pr-1.5">
-				<div class="flex justify-between items-center text-sm">
-					<div class="  font-medium">{$i18n.t('Advanced Parameters')}</div>
-					<button
-						class=" text-xs font-medium {($settings?.highContrastMode ?? false)
-							? 'text-gray-800 dark:text-gray-100'
-							: 'text-gray-400 dark:text-gray-500'}"
-						type="button"
-						aria-expanded={showAdvanced}
-						on:click={() => {
-							showAdvanced = !showAdvanced;
-						}}>{showAdvanced ? $i18n.t('Hide') : $i18n.t('Show')}</button
-					>
-				</div>
+			<hr class="border-gray-100/30 dark:border-gray-850/30" />
+
+			<div>
+				<button
+					class="w-full flex justify-between items-center text-sm py-1 cursor-pointer"
+					type="button"
+					aria-expanded={showAdvanced}
+					on:click={() => {
+						showAdvanced = !showAdvanced;
+					}}
+				>
+					<div class="font-medium">{$i18n.t('Advanced Parameters')}</div>
+					<div class="flex items-center gap-1.5 {($settings?.highContrastMode ?? false)
+						? 'text-gray-800 dark:text-gray-100'
+						: 'text-gray-500 dark:text-gray-400'}">
+						<span class="text-xs">{showAdvanced ? $i18n.t('Hide') : $i18n.t('Show')}</span>
+						{#if showAdvanced}
+							<ChevronUp className="size-3.5" />
+						{:else}
+							<ChevronDown className="size-3.5" />
+						{/if}
+					</div>
+				</button>
 
 				{#if showAdvanced}
-					<AdvancedParams admin={$user?.role === 'admin'} bind:params />
+					<div class="mt-1 pr-1.5">
+						<AdvancedParams admin={$user?.role === 'admin'} bind:params />
+					</div>
 				{/if}
 			</div>
 		{/if}

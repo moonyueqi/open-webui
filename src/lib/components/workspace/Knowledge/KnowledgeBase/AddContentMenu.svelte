@@ -10,8 +10,6 @@
 	import BarsArrowUp from '$lib/components/icons/BarsArrowUp.svelte';
 	import FolderOpen from '$lib/components/icons/FolderOpen.svelte';
 	import ArrowPath from '$lib/components/icons/ArrowPath.svelte';
-	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
-
 	const i18n = getContext('i18n');
 
 	export let onClose: Function = () => {};
@@ -33,7 +31,7 @@
 >
 	<Tooltip content={$i18n.t('Add Content')}>
 		<button
-			class=" p-1.5 rounded-xl hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition font-medium text-sm flex items-center space-x-1"
+			class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition font-medium text-sm flex items-center gap-1.5"
 			on:click={(e) => {
 				e.stopPropagation();
 				show = true;
@@ -49,6 +47,7 @@
 					d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z"
 				/>
 			</svg>
+			<span>{$i18n.t('Add Content')}</span>
 		</button>
 	</Tooltip>
 
@@ -96,16 +95,6 @@
 					<div class="flex items-center">{$i18n.t('Sync directory')}</div>
 				</DropdownMenu.Item>
 			</Tooltip>
-
-			<DropdownMenu.Item
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"
-				on:click={() => {
-					onUpload({ type: 'web' });
-				}}
-			>
-				<GlobeAlt strokeWidth="2" />
-				<div class="flex items-center">{$i18n.t('Add webpage')}</div>
-			</DropdownMenu.Item>
 
 			<DropdownMenu.Item
 				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"

@@ -14,6 +14,7 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import LockClosed from '$lib/components/icons/LockClosed.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	let formElement = null;
 	let loading = false;
@@ -33,8 +34,13 @@
 	};
 	export let content = '';
 	export let accessGrants = [];
+	export let ownerId = '';
 
 	let _content = '';
+
+	// Only the resource owner or admin may modify access grants. A user with
+	// `write` permission can edit content but cannot change who has access.
+	$: canManageAccess = !edit || $user?.role === 'admin' || (ownerId && ownerId === $user?.id);
 
 	$: if (content) {
 		updateContent();
@@ -158,13 +164,17 @@ class Tools:
 
 	const saveHandler = async () => {
 		loading = true;
-		onSave({
-			id,
-			name,
-			meta,
-			content,
-			access_grants: accessGrants
-		});
+		try {
+			await onSave({
+				id,
+				name,
+				meta,
+				content,
+				access_grants: accessGrants
+			});
+		} finally {
+			loading = false;
+		}
 	};
 
 	const submitHandler = async () => {
@@ -220,27 +230,25 @@ class Tools:
 			}}
 		>
 			<div class="flex flex-col flex-1 overflow-auto h-0 rounded-lg">
-				<div class="w-full mb-2 flex flex-col gap-0.5">
-					<div class="flex w-full items-center">
-						<div class=" shrink-0 mr-2">
-							<Tooltip content={$i18n.t('Back')}>
-								<button
-									class="w-full text-left text-sm py-1.5 px-1 rounded-lg dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-gray-850"
-									aria-label={$i18n.t('Back')}
-									on:click={() => {
-										goto('/workspace/tools');
-									}}
-									type="button"
-								>
-									<ChevronLeft strokeWidth="2.5" />
-								</button>
-							</Tooltip>
-						</div>
+				<div class="w-full mb-4 flex flex-col gap-1.5 px-1">
+					<div class="flex w-full items-center gap-2">
+						<Tooltip content={$i18n.t('Back')}>
+							<button
+								class="shrink-0 p-1.5 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-150"
+								aria-label={$i18n.t('Back')}
+								on:click={() => {
+									goto('/workspace/tools');
+								}}
+								type="button"
+							>
+								<ChevronLeft strokeWidth="2.5" />
+							</button>
+						</Tooltip>
 
-						<div class="flex-1">
-							<Tooltip content={$i18n.t('e.g. My Tools')} placement="top-start">
+						<div class="flex-1 min-w-0">
+							<Tooltip content={$i18n.t('e.g. 预报员的思路')} placement="top-start">
 								<input
-									class="w-full text-2xl bg-transparent outline-hidden"
+									class="w-full text-2xl font-semibold bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600 tracking-tight"
 									type="text"
 									placeholder={$i18n.t('Tool Name')}
 									aria-label={$i18n.t('Tool Name')}
@@ -250,56 +258,65 @@ class Tools:
 							</Tooltip>
 						</div>
 
-						<div class="self-center shrink-0">
-							<button
-								class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-								type="button"
-								on:click={() => {
-									showAccessControlModal = true;
-								}}
-							>
-								<LockClosed strokeWidth="2.5" className="size-3.5" />
-
-								<div class="text-sm font-medium shrink-0">
+						<div class="shrink-0 flex items-center gap-2">
+							{#if canManageAccess}
+								<button
+									class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150"
+									type="button"
+									on:click={() => (showAccessControlModal = true)}
+								>
+									<LockClosed strokeWidth="2.5" className="size-3.5" />
 									{$i18n.t('Access')}
-								</div>
-							</button>
+								</button>
+							{/if}
 						</div>
 					</div>
 
-					<div class=" flex gap-2 px-1 items-center">
-						{#if edit}
-							<div class="text-sm text-gray-500 shrink-0">
-								{id}
-							</div>
-						{:else}
-							<Tooltip className="w-full" content={$i18n.t('e.g. my_tools')} placement="top-start">
+					<div class="flex items-center gap-2">
+						<div class="shrink-0 p-1.5 invisible">
+							<ChevronLeft strokeWidth="2.5" />
+						</div>
+
+						<div class="flex-1 min-w-0 flex gap-3 items-center">
+							{#if edit}
+								<div class="shrink-0 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
+									{id}
+								</div>
+							{:else}
+								<Tooltip
+									className="shrink-0"
+									content={$i18n.t('e.g. forecaster_toolkit')}
+									placement="top-start"
+								>
+									<input
+										class="w-40 text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 outline-hidden rounded-md px-2 py-1 focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/20 transition-all duration-150"
+										type="text"
+										placeholder={$i18n.t('Tool ID')}
+										aria-label={$i18n.t('Tool ID')}
+										bind:value={id}
+										required
+										disabled={edit}
+									/>
+								</Tooltip>
+							{/if}
+
+							<div class="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+
+							<Tooltip
+								className="flex-1 min-w-0"
+								content={$i18n.t('e.g. 辅助预报员进行天气分析和预报决策')}
+								placement="top-start"
+							>
 								<input
-									class="w-full text-sm disabled:text-gray-500 bg-transparent outline-hidden"
+									class="w-full text-sm text-gray-600 dark:text-gray-400 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
 									type="text"
-									placeholder={$i18n.t('Tool ID')}
-									aria-label={$i18n.t('Tool ID')}
-									bind:value={id}
+									placeholder={$i18n.t('Tool Description')}
+									aria-label={$i18n.t('Tool Description')}
+									bind:value={meta.description}
 									required
-									disabled={edit}
 								/>
 							</Tooltip>
-						{/if}
-
-						<Tooltip
-							className="w-full self-center items-center flex"
-							content={$i18n.t('e.g. Tools for performing various operations')}
-							placement="top-start"
-						>
-							<input
-								class="w-full text-sm bg-transparent outline-hidden"
-								type="text"
-								placeholder={$i18n.t('Tool Description')}
-								aria-label={$i18n.t('Tool Description')}
-								bind:value={meta.description}
-								required
-							/>
-						</Tooltip>
+						</div>
 					</div>
 				</div>
 
@@ -320,22 +337,22 @@ class Tools:
 					/>
 				</div>
 
-				<div class="pb-3 flex justify-between">
-					<div class="flex-1 pr-3">
-						<div class="text-xs text-gray-500 line-clamp-2">
-							<span class=" font-semibold dark:text-gray-200">{$i18n.t('Warning:')}</span>
-							{$i18n.t('Tools are a function calling system with arbitrary code execution')} <br />—
-							<span class=" font-medium dark:text-gray-400"
-								>{$i18n.t(`don't install random tools from sources you don't trust.`)}</span
-							>
-						</div>
+				<div class="px-1 pb-3 flex items-center justify-between">
+					<div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+						{#if edit && id}
+							<span class="font-mono">{id}</span>
+						{/if}
 					</div>
 
 					<button
-						class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+						class="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium bg-black hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition-all duration-150 rounded-xl shadow-sm hover:shadow active:scale-[0.98]"
 						type="submit"
+						disabled={loading}
 					>
-						{$i18n.t('Save')}
+						{#if loading}
+							<Spinner className="size-4" />
+						{/if}
+						{$i18n.t(edit ? 'Save' : 'Save & Create')}
 					</button>
 				</div>
 			</div>

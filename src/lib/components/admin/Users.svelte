@@ -55,61 +55,57 @@
 	});
 </script>
 
-<div class="flex flex-col lg:flex-row w-full h-full pb-2 lg:space-x-4">
+<div class="flex flex-col lg:flex-row w-full h-full pb-2">
 	<div
 		id="users-tabs-container"
-		class="mx-[16px] lg:mx-0 lg:px-[16px] flex flex-row overflow-x-auto gap-2.5 max-w-full lg:gap-1 lg:flex-col lg:flex-none lg:w-50 dark:text-gray-200 text-sm font-medium text-left scrollbar-none"
+		class="mx-0 lg:px-0 flex flex-row overflow-x-auto gap-1 max-w-full lg:gap-0.5 lg:flex-col lg:flex-none lg:w-32 lg:mr-6 dark:text-gray-200 text-sm font-medium text-left scrollbar-none lg:pt-1"
 	>
 		<a
 			id="overview"
 			href="/admin/users/overview"
 			draggable="false"
-			class="px-0.5 py-1 min-w-fit rounded-lg lg:flex-none flex text-right transition select-none {selectedTab ===
+			class="px-3 py-2.5 min-w-fit rounded-xl lg:flex-none flex items-center gap-3 transition-all duration-200 select-none {selectedTab ===
 			'overview'
-				? ''
-				: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+				? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700/50'
+				: 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/60 dark:hover:bg-gray-800/40'}"
 		>
-			<div class=" self-center mr-2">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 16 16"
-					fill="currentColor"
-					class="size-4"
-				>
-					<path
-						d="M8.5 4.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM10.9 12.006c.11.542-.348.994-.9.994H2c-.553 0-1.01-.452-.902-.994a5.002 5.002 0 0 1 9.803 0ZM14.002 12h-1.59a2.556 2.556 0 0 0-.04-.29 6.476 6.476 0 0 0-1.167-2.603 3.002 3.002 0 0 1 3.633 1.911c.18.522-.283.982-.836.982ZM12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-					/>
-				</svg>
-			</div>
-			<div class=" self-center">{$i18n.t('Overview')}</div>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 16 16"
+				fill="currentColor"
+				class="size-4 flex-shrink-0 {selectedTab === 'overview' ? 'text-blue-600 dark:text-blue-400' : ''}"
+			>
+				<path
+					d="M8.5 4.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM10.9 12.006c.11.542-.348.994-.9.994H2c-.553 0-1.01-.452-.902-.994a5.002 5.002 0 0 1 9.803 0ZM14.002 12h-1.59a2.556 2.556 0 0 0-.04-.29 6.476 6.476 0 0 0-1.167-2.603 3.002 3.002 0 0 1 3.633 1.911c.18.522-.283.982-.836.982ZM12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
+				/>
+			</svg>
+			<span>{$i18n.t('Overview')}</span>
 		</a>
 
 		<a
 			id="groups"
 			href="/admin/users/groups"
 			draggable="false"
-			class="px-0.5 py-1 min-w-fit rounded-lg lg:flex-none flex text-right transition select-none {selectedTab ===
+			class="px-3 py-2.5 min-w-fit rounded-xl lg:flex-none flex items-center gap-3 transition-all duration-200 select-none {selectedTab ===
 			'groups'
-				? ''
-				: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+				? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700/50'
+				: 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/60 dark:hover:bg-gray-800/40'}"
 		>
-			<div class=" self-center mr-2">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 16 16"
-					fill="currentColor"
-					class="size-4"
-				>
-					<path
-						d="M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3.156 11.763c.16-.629.44-1.21.813-1.72a2.5 2.5 0 0 0-2.725 1.377c-.136.287.102.58.418.58h1.449c.01-.077.025-.156.045-.237ZM12.847 11.763c.02.08.036.16.046.237h1.446c.316 0 .554-.293.417-.579a2.5 2.5 0 0 0-2.722-1.378c.374.51.653 1.09.813 1.72ZM14 7.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM3.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM5 13c-.552 0-1.013-.455-.876-.99a4.002 4.002 0 0 1 7.753 0c.136.535-.324.99-.877.99H5Z"
-					/>
-				</svg>
-			</div>
-			<div class=" self-center">{$i18n.t('Groups')}</div>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 16 16"
+				fill="currentColor"
+				class="size-4 flex-shrink-0 {selectedTab === 'groups' ? 'text-violet-600 dark:text-violet-400' : ''}"
+			>
+				<path
+					d="M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3.156 11.763c.16-.629.44-1.21.813-1.72a2.5 2.5 0 0 0-2.725 1.377c-.136.287.102.58.418.58h1.449c.01-.077.025-.156.045-.237ZM12.847 11.763c.02.08.036.16.046.237h1.446c.316 0 .554-.293.417-.579a2.5 2.5 0 0 0-2.722-1.378c.374.51.653 1.09.813 1.72ZM14 7.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM3.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM5 13c-.552 0-1.013-.455-.876-.99a4.002 4.002 0 0 1 7.753 0c.136.535-.324.99-.877.99H5Z"
+				/>
+			</svg>
+			<span>{$i18n.t('Groups')}</span>
 		</a>
 	</div>
 
-	<div class="flex-1 mt-1 lg:mt-0 px-[16px] lg:pr-[16px] lg:pl-0 overflow-y-scroll">
+	<div class="flex-1 mt-1 lg:mt-0 overflow-y-scroll scrollbar-hidden">
 		{#if selectedTab === 'overview'}
 			<UserList />
 		{:else if selectedTab === 'groups'}

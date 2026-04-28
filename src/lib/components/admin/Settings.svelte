@@ -24,34 +24,32 @@
 
 	import ChartBar from '../icons/ChartBar.svelte';
 	import DocumentChartBar from '../icons/DocumentChartBar.svelte';
-	import Search from '../icons/Search.svelte';
-	import XMark from '../icons/XMark.svelte';
 
 	const i18n = getContext('i18n');
 
-	let selectedTab = 'general';
+	let selectedTab = 'connections';
 
-	// Get current tab from URL pathname, default to 'general'
+	// Get current tab from URL pathname, default to 'connections'
 	$: {
 		const pathParts = $page.url.pathname.split('/');
 		const tabFromPath = pathParts[pathParts.length - 1];
 		selectedTab = [
-			'general',
+			// 'general',
 			'connections',
-			'models',
+			// 'models', // Models tab hidden — per-model access control is bypassed via BYPASS_MODEL_ACCESS_CONTROL
 			'evaluations',
 			'integrations',
 			'documents',
-			'web',
-			'code-execution',
-			'interface',
+			// 'web', // Web Search tab hidden
+			// 'code-execution', // Code Execution tab hidden
+			// 'interface', // Interface tab hidden — temporarily disabled, no frontend changes needed
 			'audio',
-			'images',
-			'pipelines',
-			'db'
+			// 'images', // Images tab hidden
+			// 'pipelines', // Pipelines tab hidden
+			// 'db' // Database tab hidden
 		].includes(tabFromPath)
 			? tabFromPath
-			: 'general';
+			: 'connections';
 	}
 
 	$: if (selectedTab) {
@@ -66,71 +64,70 @@
 		}
 	};
 
-	let search = '';
-	let searchDebounceTimeout;
 	let filteredSettings = [];
 
 	const allSettings = [
-		{
-			id: 'general',
-			title: 'General',
-			route: '/admin/settings/general',
-			keywords: [
-				'general',
-				'admin',
-				'settings',
-				'version',
-				'update',
-				'language',
-				'theme',
-				'data',
-				'users',
-				'roles',
-				'ldap',
-				'authentication',
-				'reverse proxy',
-				'webhook',
-				'community',
-				'channels'
-			]
-		},
+		// {
+		// 	id: 'general',
+		// 	title: 'General',
+		// 	route: '/admin/settings/general',
+		// 	keywords: [
+		// 		'general',
+		// 		'admin',
+		// 		'settings',
+		// 		'version',
+		// 		'update',
+		// 		'language',
+		// 		'theme',
+		// 		'data',
+		// 		'users',
+		// 		'roles',
+		// 		'ldap',
+		// 		'authentication',
+		// 		'reverse proxy',
+		// 		'webhook',
+		// 		'community',
+		// 		'channels'
+		// 	]
+		// },
 		{
 			id: 'connections',
-			title: 'Connections',
+			title: 'API Connections',
 			route: '/admin/settings/connections',
 			keywords: [
 				'connections',
-				'ollama',
-				'openai',
 				'api',
+				'openai',
 				'base url',
-				'direct connections',
-				'proxy',
-				'key'
+				'key',
+				'api connections'
 			]
 		},
-		{
-			id: 'models',
-			title: 'Models',
-			route: '/admin/settings/models',
-			keywords: [
-				'models',
-				'pull',
-				'delete',
-				'create',
-				'edit',
-				'modelfile',
-				'gguf',
-				'import',
-				'export'
-			]
-		},
-		{
-			id: 'evaluations',
-			title: 'Evaluations',
-			route: '/admin/settings/evaluations',
-			keywords: ['evaluations', 'feedback', 'rating', 'arena', 'leaderboard', 'preference']
-		},
+		// Models tab hidden — per-model access control is bypassed via
+		// BYPASS_MODEL_ACCESS_CONTROL=true, so the management UI is not needed.
+		// Re-enable this entry to restore the tab.
+		// {
+		// 	id: 'models',
+		// 	title: 'Models',
+		// 	route: '/admin/settings/models',
+		// 	keywords: [
+		// 		'models',
+		// 		'pull',
+		// 		'delete',
+		// 		'create',
+		// 		'edit',
+		// 		'modelfile',
+		// 		'gguf',
+		// 		'import',
+		// 		'export'
+		// 	]
+		// },
+		// {
+		// 	id: 'evaluations',
+		// 	title: 'Evaluations',
+		// 	route: '/admin/settings/evaluations',
+		// 	keywords: ['evaluations', 'feedback', 'rating', 'arena', 'leaderboard', 'preference']
+		// },
 		{
 			id: 'integrations',
 			title: 'Integrations',
@@ -159,48 +156,51 @@
 				'unstructured'
 			]
 		},
-		{
-			id: 'web',
-			title: 'Web Search',
-			route: '/admin/settings/web',
-			keywords: [
-				'web search',
-				'google',
-				'bing',
-				'duckduckgo',
-				'serp',
-				'searxng',
-				'moojeh',
-				'yacy',
-				'serper',
-				'serply',
-				'tavily',
-				'exa',
-				'perplexity',
-				'firecrawl'
-			]
-		},
-		{
-			id: 'code-execution',
-			title: 'Code Execution',
-			route: '/admin/settings/code-execution',
-			keywords: ['code execution', 'python', 'sandbox', 'compiler', 'jupyter', 'interpreter']
-		},
-		{
-			id: 'interface',
-			title: 'Interface',
-			route: '/admin/settings/interface',
-			keywords: [
-				'interface',
-				'ui',
-				'appearance',
-				'banners',
-				'tasks',
-				'prompt suggestions',
-				'title generation',
-				'tags'
-			]
-		},
+		// Web Search tab hidden
+		// {
+		// 	id: 'web',
+		// 	title: 'Web Search',
+		// 	route: '/admin/settings/web',
+		// 	keywords: [
+		// 		'web search',
+		// 		'google',
+		// 		'bing',
+		// 		'duckduckgo',
+		// 		'serp',
+		// 		'searxng',
+		// 		'moojeh',
+		// 		'yacy',
+		// 		'serper',
+		// 		'serply',
+		// 		'tavily',
+		// 		'exa',
+		// 		'perplexity',
+		// 		'firecrawl'
+		// 	]
+		// },
+		// Code Execution tab hidden
+		// {
+		// 	id: 'code-execution',
+		// 	title: 'Code Execution',
+		// 	route: '/admin/settings/code-execution',
+		// 	keywords: ['code execution', 'python', 'sandbox', 'compiler', 'jupyter', 'interpreter']
+		// },
+		// Interface tab hidden — temporarily disabled, no frontend changes needed
+		// {
+		// 	id: 'interface',
+		// 	title: 'Interface',
+		// 	route: '/admin/settings/interface',
+		// 	keywords: [
+		// 		'interface',
+		// 		'ui',
+		// 		'appearance',
+		// 		'banners',
+		// 		'tasks',
+		// 		'prompt suggestions',
+		// 		'title generation',
+		// 		'tags'
+		// 	]
+		// },
 		{
 			id: 'audio',
 			title: 'Audio',
@@ -218,53 +218,39 @@
 				'elevenlabs'
 			]
 		},
-		{
-			id: 'images',
-			title: 'Images',
-			route: '/admin/settings/images',
-			keywords: [
-				'images',
-				'generation',
-				'dalle',
-				'stable diffusion',
-				'comfyui',
-				'automatic1111',
-				'gemini'
-			]
-		},
-		{
-			id: 'pipelines',
-			title: 'Pipelines',
-			route: '/admin/settings/pipelines',
-			keywords: ['pipelines', 'workflows', 'filters', 'valves', 'middleware']
-		},
-		{
-			id: 'db',
-			title: 'Database',
-			route: '/admin/settings/db',
-			keywords: ['database', 'export', 'import', 'backup', 'chats', 'users']
-		}
+		// Images tab hidden
+		// {
+		// 	id: 'images',
+		// 	title: 'Images',
+		// 	route: '/admin/settings/images',
+		// 	keywords: [
+		// 		'images',
+		// 		'generation',
+		// 		'dalle',
+		// 		'stable diffusion',
+		// 		'comfyui',
+		// 		'automatic1111',
+		// 		'gemini'
+		// 	]
+		// },
+		// Pipelines tab hidden
+		// {
+		// 	id: 'pipelines',
+		// 	title: 'Pipelines',
+		// 	route: '/admin/settings/pipelines',
+		// 	keywords: ['pipelines', 'workflows', 'filters', 'valves', 'middleware']
+		// },
+		// Database tab hidden
+		// {
+		// 	id: 'db',
+		// 	title: 'Database',
+		// 	route: '/admin/settings/db',
+		// 	keywords: ['database', 'export', 'import', 'backup', 'chats', 'users']
+		// }
 	];
 
 	const setFilteredSettings = () => {
-		filteredSettings = allSettings.filter((tab) => {
-			const searchTerm = search.toLowerCase().trim();
-			return (
-				search === '' ||
-				tab.title.toLowerCase().includes(searchTerm) ||
-				tab.keywords.some((keyword) => keyword.includes(searchTerm))
-			);
-		});
-	};
-
-	const searchDebounceHandler = () => {
-		if (searchDebounceTimeout) {
-			clearTimeout(searchDebounceTimeout);
-		}
-
-		searchDebounceTimeout = setTimeout(() => {
-			setFilteredSettings();
-		}, 100);
+		filteredSettings = allSettings;
 	};
 
 	onMount(() => {
@@ -285,30 +271,13 @@
 	});
 </script>
 
-<div class="flex flex-col lg:flex-row w-full h-full pb-2 lg:space-x-4">
+<div class="flex flex-col lg:flex-row w-full h-full pb-2">
 	<div
 		id="admin-settings-tabs-container"
-		class="tabs mx-[16px] lg:mx-0 lg:px-[16px] flex flex-row overflow-x-auto gap-2.5 max-w-full lg:gap-1 lg:flex-col lg:flex-none lg:w-50 dark:text-gray-200 text-sm font-medium text-left scrollbar-none"
+		class="mx-0 lg:px-0 flex flex-row overflow-x-auto gap-1 max-w-full lg:gap-0.5 lg:flex-col lg:flex-none lg:w-44 lg:mr-6 dark:text-gray-200 text-sm font-medium text-left scrollbar-none lg:pt-1"
 	>
-		<div
-			class="hidden md:flex w-full rounded-full px-2.5 gap-2 bg-gray-100/80 dark:bg-gray-850/80 backdrop-blur-2xl my-1 -mx-1 mt-1.5"
-			id="settings-search"
-		>
-			<div class="self-center rounded-l-xl bg-transparent">
-				<Search className="size-3.5" strokeWidth="1.5" />
-			</div>
-			<label class="sr-only" for="search-input-settings-modal">{$i18n.t('Search')}</label>
-			<input
-				class="w-full py-1 text-sm bg-transparent dark:text-gray-300 outline-hidden"
-				bind:value={search}
-				id="search-input-settings-modal"
-				on:input={searchDebounceHandler}
-				placeholder={$i18n.t('Search')}
-			/>
-		</div>
-
 		<!-- {$i18n.t('General')} -->
-		<!-- {$i18n.t('Connections')} -->
+		<!-- {$i18n.t('API Connections')} -->
 		<!-- {$i18n.t('Models')} -->
 		<!-- {$i18n.t('Evaluations')} -->
 		<!-- {$i18n.t('Integrations')} -->
@@ -325,12 +294,26 @@
 				id={tab.id}
 				href={tab.route}
 				draggable="false"
-				class="px-0.5 py-1 min-w-fit rounded-lg flex-1 lg:flex-none flex text-right transition select-none {selectedTab ===
+				class="px-3 py-2.5 min-w-fit rounded-xl lg:flex-none flex items-center gap-3 transition-all duration-200 select-none {selectedTab ===
 				tab.id
-					? ''
-					: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+					? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700/50'
+					: 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/60 dark:hover:bg-gray-800/40'}"
 			>
-				<div class=" self-center mr-2">
+				<div
+					class="flex-shrink-0 {selectedTab === tab.id
+						? tab.id === 'connections'
+							? 'text-sky-600 dark:text-sky-400'
+							: tab.id === 'integrations'
+								? 'text-amber-600 dark:text-amber-400'
+								: tab.id === 'documents'
+									? 'text-emerald-600 dark:text-emerald-400'
+									: tab.id === 'audio'
+										? 'text-rose-600 dark:text-rose-400'
+										: tab.id === 'evaluations'
+											? 'text-violet-600 dark:text-violet-400'
+											: 'text-gray-700 dark:text-gray-300'
+						: ''}"
+				>
 					{#if tab.id === 'general'}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -498,14 +481,15 @@
 						</svg>
 					{/if}
 				</div>
-				<div class=" self-center">{$i18n.t(tab.title)}</div>
+				<span>{$i18n.t(tab.title)}</span>
 			</a>
 		{/each}
 	</div>
 
 	<div
-		class="flex-1 mt-3 lg:mt-1 px-[16px] lg:pr-[16px] lg:pl-0 overflow-y-scroll scrollbar-hidden"
+		class="flex-1 mt-1 lg:mt-0 overflow-y-scroll scrollbar-hidden"
 	>
+		<!-- General tab hidden
 		{#if selectedTab === 'general'}
 			<General
 				saveHandler={async () => {
@@ -515,7 +499,8 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'connections'}
+		{:else if selectedTab === 'connections'} -->
+		{#if selectedTab === 'connections'}
 			<Connections
 				on:save={() => {
 					toast.success($i18n.t('Settings saved successfully!'));
@@ -523,8 +508,8 @@
 			/>
 		{:else if selectedTab === 'models'}
 			<Models />
-		{:else if selectedTab === 'evaluations'}
-			<Evaluations />
+	<!-- {:else if selectedTab === 'evaluations'}
+		<Evaluations /> -->
 		{:else if selectedTab === 'integrations'}
 			<Integrations />
 		{:else if selectedTab === 'documents'}
@@ -536,7 +521,8 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'web'}
+		{:else if false && selectedTab === 'web'}
+			<!-- Web Search tab hidden -->
 			<WebSearch
 				saveHandler={async () => {
 					toast.success($i18n.t('Settings saved successfully!'));
@@ -545,7 +531,8 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'code-execution'}
+		{:else if false && selectedTab === 'code-execution'}
+			<!-- Code Execution tab hidden -->
 			<CodeExecution
 				saveHandler={async () => {
 					toast.success($i18n.t('Settings saved successfully!'));
@@ -554,7 +541,8 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'interface'}
+		{:else if false && selectedTab === 'interface'}
+			<!-- Interface tab hidden — temporarily disabled, no frontend changes needed -->
 			<Interface
 				on:save={() => {
 					toast.success($i18n.t('Settings saved successfully!'));
@@ -566,19 +554,22 @@
 					toast.success($i18n.t('Settings saved successfully!'));
 				}}
 			/>
-		{:else if selectedTab === 'images'}
+		{:else if false && selectedTab === 'images'}
+			<!-- Images tab hidden -->
 			<Images
 				on:save={() => {
 					toast.success($i18n.t('Settings saved successfully!'));
 				}}
 			/>
-		{:else if selectedTab === 'db'}
+		{:else if false && selectedTab === 'db'}
+			<!-- Database tab hidden -->
 			<Database
 				saveHandler={() => {
 					toast.success($i18n.t('Settings saved successfully!'));
 				}}
 			/>
-		{:else if selectedTab === 'pipelines'}
+		{:else if false && selectedTab === 'pipelines'}
+			<!-- Pipelines tab hidden -->
 			<Pipelines
 				saveHandler={() => {
 					toast.success($i18n.t('Settings saved successfully!'));

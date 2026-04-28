@@ -647,7 +647,7 @@
 	<div
 		class=" {$isApp
 			? ' ml-[4.5rem] md:ml-0'
-			: ''} fixed md:hidden z-40 top-0 right-0 left-0 bottom-0 bg-black/60 w-full min-h-screen h-screen flex justify-center overflow-hidden overscroll-contain"
+			: ''} fixed md:hidden z-40 top-0 right-0 left-0 bottom-0 bg-black/15 dark:bg-black/30 w-full min-h-screen h-screen flex justify-center overflow-hidden overscroll-contain"
 		on:mousedown={() => {
 			showSidebar.set(!$showSidebar);
 		}}
@@ -844,26 +844,28 @@
 						>
 							<div class="self-center relative">
 								<img
-									src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+									src={$user?.profile_image_url
+										? $user.profile_image_url
+										: `${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
 									class=" size-7 object-cover rounded-full"
 									alt={$i18n.t('Open User Profile Menu')}
 									aria-label={$i18n.t('Open User Profile Menu')}
 									/>
 
 									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
+									<div class="absolute -bottom-0.5 -right-0.5">
+										<span class="relative flex size-2.5">
+											<span
+												class="relative inline-flex size-2.5 rounded-full {true
+													? 'bg-green-500'
+													: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+											></span>
+										</span>
+									</div>
+								{/if}
 							</div>
-						</UserMenu>
+						</div>
+					</UserMenu>
 					{/if}
 				</div>
 			</div>
@@ -1240,7 +1242,7 @@
 												className=""
 												id={chat.id}
 												title={chat.title}
-												createdAt={chat.created_at}
+												updatedAt={chat.updated_at ?? chat.created_at}
 												{shiftKey}
 												selected={selectedChatId === chat.id}
 												on:select={() => {
@@ -1301,7 +1303,7 @@
 										className=""
 										id={chat.id}
 										title={chat.title}
-										createdAt={chat.created_at}
+										updatedAt={chat.updated_at ?? chat.created_at}
 										{shiftKey}
 										selected={selectedChatId === chat.id}
 										on:select={() => {
@@ -1371,25 +1373,27 @@
 							>
 								<div class=" self-center mr-3 relative">
 									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+										src={$user?.profile_image_url
+											? $user.profile_image_url
+											: `${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
 										class=" size-7 object-cover rounded-full"
 										alt={$i18n.t('Open User Profile Menu')}
 										aria-label={$i18n.t('Open User Profile Menu')}
 									/>
 
 									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
-										</div>
-									{/if}
-								</div>
-								<div class=" self-center font-medium">{$user?.name}</div>
+									<div class="absolute -bottom-0.5 -right-0.5">
+										<span class="relative flex size-2.5">
+											<span
+												class="relative inline-flex size-2.5 rounded-full {true
+													? 'bg-green-500'
+													: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+											></span>
+										</span>
+									</div>
+								{/if}
+							</div>
+							<div class=" self-center font-medium">{$user?.name}</div>
 							</div>
 						</UserMenu>
 					{/if}

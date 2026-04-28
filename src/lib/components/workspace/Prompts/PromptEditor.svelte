@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, getContext } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import { toast } from 'svelte-sonner';
@@ -21,6 +22,7 @@
 		updatePromptAccessGrants,
 		getPromptTags
 	} from '$lib/apis/prompts';
+	import { page } from '$app/stores';
 	import dayjs from 'dayjs';
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
 	import PromptHistoryMenu from './PromptHistoryMenu.svelte';
@@ -46,6 +48,7 @@
 	let tags = [];
 	let commitMessage = '';
 	let isProduction = true;
+	let categoryId: string | null = null;
 
 	let accessGrants = [];
 	let showAccessControlModal = false;
@@ -81,29 +84,36 @@
 		}
 		loading = true;
 
-		if (validateCommandString(command)) {
-			await onSubmit({
-				id: prompt?.id,
-				name,
-				command,
-				content,
-				tags: tags.map((tag) => tag.name),
-				access_grants: accessGrants,
-				commit_message: commitMessage || undefined,
-				is_production: isProduction
-			});
-			showEditModal = false;
-			commitMessage = '';
-			isProduction = true;
-			await loadHistory(true); // Reset and reload
-			// Select the newest version after saving
-			if (history.length > 0) {
-				selectedHistoryEntry = history[0];
+		if (edit) {
+			if (validateCommandString(command)) {
+				await onSubmit({
+					id: prompt?.id,
+					name,
+					command,
+					content,
+					tags: tags.map((tag) => tag.name),
+					access_grants: accessGrants,
+					commit_message: commitMessage || undefined,
+					is_production: isProduction,
+					category_id: categoryId
+				});
+				showEditModal = false;
+				commitMessage = '';
+				isProduction = true;
+				await loadHistory(true);
+				if (history.length > 0) {
+					selectedHistoryEntry = history[0];
+				}
+			} else {
+				toast.error(
+					$i18n.t('Only alphanumeric characters and hyphens are allowed in the command string.')
+				);
 			}
 		} else {
-			toast.error(
-				$i18n.t('Only alphanumeric characters and hyphens are allowed in the command string.')
-			);
+			await onSubmit({
+				content,
+				category_id: categoryId
+			});
 		}
 
 		loading = false;
@@ -253,15 +263,14 @@
 			content = prompt.content;
 			tags = (prompt.tags || []).map((tag) => ({ name: tag }));
 			accessGrants = prompt?.access_grants === undefined ? [] : prompt?.access_grants;
+			categoryId = prompt.category_id || null;
 
-			// Store originals for revert on collision
 			originalName = name;
 			originalCommand = command;
 			originalTags = tags;
 
 			if (edit) {
 				await loadHistory();
-				// Auto-select production version
 				if (prompt.version_id && history.length > 0) {
 					selectedHistoryEntry = history.find((h) => h.id === prompt.version_id) || history[0];
 				} else if (history.length > 0) {
@@ -270,9 +279,18 @@
 			}
 		}
 
-		const res = await getPromptTags(localStorage.token);
-		if (res) {
-			suggestionTags = res.map((tag) => ({ name: tag }));
+		if (!edit) {
+			const urlCategoryId = $page.url.searchParams.get('category_id');
+			if (urlCategoryId) {
+				categoryId = urlCategoryId;
+			}
+		}
+
+		if (edit) {
+			const res = await getPromptTags(localStorage.token);
+			if (res) {
+				suggestionTags = res.map((tag) => ({ name: tag }));
+			}
 		}
 	});
 </script>
@@ -318,13 +336,13 @@
 
 				<div class="mt-1">
 					<Textarea
-						className="text-sm w-full bg-transparent outline-hidden overflow-y-hidden resize-none"
-						placeholder={$i18n.t('Write a summary in 50 words that summarizes {{topic}}.')}
-						bind:value={content}
-						aria-label={$i18n.t('Prompt Content')}
-						rows={6}
-						required
-					/>
+					className="text-sm w-full bg-transparent outline-hidden overflow-y-hidden resize-none"
+					placeholder={$i18n.t('Enter the prompt content that the AI will follow to generate a response...')}
+					bind:value={content}
+					aria-label={$i18n.t('Prompt Content')}
+					rows={6}
+					required
+				/>
 				</div>
 			</div>
 
@@ -353,11 +371,11 @@
 				</label>
 				<div>
 					<button
-						class="text-sm px-4 py-2 transition rounded-full {loading
+						class="text-sm px-4 py-2 transition rounded-full {loading || disabled
 							? 'cursor-not-allowed bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
 							: 'bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black'} flex justify-center"
 						type="submit"
-						disabled={loading}
+						disabled={loading || disabled}
 					>
 						<div class="font-medium">{$i18n.t('Save')}</div>
 						{#if loading}
@@ -386,16 +404,7 @@
 					{disabled}
 				/>
 
-				<div class="flex items-center gap-0.5 text-sm text-gray-500 w-full flex-1">
-					<span>/</span>
-					<input
-						class="bg-transparent outline-hidden"
-						placeholder={$i18n.t('command')}
-						bind:value={command}
-						on:input={debouncedSaveMetadata}
-						{disabled}
-					/>
-				</div>
+				<input type="hidden" bind:value={command} />
 			</div>
 
 			<div>
@@ -529,91 +538,90 @@
 	</div>
 {:else}
 	<!-- Create mode: Form -->
-	<div class="w-full max-h-full flex justify-center">
-		<form class="flex flex-col w-full mb-10" on:submit|preventDefault={submitHandler}>
-			<div class="mb-2">
-				<Tooltip
-					content={`${$i18n.t('Only alphanumeric characters and hyphens are allowed')} - ${$i18n.t('Activate this command by typing "/{{COMMAND}}" to chat input.', { COMMAND: command })}`}
-					placement="bottom-start"
-				>
-					<div class="flex flex-col w-full">
-						<div class="flex items-center">
-							<input
-								class="text-2xl w-full bg-transparent outline-hidden"
-								placeholder={$i18n.t('Name')}
-								bind:value={name}
-								required
-							/>
-							<div class="self-center shrink-0">
-								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-									type="button"
-									on:click={() => (showAccessControlModal = true)}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5" />
-									<div class="text-sm font-medium shrink-0">{$i18n.t('Access')}</div>
-								</button>
-							</div>
-						</div>
-						<div class="flex gap-0.5 items-center text-xs text-gray-500">
-							<div>/</div>
-							<input
-								class="w-full bg-transparent outline-hidden"
-								placeholder={$i18n.t('Command')}
-								bind:value={command}
-								on:input={handleCommandInput}
-								required
-							/>
-						</div>
+	<div class="w-full max-h-full">
+		<button
+			class="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition"
+			on:click={() => {
+				if (categoryId) {
+					goto(`/workspace/prompts/categories/${categoryId}`);
+				} else {
+					goto('/workspace/prompts');
+				}
+			}}
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 20 20"
+				fill="currentColor"
+				class="w-4 h-4"
+			>
+				<path
+					fill-rule="evenodd"
+					d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z"
+					clip-rule="evenodd"
+				/>
+			</svg>
+			<span class="font-medium text-sm">{$i18n.t('Back')}</span>
+		</button>
 
-						<div class="mt-1">
-							<Tags
-								{tags}
-								{suggestionTags}
-								on:add={(e) => {
-									tags = [...tags, { name: e.detail }];
-								}}
-								on:delete={(e) => {
-									tags = tags.filter((tag) => tag.name !== e.detail);
-								}}
-							/>
-						</div>
-					</div>
-				</Tooltip>
-			</div>
-
-			<div class="my-2">
-				<div class="text-gray-500 text-xs">{$i18n.t('Prompt Content')}</div>
-				<div class="mt-1">
-					<Textarea
-						className="text-sm w-full bg-transparent outline-hidden overflow-y-hidden resize-none"
-						placeholder={$i18n.t('Write a summary in 50 words that summarizes {{topic}}.')}
-						bind:value={content}
-						rows={6}
-						required
-					/>
-					<div class="text-xs text-gray-400 dark:text-gray-500">
-						ⓘ {$i18n.t('Use')}
-						<span class="font-medium text-gray-600 dark:text-gray-300"
-							>{'{{'}{$i18n.t('variable')}{'}}'}</span
+		<form
+			class="flex flex-col max-w-lg mx-auto mt-14 mb-10"
+			on:submit|preventDefault={submitHandler}
+		>
+			<div class="w-full flex flex-col justify-center">
+				<div class="flex items-center gap-2.5 mb-6">
+					<div class="p-2 rounded-xl bg-gray-100 dark:bg-gray-800">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="w-6 h-6 text-gray-600 dark:text-gray-300"
 						>
-						{$i18n.t('for placeholders')}
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"
+							/>
+						</svg>
+					</div>
+					<div>
+						<h1 class="text-xl font-semibold font-primary">
+							{$i18n.t('Create a prompt')}
+						</h1>
+					</div>
+				</div>
+
+				<div class="w-full flex flex-col gap-4">
+					<div class="w-full">
+						<label for="prompt-content" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+							{$i18n.t('Prompt Content')} <span class="text-red-500">*</span>
+						</label>
+				<textarea
+					class="w-full rounded-xl py-2.5 px-4 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-300 outline-hidden border border-gray-800 dark:border-gray-300 focus:border-black dark:focus:border-white focus:ring-0 transition placeholder:text-gray-400 dark:placeholder:text-gray-500 overflow-y-auto scrollbar-thin"
+					placeholder={$i18n.t('Enter the prompt content that the AI will follow to generate a response...')}
+					bind:value={content}
+					rows="6"
+					style="max-height: 300px;"
+					required
+				></textarea>
 					</div>
 				</div>
 			</div>
 
-			<div class="my-4 flex justify-end pb-20">
+			<div class="flex justify-end mt-5">
 				<button
-					class="text-sm w-full lg:w-fit px-4 py-2 transition rounded-xl bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black flex w-full justify-center"
+					class="px-3.5 py-1.5 text-xs font-medium transition rounded-lg flex items-center gap-1.5 {loading
+						? 'cursor-not-allowed bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+						: 'bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100'}"
 					type="submit"
 					disabled={loading}
 				>
-					<div class="font-medium">{$i18n.t('Save & Create')}</div>
 					{#if loading}
-						<div class="ml-1.5">
-							<Spinner />
-						</div>
+						<Spinner className="size-4" />
 					{/if}
+					{$i18n.t('Save & Create')}
 				</button>
 			</div>
 		</form>

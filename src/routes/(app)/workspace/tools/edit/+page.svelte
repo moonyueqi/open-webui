@@ -84,6 +84,7 @@
 		meta={tool.meta}
 		content={tool.content}
 		accessGrants={tool.access_grants ?? []}
+		ownerId={tool.user_id}
 		onSave={(value) => {
 			saveHandler(value);
 		}}

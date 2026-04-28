@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 
 log = logging.getLogger(__name__)
 
@@ -56,16 +56,7 @@ async def get_folders(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    if user.role != "admin" and not has_permission(
-        user.id,
-        "features.folders",
-        request.app.state.config.USER_PERMISSIONS,
-        db=db,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.folders", request, db=db)
 
     folders = Folders.get_folders_by_user_id(user.id, db=db)
 
@@ -302,14 +293,7 @@ async def delete_folder_by_id(
     db: Session = Depends(get_session),
 ):
     if Chats.count_chats_by_folder_id_and_user_id(id, user.id, db=db):
-        chat_delete_permission = has_permission(
-            user.id, "chat.delete", request.app.state.config.USER_PERMISSIONS, db=db
-        )
-        if user.role != "admin" and not chat_delete_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-            )
+        require_permission(user, "chat.delete", request, db=db)
 
     folders = []
     folders.append(Folders.get_folder_by_id_and_user_id(id, user.id, db=db))

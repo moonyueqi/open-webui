@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, APP_VERSION_LOCAL } from '$lib/constants';
 	import { marked } from 'marked';
 
 	import { config, user, models as _models, temporaryChatEnabled } from '$lib/stores';
@@ -125,6 +125,12 @@
 		</div>
 
 		<div class=" w-full font-primary" in:fade={{ duration: 200, delay: 300 }}>
+			<div
+				class="flex w-full items-center justify-center text-center text-xs font-medium text-gray-600 dark:text-gray-400"
+			>
+				苏州市气象预报智能助手 v{APP_VERSION_LOCAL}
+			</div>
+			<!-- 暂时禁用首页建议功能，后续重做为面向气象预报员的场景化建议
 			<Suggestions
 				className="grid grid-cols-2"
 				suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??
@@ -133,6 +139,7 @@
 					[]}
 				{onSelect}
 			/>
+			-->
 		</div>
 	</div>
 {/key}

@@ -47,7 +47,8 @@
 
 	export let id;
 	export let title;
-	export let createdAt: number | null = null;
+	/** Unix seconds; last activity time for the relative label on the right */
+	export let updatedAt: number | null = null;
 
 	export let selected = false;
 	export let shiftKey = false;
@@ -392,9 +393,9 @@
 			</div>
 
 			<!-- Time ago indicator -->
-			{#if createdAt && !mouseOver}
+			{#if updatedAt && !mouseOver}
 				<div class="shrink-0 self-center text-[10px] text-gray-400 dark:text-gray-500 pl-2">
-					{formatTimeAgo(createdAt)}
+					{formatTimeAgo(updatedAt)}
 				</div>
 			{/if}
 		</a>

@@ -14,11 +14,15 @@
 		getRerankingConfig,
 		updateRerankingConfig,
 		getRAGConfig,
-		updateRAGConfig
+		updateRAGConfig,
+		verifyEmbeddingModel,
+		verifyRerankerModel,
+		type ModelVerifyResult
 	} from '$lib/apis/retrieval';
 
 	import { reindexKnowledgeFiles } from '$lib/apis/knowledge';
 	import { deleteAllFiles } from '$lib/apis/files';
+	import { verifyOpenAIConnection } from '$lib/apis/openai';
 
 	import ResetUploadDirConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ResetVectorDBConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -34,17 +38,184 @@
 	let updateEmbeddingModelLoading = false;
 	let updateRerankingModelLoading = false;
 
+	let verifyingEmbedding = false;
+	let verifyingReranker = false;
+
+	// 从 verifyOpenAIConnection 抛出的字符串里提取 HTTP 状态码。
+	// 字符串约定形如 "OpenAI: [401] xxx" / "OpenAI: [404] xxx" / "OpenAI: Network Problem"。
+	const extractHttpStatus = (err: unknown): number | null => {
+		const m = `${err ?? ''}`.match(/\[(\d{3})\]/);
+		return m ? Number(m[1]) : null;
+	};
+
+	// 把 verifyOpenAIConnection 抛出的错误统一翻译成面向用户的友好文案。
+	const classifyVerifyError = (err: unknown): string => {
+		const status = extractHttpStatus(err);
+		const msg = `${err ?? ''}`.toLowerCase();
+		if (status === 401 || status === 403 || msg.includes('unauthorized')) {
+			return $i18n.t('API key is missing, invalid, or has no permission');
+		}
+		if (status === 404) {
+			return $i18n.t('Endpoint not found, please check the URL');
+		}
+		if (status === 408 || msg.includes('timed out') || msg.includes('timeout')) {
+			return $i18n.t('Request timed out, please try again later');
+		}
+		// 任何其他状态码或纯网络异常都归为"连不上服务器"。
+		return $i18n.t('Cannot reach the server, please check the URL or your network');
+	};
+
+	// 上游 4xx 经常用 "insufficient balance / quota / 余额 / 欠费 / payment" 等字样来表达账户没钱，
+	// 这跟 "key 无权限" 是两件事，单独识别一下，避免用户去白排查 key。
+	const looksLikeBalanceIssue = (message?: string): boolean => {
+		if (!message) return false;
+		const m = message.toLowerCase();
+		return (
+			m.includes('balance') ||
+			m.includes('insufficient') ||
+			m.includes('quota') ||
+			m.includes('exceeded') ||
+			m.includes('payment') ||
+			m.includes('billing') ||
+			message.includes('余额') ||
+			message.includes('欠费') ||
+			message.includes('额度')
+		);
+	};
+
+	// Translate a structured model-verify result into a friendly Chinese-ready toast.
+	const showModelVerifyError = (result: ModelVerifyResult, modelName: string) => {
+		const stage = result.stage ?? 'model';
+		// auth 阶段优先识别"余额不足"，命中就单独提示，否则再回退到通用密钥错误文案。
+		if (stage === 'auth' && looksLikeBalanceIssue(result.message)) {
+			toast.error($i18n.t('API balance is insufficient or quota has been used up'));
+			return;
+		}
+		const map: Record<string, string> = {
+			connection: $i18n.t('Cannot reach the server, please check the URL or your network'),
+			// 同时覆盖"未填 key"和"key 错/无权限"两种 401/403 场景，避免误导用户去查网络。
+			auth: $i18n.t('API key is missing, invalid, or has no permission'),
+			endpoint: $i18n.t('Endpoint not found, please check the URL'),
+			timeout: $i18n.t('Request timed out, please try again later'),
+			model: $i18n.t('Model "{{model}}" is unavailable, please check the model name', {
+				model: modelName
+			}),
+			input: $i18n.t('Please fill in URL and model name')
+		};
+		toast.error(map[stage] ?? map.model);
+	};
+
+	const runVerifyEmbedding = async () => {
+		verifyingEmbedding = true;
+		try {
+			const conn = await verifyOpenAIConnection(localStorage.token, {
+				url: OpenAIUrl.replace(/\/$/, ''),
+				key: OpenAIKey,
+				config: { auth_type: 'bearer' }
+			}).catch((err) => {
+				toast.error(classifyVerifyError(err));
+				return null;
+			});
+			if (!conn) return;
+
+			const result = await verifyEmbeddingModel(localStorage.token, {
+				url: OpenAIUrl.replace(/\/$/, ''),
+				key: OpenAIKey ?? '',
+				model: RAG_EMBEDDING_MODEL
+			});
+
+			if (result.ok) {
+				toast.success(
+					$i18n.t('Verified: model "{{model}}" is available', { model: RAG_EMBEDDING_MODEL })
+				);
+			} else {
+				showModelVerifyError(result, RAG_EMBEDDING_MODEL);
+			}
+		} finally {
+			verifyingEmbedding = false;
+		}
+	};
+
+	const verifyEmbeddingHandler = async () => {
+		if (!OpenAIUrl) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		if (!RAG_EMBEDDING_MODEL) {
+			toast.error($i18n.t('Please fill in the embedding model name first'));
+			return;
+		}
+
+		// 即使 API Key 为空也直接验证：部分自部署/本地服务（如 Ollama）允许无鉴权；
+		// 真的需要 key 的上游会返回 401/403，会被翻译成"API 密钥未填写、无效或没有权限"。
+		await runVerifyEmbedding();
+	};
+
+	const runVerifyReranker = async () => {
+		const rerankerModelName = RAGConfig?.RAG_RERANKING_MODEL ?? '';
+		verifyingReranker = true;
+		try {
+			const conn = await verifyOpenAIConnection(localStorage.token, {
+				url: RAGConfig.RAG_EXTERNAL_RERANKER_URL.replace(/\/$/, ''),
+				key: RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY ?? '',
+				config: { auth_type: 'bearer' }
+			}).catch((err) => {
+				const status = extractHttpStatus(err);
+				// Reranker endpoints often don't expose /models, so we treat 404 as
+				// "connection ok, skip step 1" and continue to the real rerank call.
+				if (status === 404) {
+					return { _skipped: true };
+				}
+				toast.error(classifyVerifyError(err));
+				return null;
+			});
+			if (!conn) return;
+
+			const result = await verifyRerankerModel(localStorage.token, {
+				url: RAGConfig.RAG_EXTERNAL_RERANKER_URL.replace(/\/$/, ''),
+				key: RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY ?? '',
+				model: rerankerModelName,
+				timeout: RAGConfig.RAG_EXTERNAL_RERANKER_TIMEOUT
+					? Number(RAGConfig.RAG_EXTERNAL_RERANKER_TIMEOUT)
+					: null
+			});
+
+			if (result.ok) {
+				toast.success(
+					$i18n.t('Verified: model "{{model}}" is available', { model: rerankerModelName })
+				);
+			} else {
+				showModelVerifyError(result, rerankerModelName);
+			}
+		} finally {
+			verifyingReranker = false;
+		}
+	};
+
+	const verifyRerankerHandler = async () => {
+		if (!RAGConfig?.RAG_EXTERNAL_RERANKER_URL) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		const rerankerModelName = RAGConfig?.RAG_RERANKING_MODEL ?? '';
+		if (!rerankerModelName) {
+			toast.error($i18n.t('Please fill in the reranker model name first'));
+			return;
+		}
+
+		// 不再为"未填 key"弹确认框，直接发请求；上游 401/403 会得到正确的鉴权错误提示。
+		await runVerifyReranker();
+	};
+
 	let showResetConfirm = false;
 	let showResetUploadDirConfirm = false;
 	let showReindexConfirm = false;
 
-	let RAG_EMBEDDING_ENGINE = '';
+	let RAG_EMBEDDING_ENGINE = 'openai';
 	let RAG_EMBEDDING_MODEL = '';
 	let RAG_EMBEDDING_BATCH_SIZE = 1;
 	let ENABLE_ASYNC_EMBEDDING = true;
 	let RAG_EMBEDDING_CONCURRENT_REQUESTS = 0;
-
-	let rerankingModel = '';
 
 	let OpenAIUrl = '';
 	let OpenAIKey = '';
@@ -55,6 +226,26 @@
 
 	let OllamaUrl = '';
 	let OllamaKey = '';
+
+	// 加载完成后保留一份"嵌入相关原始值"快照，
+	// 提交时若所有字段都没变化，直接跳过 /embedding/update，
+	// 避免后端重新构造 embedding function（较慢）以及无意义的写库。
+	let embeddingSnapshot: Record<string, any> | null = null;
+
+	const buildEmbeddingFingerprint = () => ({
+		RAG_EMBEDDING_ENGINE,
+		RAG_EMBEDDING_MODEL,
+		RAG_EMBEDDING_BATCH_SIZE,
+		ENABLE_ASYNC_EMBEDDING,
+		RAG_EMBEDDING_CONCURRENT_REQUESTS,
+		OpenAIUrl,
+		OpenAIKey,
+		OllamaUrl,
+		OllamaKey,
+		AzureOpenAIUrl,
+		AzureOpenAIKey,
+		AzureOpenAIVersion
+	});
 
 	let querySettings = {
 		template: '',
@@ -142,105 +333,58 @@
 	};
 
 	const submitHandler = async () => {
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'external' &&
-			RAGConfig.EXTERNAL_DOCUMENT_LOADER_URL === ''
-		) {
-			toast.error($i18n.t('External Document Loader URL required.'));
-			return;
-		}
-		if (RAGConfig.CONTENT_EXTRACTION_ENGINE === 'tika' && RAGConfig.TIKA_SERVER_URL === '') {
-			toast.error($i18n.t('Tika Server URL required.'));
-			return;
-		}
-		if (RAGConfig.CONTENT_EXTRACTION_ENGINE === 'docling' && RAGConfig.DOCLING_SERVER_URL === '') {
-			toast.error($i18n.t('Docling Server URL required.'));
-			return;
-		}
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'datalab_marker' &&
-			RAGConfig.DATALAB_MARKER_ADDITIONAL_CONFIG &&
-			RAGConfig.DATALAB_MARKER_ADDITIONAL_CONFIG.trim() !== ''
-		) {
-			try {
-				JSON.parse(RAGConfig.DATALAB_MARKER_ADDITIONAL_CONFIG);
-			} catch (e) {
-				toast.error($i18n.t('Invalid JSON format in Additional Config'));
-				return;
-			}
-		}
-
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'document_intelligence' &&
-			RAGConfig.DOCUMENT_INTELLIGENCE_ENDPOINT === ''
-		) {
-			toast.error($i18n.t('Document Intelligence endpoint required.'));
-			return;
-		}
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'mistral_ocr' &&
-			RAGConfig.MISTRAL_OCR_API_KEY === ''
-		) {
-			toast.error($i18n.t('Mistral OCR API Key required.'));
-			return;
-		}
-
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'mineru' &&
-			RAGConfig.MINERU_API_MODE === 'cloud' &&
-			RAGConfig.MINERU_API_KEY === ''
-		) {
-			toast.error($i18n.t('MinerU API Key required for Cloud API mode.'));
-			return;
-		}
-
+		// 嵌入模型相关字段走 /embedding/update（独立接口）；
+		// 仅在用户实际修改了嵌入相关字段时才调用，避免后端重新构造 embedding function。
 		if (!RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL) {
-			await embeddingModelUpdateHandler();
-		}
+			const currentFingerprint = buildEmbeddingFingerprint();
+			const embeddingChanged =
+				!embeddingSnapshot ||
+				JSON.stringify(currentFingerprint) !== JSON.stringify(embeddingSnapshot);
 
-		if (RAGConfig.DOCLING_PARAMS) {
-			try {
-				JSON.parse(RAGConfig.DOCLING_PARAMS);
-			} catch (e) {
-				toast.error(
-					$i18n.t('Invalid JSON format in {{NAME}}', {
-						NAME: $i18n.t('Docling Parameters')
-					})
-				);
-				return;
-			}
-		}
-		if (RAGConfig.MINERU_PARAMS) {
-			try {
-				JSON.parse(RAGConfig.MINERU_PARAMS);
-			} catch (e) {
-				toast.error($i18n.t('Invalid JSON format in MinerU Parameters'));
-				return;
+			if (embeddingChanged) {
+				await embeddingModelUpdateHandler();
+				embeddingSnapshot = currentFingerprint;
 			}
 		}
 
-		const res = await updateRAGConfig(localStorage.token, {
-			...RAGConfig,
-			ALLOWED_FILE_EXTENSIONS: RAGConfig.ALLOWED_FILE_EXTENSIONS.split(',')
-				.map((ext) => ext.trim())
-				.filter((ext) => ext !== ''),
-			DOCLING_PARAMS:
-				typeof RAGConfig.DOCLING_PARAMS === 'string' && RAGConfig.DOCLING_PARAMS.trim() !== ''
-					? JSON.parse(RAGConfig.DOCLING_PARAMS)
-					: {},
-			MINERU_PARAMS:
-				typeof RAGConfig.MINERU_PARAMS === 'string' && RAGConfig.MINERU_PARAMS.trim() !== ''
-					? JSON.parse(RAGConfig.MINERU_PARAMS)
-					: {}
+		// 仅提交当前 UI 中实际出现的字段，避免把已注释隐藏的旧值原样回写数据库，
+		// 减少 PersistentConfig 重复写盘带来的"保存很慢"问题。
+		const payload = {
+			// Chunking
+			CHUNK_SIZE: RAGConfig.CHUNK_SIZE,
+			CHUNK_OVERLAP: RAGConfig.CHUNK_OVERLAP,
+			CHUNK_MIN_SIZE_TARGET: RAGConfig.CHUNK_MIN_SIZE_TARGET,
+
+			// Reranking Model
+			RAG_RERANKING_MODEL: RAGConfig.RAG_RERANKING_MODEL,
+			RAG_EXTERNAL_RERANKER_URL: RAGConfig.RAG_EXTERNAL_RERANKER_URL,
+			RAG_EXTERNAL_RERANKER_API_KEY: RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY,
+
+			// Search Parameters
+			TOP_K: RAGConfig.TOP_K,
+			TOP_K_RERANKER: RAGConfig.TOP_K_RERANKER,
+			RELEVANCE_THRESHOLD: RAGConfig.RELEVANCE_THRESHOLD,
+			HYBRID_BM25_WEIGHT: RAGConfig.HYBRID_BM25_WEIGHT,
+
+			// RAG Template
+			RAG_TEMPLATE: RAGConfig.RAG_TEMPLATE
+		};
+
+		const res = await updateRAGConfig(localStorage.token, payload).catch((error) => {
+			toast.error(`${error}`);
+			return null;
 		});
-		dispatch('save');
+		if (res) {
+			dispatch('save');
+		}
 	};
 
 	const setEmbeddingConfig = async () => {
 		const embeddingConfig = await getEmbeddingConfig(localStorage.token);
 
 		if (embeddingConfig) {
-			RAG_EMBEDDING_ENGINE = embeddingConfig.RAG_EMBEDDING_ENGINE;
+			// 强制使用 openai 嵌入引擎，UI 不再提供其他引擎选项
+			RAG_EMBEDDING_ENGINE = 'openai';
 			RAG_EMBEDDING_MODEL = embeddingConfig.RAG_EMBEDDING_MODEL;
 			RAG_EMBEDDING_BATCH_SIZE = embeddingConfig.RAG_EMBEDDING_BATCH_SIZE ?? 1;
 			ENABLE_ASYNC_EMBEDDING = embeddingConfig.ENABLE_ASYNC_EMBEDDING ?? true;
@@ -255,6 +399,8 @@
 			AzureOpenAIKey = embeddingConfig.azure_openai_config.key;
 			AzureOpenAIUrl = embeddingConfig.azure_openai_config.url;
 			AzureOpenAIVersion = embeddingConfig.azure_openai_config.version;
+
+			embeddingSnapshot = buildEmbeddingFingerprint();
 		}
 	};
 	onMount(async () => {
@@ -326,13 +472,45 @@
 	}}
 >
 	{#if RAGConfig}
-		<div class=" space-y-2.5 overflow-y-scroll scrollbar-hidden h-full pr-1.5">
-			<div class="">
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('General')}</div>
+		<div class="space-y-5 overflow-y-scroll scrollbar-hidden h-full pr-1.5">
+			{#if false}
+			<!-- Document chunking (Document Settings 节已合并到 Embedding；保留代码以便恢复) -->
+			<div>
+				<div class="flex justify-between items-center mt-0.5 mb-2.5 gap-2">
+					<div class="text-base font-medium shrink-0">{$i18n.t('Document Settings')}</div>
 
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+					<div class="flex items-center gap-1.5 min-w-0">
+						<Tooltip
+							content={$i18n.t(
+								'These settings are shared across all users in this workspace.'
+							)}
+						>
+							<div
+								class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 cursor-help truncate"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 20 20"
+									fill="currentColor"
+									class="size-3.5 shrink-0"
+									aria-hidden="true"
+								>
+									<path
+										fill-rule="evenodd"
+										d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+										clip-rule="evenodd"
+									/>
+								</svg>
+								<span class="truncate">{$i18n.t('Shared with all users')}</span>
+							</div>
+						</Tooltip>
+					</div>
+				</div>
 
+				<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
+
+					<!-- 注释掉：内容提取引擎选项、PDF OCR、PDF Loader Mode、Datalab Marker、External、Tika、Docling、Document Intelligence、Mistral OCR、MinerU 等 -->
+					{#if false}
 					<div class="mb-2.5 flex flex-col w-full justify-between">
 						<div class="flex w-full justify-between mb-1">
 							<div class="self-center text-xs font-medium">
@@ -738,7 +916,10 @@
 							</div>
 						{/if}
 					</div>
+					{/if}
 
+					<!-- 注释掉：Bypass Embedding and Retrieval、Text Splitter、Markdown Header Text Splitter -->
+					{#if false}
 					<div class="  mb-2.5 flex w-full justify-between">
 						<div class=" self-center text-xs font-medium">
 							<Tooltip content={$i18n.t('Full Context Mode')} placement="top-start">
@@ -746,702 +927,535 @@
 							</Tooltip>
 						</div>
 						<div class="flex items-center relative">
-							<Tooltip
-								content={RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL
-									? $i18n.t(
-											'Inject the entire content as context for comprehensive processing, this is recommended for complex queries.'
-										)
-									: $i18n.t(
-											'Default to segmented retrieval for focused and relevant content extraction, this is recommended for most cases.'
-										)}
-							>
-								<Switch bind:state={RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL} />
-							</Tooltip>
-						</div>
-					</div>
-
-					{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">{$i18n.t('Text Splitter')}</div>
-							<div class="flex items-center relative">
-								<select
-									class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
-									bind:value={RAGConfig.TEXT_SPLITTER}
-								>
-									<option value="">{$i18n.t('Default')} ({$i18n.t('Character')})</option>
-									<option value="token">{$i18n.t('Token')} ({$i18n.t('Tiktoken')})</option>
-								</select>
-							</div>
-						</div>
-
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">
-								<Tooltip
-									placement="top-start"
-									content={$i18n.t(
-										'Split documents by markdown headers before applying character/token splitting.'
-									)}
-								>
-									{$i18n.t('Markdown Header Text Splitter')}
-								</Tooltip>
-							</div>
-							<div class="flex items-center relative">
-								<Switch bind:state={RAGConfig.ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER} />
-							</div>
-						</div>
-
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" flex gap-1.5 w-full">
-								<div class="  w-full justify-between">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Chunk Size')}
-									</div>
-									<div class="self-center">
-										<input
-											class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-											type="number"
-											placeholder={$i18n.t('Enter Chunk Size')}
-											bind:value={RAGConfig.CHUNK_SIZE}
-											autocomplete="off"
-											min="0"
-										/>
-									</div>
-								</div>
-
-								<div class="w-full">
-									<div class=" self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Chunk Overlap')}
-									</div>
-
-									<div class="self-center">
-										<input
-											class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-											type="number"
-											placeholder={$i18n.t('Enter Chunk Overlap')}
-											bind:value={RAGConfig.CHUNK_OVERLAP}
-											autocomplete="off"
-											min="0"
-										/>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{#if RAGConfig.ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER}
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" flex gap-1.5 w-full">
-									<div class="w-full">
-										<div class="self-center text-xs font-medium min-w-fit mb-1">
-											<Tooltip
-												placement="top-start"
-												content={$i18n.t(
-													'Chunks smaller than this threshold will be merged with neighboring chunks when possible. Set to 0 to disable merging.'
-												)}
-											>
-												{$i18n.t('Chunk Min Size Target')}
-											</Tooltip>
-										</div>
-										<div class="self-center">
-											<input
-												class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-												type="number"
-												placeholder={$i18n.t('Enter Chunk Min Size Target')}
-												bind:value={RAGConfig.CHUNK_MIN_SIZE_TARGET}
-												autocomplete="off"
-												min="0"
-											/>
-										</div>
-									</div>
-								</div>
-							</div>
-						{/if}
-					{/if}
-				</div>
-
-				{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
-					<div class="mb-3">
-						<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Embedding')}</div>
-
-						<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-						<div class="  mb-2.5 flex flex-col w-full justify-between">
-							<div class="flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">
-									{$i18n.t('Embedding Model Engine')}
-								</div>
-								<div class="flex items-center relative">
-									<select
-										class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
-										bind:value={RAG_EMBEDDING_ENGINE}
-										placeholder={$i18n.t('Select an embedding model engine')}
-										on:change={(e) => {
-											if (e.target.value === 'ollama') {
-												RAG_EMBEDDING_MODEL = '';
-											} else if (e.target.value === 'openai') {
-												RAG_EMBEDDING_MODEL = 'text-embedding-3-small';
-											} else if (e.target.value === 'azure_openai') {
-												RAG_EMBEDDING_MODEL = 'text-embedding-3-small';
-											} else if (e.target.value === '') {
-												RAG_EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2';
-											}
-										}}
-									>
-										<option value="">{$i18n.t('Default (SentenceTransformers)')}</option>
-										<option value="ollama">{$i18n.t('Ollama')}</option>
-										<option value="openai">{$i18n.t('OpenAI')}</option>
-										<option value="azure_openai">{$i18n.t('Azure OpenAI')}</option>
-									</select>
-								</div>
-							</div>
-
-							{#if RAG_EMBEDDING_ENGINE === 'openai'}
-								<div class="my-0.5 flex gap-2 pr-2">
-									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
-										placeholder={$i18n.t('API Base URL')}
-										bind:value={OpenAIUrl}
-										required
-									/>
-
-									<SensitiveInput
-										placeholder={$i18n.t('API Key')}
-										bind:value={OpenAIKey}
-										required={false}
-									/>
-								</div>
-							{:else if RAG_EMBEDDING_ENGINE === 'ollama'}
-								<div class="my-0.5 flex gap-2 pr-2">
-									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
-										placeholder={$i18n.t('API Base URL')}
-										bind:value={OllamaUrl}
-										required
-									/>
-
-									<SensitiveInput
-										placeholder={$i18n.t('API Key')}
-										bind:value={OllamaKey}
-										required={false}
-									/>
-								</div>
-							{:else if RAG_EMBEDDING_ENGINE === 'azure_openai'}
-								<div class="my-0.5 flex flex-col gap-2 pr-2 w-full">
-									<div class="flex gap-2">
-										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
-											placeholder={$i18n.t('API Base URL')}
-											bind:value={AzureOpenAIUrl}
-											required
-										/>
-										<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={AzureOpenAIKey} />
-									</div>
-									<div class="flex gap-2">
-										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
-											placeholder={$i18n.t('Version')}
-											bind:value={AzureOpenAIVersion}
-											required
-										/>
-									</div>
-								</div>
-							{/if}
-						</div>
-
-						<div class="  mb-2.5 flex flex-col w-full">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('Embedding Model')}</div>
-
-							<div class="">
-								{#if RAG_EMBEDDING_ENGINE === 'ollama'}
-									<div class="flex w-full">
-										<div class="flex-1 mr-2">
-											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
-												bind:value={RAG_EMBEDDING_MODEL}
-												placeholder={$i18n.t('Set embedding model')}
-												required
-											/>
-										</div>
-									</div>
-								{:else}
-									<div class="flex w-full">
-										<div class="flex-1 mr-2">
-											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
-												placeholder={$i18n.t('Set embedding model (e.g. {{model}})', {
-													model: RAG_EMBEDDING_MODEL.slice(-40)
-												})}
-												bind:value={RAG_EMBEDDING_MODEL}
-											/>
-										</div>
-
-										{#if RAG_EMBEDDING_ENGINE === ''}
-											<button
-												class="px-2.5 bg-transparent text-gray-800 dark:bg-transparent dark:text-gray-100 rounded-lg transition"
-												on:click={() => {
-													embeddingModelUpdateHandler();
-												}}
-												disabled={updateEmbeddingModelLoading}
-											>
-												{#if updateEmbeddingModelLoading}
-													<div class="self-center">
-														<Spinner />
-													</div>
-												{:else}
-													<svg
-														xmlns="http://www.w3.org/2000/svg"
-														viewBox="0 0 16 16"
-														fill="currentColor"
-														class="w-4 h-4"
-													>
-														<path
-															d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z"
-														/>
-														<path
-															d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z"
-														/>
-													</svg>
-												{/if}
-											</button>
-										{/if}
-									</div>
-								{/if}
-							</div>
-
-							<div class="mt-1 mb-1 text-xs text-gray-400 dark:text-gray-500">
-								{$i18n.t(
-									'After updating or changing the embedding model, you must reindex the knowledge base for the changes to take effect. You can do this using the "Reindex" button below.'
-								)}
-							</div>
-						</div>
-
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">
-								{$i18n.t('Embedding Batch Size')}
-							</div>
-
-							<div class="">
-								<input
-									bind:value={RAG_EMBEDDING_BATCH_SIZE}
-									type="number"
-									class=" bg-transparent text-center w-14 outline-none"
-									min="-2"
-									max="16000"
-									step="1"
-								/>
-							</div>
-						</div>
-
-						{#if RAG_EMBEDDING_ENGINE === 'ollama' || RAG_EMBEDDING_ENGINE === 'openai' || RAG_EMBEDDING_ENGINE === 'azure_openai'}
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class="self-center text-xs font-medium">
-									<Tooltip
-										content={$i18n.t(
-											'Runs embedding tasks concurrently to speed up processing. Turn off if rate limits become an issue.'
-										)}
-										placement="top-start"
-									>
-										{$i18n.t('Async Embedding Processing')}
-									</Tooltip>
-								</div>
-								<div class="flex items-center relative">
-									<Switch bind:state={ENABLE_ASYNC_EMBEDDING} />
-								</div>
-							</div>
-
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class="self-center text-xs font-medium">
-									<Tooltip
-										content={$i18n.t(
-											'Limits the number of concurrent embedding requests. Set to 0 for unlimited.'
-										)}
-										placement="top-start"
-									>
-										{$i18n.t('Embedding Concurrent Requests')}
-									</Tooltip>
-								</div>
-								<div class="">
-									<input
-										bind:value={RAG_EMBEDDING_CONCURRENT_REQUESTS}
-										type="number"
-										class=" bg-transparent text-center w-14 outline-none"
-										min="0"
-										step="1"
-									/>
-								</div>
-							</div>
-						{/if}
-					</div>
-
-					<div class="mb-3">
-						<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Retrieval')}</div>
-
-						<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">{$i18n.t('Full Context Mode')}</div>
-							<div class="flex items-center relative">
-								<Tooltip
-									content={RAGConfig.RAG_FULL_CONTEXT
-										? $i18n.t(
-												'Inject the entire content as context for comprehensive processing, this is recommended for complex queries.'
-											)
-										: $i18n.t(
-												'Default to segmented retrieval for focused and relevant content extraction, this is recommended for most cases.'
-											)}
-								>
-									<Switch bind:state={RAGConfig.RAG_FULL_CONTEXT} />
-								</Tooltip>
-							</div>
-						</div>
-
-						{#if !RAGConfig.RAG_FULL_CONTEXT}
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">{$i18n.t('Hybrid Search')}</div>
-								<div class="flex items-center relative">
-									<Switch bind:state={RAGConfig.ENABLE_RAG_HYBRID_SEARCH} />
-								</div>
-							</div>
-
-							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
-								<div class="mb-2.5 flex w-full justify-between">
-									<div class="self-center text-xs font-medium">
-										{$i18n.t('Enrich Hybrid Search Text')}
-									</div>
-									<div class="flex items-center relative">
-										<Tooltip
-											content={$i18n.t(
-												'Adds filenames, titles, sections, and snippets into the BM25 text to improve lexical recall.'
-											)}
-										>
-											<Switch bind:state={RAGConfig.ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS} />
-										</Tooltip>
-									</div>
-								</div>
-
-								<div class="  mb-2.5 flex flex-col w-full justify-between">
-									<div class="flex w-full justify-between">
-										<div class=" self-center text-xs font-medium">
-											{$i18n.t('Reranking Engine')}
-										</div>
-										<div class="flex items-center relative">
-											<select
-												class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
-												bind:value={RAGConfig.RAG_RERANKING_ENGINE}
-												placeholder={$i18n.t('Select a reranking model engine')}
-												on:change={(e) => {
-													if (e.target.value === 'external') {
-														RAGConfig.RAG_RERANKING_MODEL = '';
-													} else if (e.target.value === '') {
-														RAGConfig.RAG_RERANKING_MODEL = 'BAAI/bge-reranker-v2-m3';
-													}
-												}}
-											>
-												<option value="">{$i18n.t('Default (SentenceTransformers)')}</option>
-												<option value="external">{$i18n.t('External')}</option>
-											</select>
-										</div>
-									</div>
-
-									{#if RAGConfig.RAG_RERANKING_ENGINE === 'external'}
-										<div class="my-0.5 flex gap-2 pr-2">
-											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
-												placeholder={$i18n.t('API Base URL')}
-												bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_URL}
-												required
-											/>
-
-											<SensitiveInput
-												placeholder={$i18n.t('API Key')}
-												bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY}
-												required={false}
-											/>
-										</div>
-									{/if}
-								</div>
-
-								<div class="  mb-2.5 flex flex-col w-full">
-									<div class=" mb-1 text-xs font-medium">{$i18n.t('Reranking Model')}</div>
-
-									<div class="">
-										<div class="flex w-full">
-											<div class="flex-1 mr-2">
-												<input
-													class="flex-1 w-full text-sm bg-transparent outline-hidden"
-													placeholder={$i18n.t('Set reranking model (e.g. {{model}})', {
-														model: 'BAAI/bge-reranker-v2-m3'
-													})}
-													bind:value={RAGConfig.RAG_RERANKING_MODEL}
-												/>
-											</div>
-										</div>
-									</div>
-								</div>
-							{/if}
-
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">{$i18n.t('Top K')}</div>
-								<div class="flex items-center relative">
-									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
-										type="number"
-										placeholder={$i18n.t('Enter Top K')}
-										bind:value={RAGConfig.TOP_K}
-										autocomplete="off"
-										min="0"
-									/>
-								</div>
-							</div>
-
-							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
-								<div class="mb-2.5 flex w-full justify-between">
-									<div class="self-center text-xs font-medium">{$i18n.t('Top K Reranker')}</div>
-									<div class="flex items-center relative">
-										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
-											type="number"
-											placeholder={$i18n.t('Enter Top K Reranker')}
-											bind:value={RAGConfig.TOP_K_RERANKER}
-											autocomplete="off"
-											min="0"
-										/>
-									</div>
-								</div>
-							{/if}
-
-							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
-								<div class="  mb-2.5 flex flex-col w-full justify-between">
-									<div class=" flex w-full justify-between">
-										<div class=" self-center text-xs font-medium">
-											{$i18n.t('Relevance Threshold')}
-										</div>
-										<div class="flex items-center relative">
-											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
-												type="number"
-												step="0.01"
-												placeholder={$i18n.t('Enter Score')}
-												bind:value={RAGConfig.RELEVANCE_THRESHOLD}
-												autocomplete="off"
-												min="0.0"
-												title={$i18n.t(
-													'The score should be a value between 0.0 (0%) and 1.0 (100%).'
-												)}
-											/>
-										</div>
-									</div>
-									<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-										{$i18n.t(
-											'Note: If you set a minimum score, the search will only return documents with a score greater than or equal to the minimum score.'
-										)}
-									</div>
-								</div>
-							{/if}
-
-							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
-								<div class=" mb-2.5 py-0.5 w-full justify-between">
-									<Tooltip
-										content={$i18n.t(
-											'The Weight of BM25 Hybrid Search. 0 more semantic, 1 more lexical. Default 0.5'
-										)}
-										placement="top-start"
-										className="inline-tooltip"
-									>
-										<div class="flex w-full justify-between">
-											<div class=" self-center text-xs font-medium">
-												{$i18n.t('BM25 Weight')}
-											</div>
-											<button
-												class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
-												type="button"
-												on:click={() => {
-													RAGConfig.HYBRID_BM25_WEIGHT =
-														(RAGConfig?.HYBRID_BM25_WEIGHT ?? null) === null ? 0.5 : null;
-												}}
-											>
-												{#if (RAGConfig?.HYBRID_BM25_WEIGHT ?? null) === null}
-													<span class="ml-2 self-center"> {$i18n.t('Default')} </span>
-												{:else}
-													<span class="ml-2 self-center"> {$i18n.t('Custom')} </span>
-												{/if}
-											</button>
-										</div>
-									</Tooltip>
-
-									{#if (RAGConfig?.HYBRID_BM25_WEIGHT ?? null) !== null}
-										<div class="flex mt-0.5 space-x-2">
-											<div class=" flex-1">
-												<input
-													id="steps-range"
-													type="range"
-													min="0"
-													max="1"
-													step="0.05"
-													bind:value={RAGConfig.HYBRID_BM25_WEIGHT}
-													class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-												/>
-
-												<div class="py-0.5">
-													<div class="flex w-full justify-between">
-														<div class=" text-left text-xs font-small">
-															{$i18n.t('semantic')}
-														</div>
-														<div class=" text-right text-xs font-small">
-															{$i18n.t('lexical')}
-														</div>
-													</div>
-												</div>
-											</div>
-											<div>
-												<input
-													bind:value={RAGConfig.HYBRID_BM25_WEIGHT}
-													type="number"
-													class=" bg-transparent text-center w-14"
-													min="0"
-													max="1"
-													step="any"
-												/>
-											</div>
-										</div>
-									{/if}
-								</div>
-							{/if}
-						{/if}
-
-						<div class="  mb-2.5 flex flex-col w-full justify-between">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('RAG Template')}</div>
-							<div class="flex w-full items-center relative">
-								<Tooltip
-									content={$i18n.t(
-										'Leave empty to use the default prompt, or enter a custom prompt'
-									)}
-									placement="top-start"
-									className="w-full"
-								>
-									<Textarea
-										bind:value={RAGConfig.RAG_TEMPLATE}
-										placeholder={$i18n.t(
-											'Leave empty to use the default prompt, or enter a custom prompt'
-										)}
-									/>
-								</Tooltip>
-							</div>
-						</div>
-					</div>
-				{/if}
-
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Files')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Allowed File Extensions')}</div>
-						<div class="flex items-center relative">
-							<Tooltip
-								content={$i18n.t(
-									'Allowed file extensions for upload. Separate multiple extensions with commas. Leave empty for all file types.'
-								)}
-								placement="top-start"
-							>
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									type="text"
-									placeholder={$i18n.t('e.g. pdf, docx, txt')}
-									bind:value={RAGConfig.ALLOWED_FILE_EXTENSIONS}
-									autocomplete="off"
-								/>
-							</Tooltip>
+							<Switch bind:state={RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL} />
 						</div>
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Max Upload Size')}</div>
+						<div class=" self-center text-xs font-medium">{$i18n.t('Text Splitter')}</div>
 						<div class="flex items-center relative">
-							<Tooltip
-								content={$i18n.t(
-									'The maximum file size in MB. If the file size exceeds this limit, the file will not be uploaded.'
-								)}
-								placement="top-start"
+							<select
+								class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+								bind:value={RAGConfig.TEXT_SPLITTER}
 							>
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									type="number"
-									placeholder={$i18n.t('Leave empty for unlimited')}
-									bind:value={RAGConfig.FILE_MAX_SIZE}
-									autocomplete="off"
-									min="0"
-								/>
-							</Tooltip>
-						</div>
-					</div>
-
-					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Max Upload Count')}</div>
-						<div class="flex items-center relative">
-							<Tooltip
-								content={$i18n.t(
-									'The maximum number of files that can be used at once in chat. If the number of files exceeds this limit, the files will not be uploaded.'
-								)}
-								placement="top-start"
-							>
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									type="number"
-									placeholder={$i18n.t('Leave empty for unlimited')}
-									bind:value={RAGConfig.FILE_MAX_COUNT}
-									autocomplete="off"
-									min="0"
-								/>
-							</Tooltip>
-						</div>
-					</div>
-
-					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Image Compression Width')}</div>
-						<div class="flex items-center relative">
-							<Tooltip
-								content={$i18n.t(
-									'The width in pixels to compress images to. Leave empty for no compression.'
-								)}
-								placement="top-start"
-							>
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									type="number"
-									placeholder={$i18n.t('Leave empty for no compression')}
-									bind:value={RAGConfig.FILE_IMAGE_COMPRESSION_WIDTH}
-									autocomplete="off"
-									min="0"
-								/>
-							</Tooltip>
+								<option value="">{$i18n.t('Default')} ({$i18n.t('Character')})</option>
+								<option value="token">{$i18n.t('Token')} ({$i18n.t('Tiktoken')})</option>
+							</select>
 						</div>
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
 						<div class=" self-center text-xs font-medium">
-							{$i18n.t('Image Compression Height')}
+							{$i18n.t('Markdown Header Text Splitter')}
 						</div>
 						<div class="flex items-center relative">
-							<Tooltip
-								content={$i18n.t(
-									'The height in pixels to compress images to. Leave empty for no compression.'
-								)}
-								placement="top-start"
-							>
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									type="number"
-									placeholder={$i18n.t('Leave empty for no compression')}
-									bind:value={RAGConfig.FILE_IMAGE_COMPRESSION_HEIGHT}
-									autocomplete="off"
-									min="0"
-								/>
-							</Tooltip>
+							<Switch bind:state={RAGConfig.ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER} />
+						</div>
+					</div>
+					{/if}
+
+				<div
+					class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2"
+				>
+					<div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2.5">
+						{$i18n.t('Chunk Parameters')}
+					</div>
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Chunk Size')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Size')}
+								bind:value={RAGConfig.CHUNK_SIZE}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Chunk Overlap')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Overlap')}
+								bind:value={RAGConfig.CHUNK_OVERLAP}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								<Tooltip
+									placement="top-start"
+									content={$i18n.t(
+										'Chunks smaller than this threshold will be merged with neighboring chunks when possible. Set to 0 to disable merging.'
+									)}
+								>
+									{$i18n.t('Chunk Min Size Target')}
+								</Tooltip>
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Min Size Target')}
+								bind:value={RAGConfig.CHUNK_MIN_SIZE_TARGET}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{/if}
+
+			<!-- Embedding -->
+			<div>
+				<div class="flex items-center justify-between mt-0.5 mb-2 gap-2 pr-0.5">
+					<div class="text-base font-medium shrink-0">{$i18n.t('Embedding')}</div>
+
+					<Tooltip
+						content={$i18n.t(
+							'These settings are shared across all users in this workspace.'
+						)}
+						className="inline-flex items-center gap-1.5 text-xs leading-5 text-gray-400 dark:text-gray-500 cursor-help whitespace-nowrap"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+							class="size-3.5 shrink-0"
+							aria-hidden="true"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+						<span>{$i18n.t('Shared with all users')}</span>
+					</Tooltip>
+				</div>
+				<hr class="border-gray-100/30 dark:border-gray-850/30 mb-3" />
+
+				<!-- Chunking (title inside the box) -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+						{$i18n.t('Chunking')}
+					</div>
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Chunk Size')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Size')}
+								bind:value={RAGConfig.CHUNK_SIZE}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Chunk Overlap')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Overlap')}
+								bind:value={RAGConfig.CHUNK_OVERLAP}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								<Tooltip
+									placement="top-start"
+									content={$i18n.t(
+										'Chunks smaller than this threshold will be merged with neighboring chunks when possible. Set to 0 to disable merging.'
+									)}
+								>
+									{$i18n.t('Chunk Min Size Target')}
+								</Tooltip>
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Min Size Target')}
+								bind:value={RAGConfig.CHUNK_MIN_SIZE_TARGET}
+								autocomplete="off"
+								min="0"
+							/>
 						</div>
 					</div>
 				</div>
 
+				<!-- Embedding endpoint, API & model (combined) -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="flex items-center justify-between mb-3">
+						<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+							{$i18n.t('Embedding Model')}
+						</div>
+						<Tooltip content={$i18n.t('Verify')}>
+							<button
+								class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+								type="button"
+								on:click={verifyEmbeddingHandler}
+								disabled={verifyingEmbedding || !OpenAIUrl}
+							>
+								{#if verifyingEmbedding}
+									<Spinner className="size-3.5" />
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+										aria-hidden="true"
+										class="size-3.5"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								{/if}
+								<span>{$i18n.t('Verify')}</span>
+							</button>
+						</Tooltip>
+					</div>
+					<div class="flex flex-col gap-3">
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('API Base URL')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								placeholder={$i18n.t('API Base URL')}
+								bind:value={OpenAIUrl}
+								required
+							/>
+						</div>
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('API Key')}
+							</label>
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={OpenAIKey}
+									required={false}
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
+						</div>
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Embedding Model')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								placeholder={$i18n.t('Set embedding model (e.g. {{model}})', {
+									model: RAG_EMBEDDING_MODEL.slice(-40)
+								})}
+								bind:value={RAG_EMBEDDING_MODEL}
+							/>
+						</div>
+					</div>
+				</div>
+
+				<!-- Performance options -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+						{$i18n.t('Performance')}
+					</div>
+					<div class="divide-y divide-gray-100 dark:divide-gray-800">
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">
+								{$i18n.t('Embedding Batch Size')}
+							</div>
+							<input
+								bind:value={RAG_EMBEDDING_BATCH_SIZE}
+								type="number"
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								min="-2"
+								max="16000"
+								step="1"
+							/>
+						</div>
+
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">
+								<Tooltip
+									content={$i18n.t(
+										'Runs embedding tasks concurrently to speed up processing. Turn off if rate limits become an issue.'
+									)}
+									placement="top-start"
+								>
+									{$i18n.t('Async Embedding Processing')}
+								</Tooltip>
+							</div>
+							<Switch bind:state={ENABLE_ASYNC_EMBEDDING} />
+						</div>
+
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">
+								<Tooltip
+									content={$i18n.t(
+										'Limits the number of concurrent embedding requests. Set to 0 for unlimited.'
+									)}
+									placement="top-start"
+								>
+									{$i18n.t('Embedding Concurrent Requests')}
+								</Tooltip>
+							</div>
+							<input
+								bind:value={RAG_EMBEDDING_CONCURRENT_REQUESTS}
+								type="number"
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								min="0"
+								step="1"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Retrieval -->
+			<div>
+				<div class="text-base font-medium mt-0.5 mb-2">{$i18n.t('Retrieval')}</div>
+				<hr class="border-gray-100/30 dark:border-gray-850/30 mb-3" />
+
+				<!-- Reranker endpoint, API & model (combined) -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5">
+					<div class="flex items-center justify-between mb-3">
+						<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+							{$i18n.t('Reranking Model')}
+						</div>
+						<Tooltip content={$i18n.t('Verify')}>
+							<button
+								class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+								type="button"
+								on:click={verifyRerankerHandler}
+								disabled={verifyingReranker || !RAGConfig?.RAG_EXTERNAL_RERANKER_URL}
+							>
+								{#if verifyingReranker}
+									<Spinner className="size-3.5" />
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+										aria-hidden="true"
+										class="size-3.5"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								{/if}
+								<span>{$i18n.t('Verify')}</span>
+							</button>
+						</Tooltip>
+					</div>
+					<div class="flex flex-col gap-3">
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('API Base URL')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								placeholder={$i18n.t('API Base URL')}
+								bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_URL}
+								required
+							/>
+						</div>
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('API Key')}
+							</label>
+							<div
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+							>
+								<SensitiveInput
+									placeholder={$i18n.t('API Key')}
+									bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY}
+									required={false}
+									outerClassName="flex flex-1 bg-transparent items-center"
+									inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+									showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+								/>
+							</div>
+						</div>
+						<div class="flex flex-col">
+							<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+								{$i18n.t('Reranking Model')}
+							</label>
+							<input
+								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								placeholder={$i18n.t('Set reranking model (e.g. {{model}})', {
+									model: 'BAAI/bge-reranker-v2-m3'
+								})}
+								bind:value={RAGConfig.RAG_RERANKING_MODEL}
+							/>
+						</div>
+					</div>
+				</div>
+
+				<!-- Search params -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+						{$i18n.t('Search Parameters')}
+					</div>
+					<div class="divide-y divide-gray-100 dark:divide-gray-800">
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">{$i18n.t('Top K')}</div>
+							<input
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								type="number"
+								placeholder={$i18n.t('Enter Top K')}
+								bind:value={RAGConfig.TOP_K}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">{$i18n.t('Top K Reranker')}</div>
+							<input
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								type="number"
+								placeholder={$i18n.t('Enter Top K Reranker')}
+								bind:value={RAGConfig.TOP_K_RERANKER}
+								autocomplete="off"
+								min="0"
+							/>
+						</div>
+
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">
+								<Tooltip
+									content={$i18n.t(
+										'Note: If you set a minimum score, the search will only return documents with a score greater than or equal to the minimum score.'
+									)}
+									placement="top-start"
+								>
+									{$i18n.t('Relevance Threshold')}
+								</Tooltip>
+							</div>
+							<input
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								type="number"
+								step="0.01"
+								placeholder={$i18n.t('Enter Score')}
+								bind:value={RAGConfig.RELEVANCE_THRESHOLD}
+								autocomplete="off"
+								min="0.0"
+								title={$i18n.t('The score should be a value between 0.0 (0%) and 1.0 (100%).')}
+							/>
+						</div>
+
+						<!-- BM25 Weight -->
+						<div class="py-2.5">
+							<div class="flex items-center justify-between">
+								<div class="text-xs font-medium">
+									<Tooltip
+										content={$i18n.t(
+											'The Weight of BM25 Hybrid Search. 0 more semantic, 1 more lexical. Default 0.5'
+										)}
+										placement="top-start"
+									>
+										{$i18n.t('BM25 Weight')}
+									</Tooltip>
+								</div>
+								<button
+									class="text-xs px-2 py-0.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-850 transition outline-hidden text-gray-500 dark:text-gray-400"
+									type="button"
+									on:click={() => {
+										RAGConfig.HYBRID_BM25_WEIGHT =
+											(RAGConfig?.HYBRID_BM25_WEIGHT ?? null) === null ? 0.5 : null;
+									}}
+								>
+									{(RAGConfig?.HYBRID_BM25_WEIGHT ?? null) === null
+										? $i18n.t('Default')
+										: $i18n.t('Custom')}
+								</button>
+							</div>
+
+							{#if (RAGConfig?.HYBRID_BM25_WEIGHT ?? null) !== null}
+								<div class="flex mt-2 gap-2 items-center">
+									<div class="flex-1">
+										<input
+											id="steps-range"
+											type="range"
+											min="0"
+											max="1"
+											step="0.05"
+											bind:value={RAGConfig.HYBRID_BM25_WEIGHT}
+											class="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-gray-100 dark:bg-gray-800"
+										/>
+										<div
+											class="flex justify-between mt-0.5 text-[10px] text-gray-400 dark:text-gray-500"
+										>
+											<span>{$i18n.t('semantic')}</span>
+											<span>{$i18n.t('lexical')}</span>
+										</div>
+									</div>
+									<input
+										bind:value={RAGConfig.HYBRID_BM25_WEIGHT}
+										type="number"
+										class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-16 text-sm outline-none"
+										min="0"
+										max="1"
+										step="any"
+									/>
+								</div>
+							{/if}
+						</div>
+					</div>
+				</div>
+
+				<!-- RAG Template -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+						{$i18n.t('RAG Template')}
+					</div>
+					<Tooltip
+						content={$i18n.t(
+							'Leave empty to use the default prompt, or enter a custom prompt'
+						)}
+						placement="top-start"
+						className="w-full"
+					>
+						<Textarea
+							bind:value={RAGConfig.RAG_TEMPLATE}
+							placeholder={$i18n.t(
+								'Leave empty to use the default prompt, or enter a custom prompt'
+							)}
+						/>
+					</Tooltip>
+				</div>
+			</div>
+
+				<!-- 注释掉：集成（Integration）部分（Google Drive、OneDrive），暂不考虑此功能 -->
+				{#if false}
 				<div class="mb-3">
 					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Integration')}</div>
 
@@ -1461,7 +1475,10 @@
 						</div>
 					</div>
 				</div>
+				{/if}
 
+				<!-- 注释掉：危险区域（Danger Zone）部分（重置上传目录、重置向量库、重建索引），暂不考虑此功能 -->
+				{#if false}
 				<div class="mb-3">
 					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Danger Zone')}</div>
 
@@ -1515,11 +1532,11 @@
 						</div>
 					</div>
 				</div>
-			</div>
+				{/if}
 		</div>
 		<div class="flex justify-end pt-3 text-sm font-medium">
 			<button
-				class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+				class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 				type="submit"
 			>
 				{$i18n.t('Save')}

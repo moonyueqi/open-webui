@@ -1893,6 +1893,19 @@ async def chat_completion_files_handler(
             )
         except Exception as e:
             log.exception(e)
+            try:
+                await __event_emitter__(
+                    {
+                        "type": "status",
+                        "data": {
+                            "action": "error",
+                            "description": "知识库检索失败，请联系管理员检查嵌入模型 API 配置。",
+                            "done": True,
+                        },
+                    }
+                )
+            except Exception:
+                pass
 
         log.debug(f"rag_contexts:sources: {sources}")
 
@@ -2111,12 +2124,34 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     # Process messages with OR-aligned output items for clean LLM messages
     form_data["messages"] = process_messages_with_output(form_data.get("messages", []))
 
+    # 强制使用气象专用系统提示词，忽略用户自定义设置
+    METEO_SYSTEM_PROMPT = (
+        "【角色定位】\n"
+        "你是苏州市气象预报智能助手，为苏州市气象局预报员提供专业的气象分析辅助服务。\n"
+        "【基本要求】\n"
+        "- 所有回复和思考过程必须使用中文\n"
+        '- 专业术语可附英文缩写，如\u201c对流有效位能（CAPE）\u201d\n'
+        "- 使用中国气象局标准术语和单位（℃、m/s、hPa、mm）\n"
+        "- 你是辅助工具，不能替代预报员和决策人员的专业判断\n"
+        "【注意事项】\n"
+        "- 分析需有逻辑推导过程，不能只给结论\n"
+        "- 对不确定的结论，说明不确定性和多种可能情景\n"
+        "- 涉及重大灾害性天气时，提醒进一步核实和会商\n"
+        "- 引用数值模式产品时注明模式名称和起报时次"
+    )
+    messages = form_data.get("messages", [])
+    if messages and messages[0].get("role") == "system":
+        messages[0]["content"] = METEO_SYSTEM_PROMPT
+    else:
+        messages.insert(0, {"role": "system", "content": METEO_SYSTEM_PROMPT})
+    form_data["messages"] = messages
+
     system_message = get_system_message(form_data.get("messages", []))
-    if system_message:  # Chat Controls/User Settings
+    if system_message:
         try:
             form_data = apply_system_prompt_to_body(
                 system_message.get("content"), form_data, metadata, user, replace=True
-            )  # Required to handle system prompt variables
+            )
         except:
             pass
 
@@ -2345,12 +2380,11 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             )
 
     prompt = get_last_user_message(form_data["messages"])
-    # TODO: re-enable URL extraction from prompt
-    # urls = []
-    # if prompt and len(prompt or "") < 500 and (not files or len(files) == 0):
-    #     urls = extract_urls(prompt)
+    urls = []
+    if prompt:
+        urls = extract_urls(prompt)
 
-    if files:
+    if files or urls:
         if not files:
             files = []
 
@@ -2364,7 +2398,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                         files = [f for f in files if f.get("id", None) != folder_id]
                         files = [*files, *folder.data["files"]]
 
-        # files = [*files, *[{"type": "url", "url": url, "name": url} for url in urls]]
+        files = [*files, *[{"type": "url", "url": url, "name": url} for url in urls]]
         # Remove duplicate files based on their content
         files = list({json.dumps(f, sort_keys=True): f for f in files}.values())
 
@@ -2772,6 +2806,22 @@ async def get_system_oauth_token(request, user):
     return oauth_token
 
 
+async def emit_chat_idle_after_main_response(metadata: dict) -> None:
+    """
+    Clear the sidebar active spinner once the primary assistant reply is finished.
+    Title, follow-up, and tag generation still run afterward (sequential LLM calls),
+    which would otherwise keep chat:active=true until process_chat's finally block.
+    """
+    if not metadata.get("chat_id"):
+        return
+    try:
+        emitter = get_event_emitter(metadata, update_db=False)
+        if emitter:
+            await emitter({"type": "chat:active", "data": {"active": False}})
+    except Exception as e:
+        log.debug(f"emit_chat_idle_after_main_response: {e}")
+
+
 async def background_tasks_handler(ctx):
     request = ctx["request"]
     form_data = ctx["form_data"]
@@ -2828,58 +2878,7 @@ async def background_tasks_handler(ctx):
 
     if message and "model" in message:
         if tasks and messages:
-            if (
-                TASKS.FOLLOW_UP_GENERATION in tasks
-                and tasks[TASKS.FOLLOW_UP_GENERATION]
-            ):
-                res = await generate_follow_ups(
-                    request,
-                    {
-                        "model": message["model"],
-                        "messages": messages,
-                        "message_id": metadata["message_id"],
-                        "chat_id": metadata["chat_id"],
-                    },
-                    user,
-                )
-
-                if res and isinstance(res, dict):
-                    if len(res.get("choices", [])) == 1:
-                        response_message = res.get("choices", [])[0].get("message", {})
-
-                        follow_ups_string = response_message.get(
-                            "content"
-                        ) or response_message.get("reasoning_content", "")
-                    else:
-                        follow_ups_string = ""
-
-                    follow_ups_string = follow_ups_string[
-                        follow_ups_string.find("{") : follow_ups_string.rfind("}") + 1
-                    ]
-
-                    try:
-                        follow_ups = json.loads(follow_ups_string).get("follow_ups", [])
-                        await event_emitter(
-                            {
-                                "type": "chat:message:follow_ups",
-                                "data": {
-                                    "follow_ups": follow_ups,
-                                },
-                            }
-                        )
-
-                        if not metadata.get("chat_id", "").startswith("local:"):
-                            Chats.upsert_message_to_chat_by_id_and_message_id(
-                                metadata["chat_id"],
-                                metadata["message_id"],
-                                {
-                                    "followUps": follow_ups,
-                                },
-                            )
-
-                    except Exception as e:
-                        pass
-
+            # Title before follow-ups so the task model returns a title sooner (Qwen-style UX).
             if not metadata.get("chat_id", "").startswith(
                 "local:"
             ):  # Only update titles and tags for non-temp chats
@@ -2951,6 +2950,59 @@ async def background_tasks_handler(ctx):
                             }
                         )
 
+            if (
+                TASKS.FOLLOW_UP_GENERATION in tasks
+                and tasks[TASKS.FOLLOW_UP_GENERATION]
+            ):
+                res = await generate_follow_ups(
+                    request,
+                    {
+                        "model": message["model"],
+                        "messages": messages,
+                        "message_id": metadata["message_id"],
+                        "chat_id": metadata["chat_id"],
+                    },
+                    user,
+                )
+
+                if res and isinstance(res, dict):
+                    if len(res.get("choices", [])) == 1:
+                        response_message = res.get("choices", [])[0].get("message", {})
+
+                        follow_ups_string = response_message.get(
+                            "content"
+                        ) or response_message.get("reasoning_content", "")
+                    else:
+                        follow_ups_string = ""
+
+                    follow_ups_string = follow_ups_string[
+                        follow_ups_string.find("{") : follow_ups_string.rfind("}") + 1
+                    ]
+
+                    try:
+                        follow_ups = json.loads(follow_ups_string).get("follow_ups", [])
+                        await event_emitter(
+                            {
+                                "type": "chat:message:follow_ups",
+                                "data": {
+                                    "follow_ups": follow_ups,
+                                },
+                            }
+                        )
+
+                        if not metadata.get("chat_id", "").startswith("local:"):
+                            Chats.upsert_message_to_chat_by_id_and_message_id(
+                                metadata["chat_id"],
+                                metadata["message_id"],
+                                {
+                                    "followUps": follow_ups,
+                                },
+                            )
+
+                    except Exception as e:
+                        pass
+
+            if not metadata.get("chat_id", "").startswith("local:"):
                 if TASKS.TAGS_GENERATION in tasks and tasks[TASKS.TAGS_GENERATION]:
                     res = await generate_chat_tags(
                         request,
@@ -3108,6 +3160,7 @@ async def non_streaming_chat_response_handler(response, ctx):
                                 },
                             )
 
+                    await emit_chat_idle_after_main_response(metadata)
                     await background_tasks_handler(ctx)
 
             response = build_response_object(
@@ -4630,6 +4683,7 @@ async def streaming_chat_response_handler(response, ctx):
                     }
                 )
 
+                await emit_chat_idle_after_main_response(metadata)
                 await background_tasks_handler(ctx)
             except asyncio.CancelledError:
                 log.warning("Task was cancelled!")

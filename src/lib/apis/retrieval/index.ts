@@ -530,3 +530,57 @@ export const resetVectorDB = async (token: string) => {
 
 	return res;
 };
+
+export type ModelVerifyResult = {
+	ok: boolean;
+	stage?: 'connection' | 'auth' | 'endpoint' | 'model' | 'timeout' | 'input';
+	status?: number;
+	model?: string;
+	message?: string;
+};
+
+export const verifyEmbeddingModel = async (
+	token: string,
+	payload: { url: string; key: string; model: string; prefix_field_name?: string; prefix?: string }
+): Promise<ModelVerifyResult> => {
+	const res = await fetch(`${RETRIEVAL_API_BASE_URL}/embedding/verify`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify(payload)
+	})
+		.then(async (r) => {
+			if (!r.ok) {
+				return { ok: false, stage: 'connection' as const, status: r.status };
+			}
+			return (await r.json()) as ModelVerifyResult;
+		})
+		.catch(() => ({ ok: false, stage: 'connection' as const }));
+
+	return res;
+};
+
+export const verifyRerankerModel = async (
+	token: string,
+	payload: { url: string; key: string; model: string; timeout?: number | null }
+): Promise<ModelVerifyResult> => {
+	const res = await fetch(`${RETRIEVAL_API_BASE_URL}/reranking/verify`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify(payload)
+	})
+		.then(async (r) => {
+			if (!r.ok) {
+				return { ok: false, stage: 'connection' as const, status: r.status };
+			}
+			return (await r.json()) as ModelVerifyResult;
+		})
+		.catch(() => ({ ok: false, stage: 'connection' as const }));
+
+	return res;
+};

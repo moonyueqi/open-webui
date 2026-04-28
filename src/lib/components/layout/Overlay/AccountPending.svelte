@@ -36,22 +36,18 @@
 					{/if}
 				</div>
 
-				<div
-					class=" mt-4 text-center text-sm dark:text-gray-200 w-full"
-					style="white-space: pre-wrap;"
-				>
-					{#if ($config?.ui?.pending_user_overlay_content ?? '').trim() !== ''}
+				{#if ($config?.ui?.pending_user_overlay_content ?? '').trim() !== ''}
+					<div
+						class=" mt-4 text-center text-sm dark:text-gray-200 w-full"
+						style="white-space: pre-wrap;"
+					>
 						{@html marked.parse(
 							DOMPurify.sanitize(
 								($config?.ui?.pending_user_overlay_content ?? '').replace(/\n/g, '<br>')
 							)
 						)}
-					{:else}
-						{$i18n.t('Your account status is currently pending activation.')}{'\n'}{$i18n.t(
-							'To access the WebUI, please reach out to the administrator. Admins can manage user statuses from the Admin Panel.'
-						)}
-					{/if}
-				</div>
+					</div>
+				{/if}
 
 				{#if adminDetails}
 					<div class="mt-4 text-sm font-medium text-center">
@@ -61,7 +57,7 @@
 
 				<div class=" mt-6 mx-auto relative group w-fit">
 					<button
-						class="relative z-20 flex px-5 py-2 rounded-full bg-white border border-gray-100 dark:border-none hover:bg-gray-100 text-gray-700 transition font-medium text-sm"
+						class="relative z-20 flex px-5 py-2 rounded-lg bg-white border border-gray-100 dark:border-none hover:bg-gray-100 text-gray-700 transition font-medium text-sm"
 						on:click={async () => {
 							location.href = '/';
 						}}

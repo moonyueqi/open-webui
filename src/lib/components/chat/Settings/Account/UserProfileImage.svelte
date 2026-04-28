@@ -4,10 +4,8 @@
 
 	const i18n = getContext('i18n');
 
-	import { getGravatarUrl } from '$lib/apis/utils';
+	// import { getGravatarUrl } from '$lib/apis/utils';
 	import { canvasPixelTest, generateInitialsImage } from '$lib/utils';
-
-	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	export let profileImageUrl;
 	export let user = null;
@@ -15,6 +13,18 @@
 	export let imageClassName = 'size-14 md:size-18';
 
 	let profileImageInputElement;
+
+	// Append a cache-busting query string ONLY for the bundled default avatar so that
+	// admins replacing /user.png see the new image immediately, without breaking the
+	// backend validator which whitelists the bare "/user.png" path.
+	$: displayedProfileImageUrl = (() => {
+		if (!profileImageUrl) return generateInitialsImage(user?.name);
+		if (profileImageUrl === '/user.png' || profileImageUrl.endsWith('/user.png')) {
+			const sep = profileImageUrl.includes('?') ? '&' : '?';
+			return `${profileImageUrl}${sep}t=${Date.now()}`;
+		}
+		return profileImageUrl;
+	})();
 </script>
 
 <input
@@ -79,48 +89,39 @@
 	}}
 />
 
-<div class="flex flex-col self-start group">
-	<div class="self-center flex">
-		<button
-			class="relative rounded-full dark:bg-gray-700"
-			type="button"
-			on:click={() => {
-				profileImageInputElement.click();
-			}}
-		>
-			<img
-				src={profileImageUrl !== '' ? profileImageUrl : generateInitialsImage(user?.name)}
-				alt="profile"
-				class=" rounded-full {imageClassName} object-cover"
-			/>
-
-			<div class="absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 transition">
-				<div class="p-1 rounded-full bg-white text-black border-gray-100 shadow">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-						class="size-3"
-					>
-						<path
-							d="m2.695 14.762-1.262 3.155a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.886L17.5 5.501a2.121 2.121 0 0 0-3-3L3.58 13.419a4 4 0 0 0-.885 1.343Z"
-						/>
-					</svg>
-				</div>
+<div class="flex flex-col items-center self-start group">
+	<button
+		class="relative rounded-2xl overflow-hidden ring-2 ring-gray-200/60 dark:ring-gray-700/40 hover:ring-gray-300 dark:hover:ring-gray-600 transition-all duration-200 shadow-sm"
+		type="button"
+		on:click={() => {
+			profileImageInputElement.click();
+		}}
+	>
+		<img
+			src={displayedProfileImageUrl}
+			alt="profile"
+			class="rounded-2xl {imageClassName} object-cover"
+		/>
+		<div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center">
+			<div class="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5 text-white drop-shadow-md">
+					<path d="M1 8a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 8.07 3h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 16.07 6H17a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8Z" />
+					<path fill-rule="evenodd" d="M10 14.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM10 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd" />
+				</svg>
 			</div>
-		</button>
-	</div>
-	<div class="flex flex-col w-full justify-center mt-2">
+		</div>
+	</button>
+	<div class="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
 		<button
-			class=" text-xs text-center text-gray-500 rounded-lg py-0.5 opacity-0 group-hover:opacity-100 transition-all"
+			class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
 			type="button"
 			on:click={async () => {
-				profileImageUrl = `${WEBUI_BASE_URL}/user.png`;
+				profileImageUrl = `/user.png`;
 			}}>{$i18n.t('Remove')}</button
 		>
-
+		<span class="text-gray-300 dark:text-gray-600">|</span>
 		<button
-			class=" text-xs text-center text-gray-800 dark:text-gray-400 rounded-lg py-0.5 opacity-0 group-hover:opacity-100 transition-all"
+			class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
 			type="button"
 			on:click={async () => {
 				if (canvasPixelTest()) {
@@ -136,16 +137,6 @@
 					);
 				}
 			}}>{$i18n.t('Initials')}</button
-		>
-
-		<button
-			class=" text-xs text-center text-gray-800 dark:text-gray-400 rounded-lg py-0.5 opacity-0 group-hover:opacity-100 transition-all"
-			type="button"
-			on:click={async () => {
-				const url = await getGravatarUrl(localStorage.token, user?.email);
-
-				profileImageUrl = url;
-			}}>{$i18n.t('Gravatar')}</button
 		>
 	</div>
 </div>

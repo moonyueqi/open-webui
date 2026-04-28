@@ -8,6 +8,10 @@ node_modules
 .env
 .env.*
 !.env.example
+
+# Open WebUI runtime data (DB / vectors / uploads / cache)
+backend/data/
+!backend/data/.gitkeep
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Byte-compiled / optimized / DLL files

@@ -18,6 +18,7 @@ from langchain_community.document_loaders import (
     UnstructuredODTLoader,
     UnstructuredPowerPointLoader,
     UnstructuredRSTLoader,
+    UnstructuredWordDocumentLoader,
     UnstructuredXMLLoader,
     YoutubeLoader,
 )
@@ -383,6 +384,8 @@ class Loader:
                 or file_ext == "docx"
             ):
                 loader = Docx2txtLoader(file_path)
+            elif file_content_type == "application/msword" or file_ext == "doc":
+                loader = UnstructuredWordDocumentLoader(file_path)
             elif file_content_type in [
                 "application/vnd.ms-excel",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

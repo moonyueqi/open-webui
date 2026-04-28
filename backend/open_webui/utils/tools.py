@@ -63,6 +63,7 @@ from open_webui.tools.builtin import (
     delete_memory,
     list_memories,
     get_current_timestamp,
+    get_current_time,
     calculate_timestamp,
     # search_notes,  # Notes feature disabled
     search_chats,
@@ -426,7 +427,9 @@ def get_builtin_tools(
 
     # Time utilities - available for date calculations
     if is_builtin_tool_enabled("time"):
-        builtin_functions.extend([get_current_timestamp, calculate_timestamp])
+        builtin_functions.extend(
+            [get_current_time, get_current_timestamp, calculate_timestamp]
+        )
 
     # Knowledge base tools - conditional injection based on model knowledge
     # If model has attached knowledge (any type), only provide query_knowledge_files

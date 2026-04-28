@@ -63,6 +63,15 @@ async def create_new_group(
     db: Session = Depends(get_session),
 ):
     try:
+        existing = Groups.get_group_by_name(form_data.name, db=db)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.DEFAULT(
+                    "A group with this name already exists"
+                ),
+            )
+
         group = Groups.insert_new_group(user.id, form_data, db=db)
         if group:
             return GroupResponse(
@@ -74,6 +83,8 @@ async def create_new_group(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=ERROR_MESSAGES.DEFAULT("Error creating group"),
             )
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception(f"Error creating a new group: {e}")
         raise HTTPException(
@@ -182,6 +193,15 @@ async def update_group_by_id(
     db: Session = Depends(get_session),
 ):
     try:
+        existing = Groups.get_group_by_name(form_data.name, db=db)
+        if existing and existing.id != id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.DEFAULT(
+                    "A group with this name already exists"
+                ),
+            )
+
         group = Groups.update_group_by_id(id, form_data, db=db)
         if group:
             return GroupResponse(
@@ -193,6 +213,8 @@ async def update_group_by_id(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=ERROR_MESSAGES.DEFAULT("Error updating group"),
             )
+    except HTTPException:
+        raise
     except Exception as e:
         log.exception(f"Error updating group {id}: {e}")
         raise HTTPException(

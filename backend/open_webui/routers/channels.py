@@ -61,7 +61,7 @@ from open_webui.utils.chat import generate_chat_completion
 
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.channels import extract_mentions, replace_mentions
 from open_webui.internal.db import get_session
@@ -146,13 +146,7 @@ def check_channels_access(request: Request, user: Optional[UserModel] = None):
         )
 
     if user:
-        if user.role != "admin" and not has_permission(
-            user.id, "features.channels", request.app.state.config.USER_PERMISSIONS
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=ERROR_MESSAGES.UNAUTHORIZED,
-            )
+        require_permission(user, "features.channels", request)
 
 
 ############################

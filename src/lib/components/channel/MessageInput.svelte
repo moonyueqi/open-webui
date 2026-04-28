@@ -76,7 +76,11 @@
 	let files = [];
 
 	let filesInputElement;
+	let documentsInputElement;
+	let imagesInputElement;
 	let inputFiles;
+	let inputDocuments;
+	let inputImages;
 
 	let showInputVariablesModal = false;
 	let inputVariablesModalCallback: (variableValues: Record<string, any>) => void;
@@ -683,6 +687,92 @@
 				filesInputElement.value = '';
 			}}
 		/>
+
+		<input
+			bind:this={documentsInputElement}
+			bind:files={inputDocuments}
+			type="file"
+			hidden
+			multiple
+			accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.epub,.mobi,.rtf,.json,.xml,.yaml,.yml,.html,.htm"
+			on:change={async () => {
+				if (inputDocuments && inputDocuments.length > 0) {
+					const docFiles = Array.from(inputDocuments);
+					const maxCount = 10;
+					const maxSizeMB = 100;
+
+					if (files.length + docFiles.length > maxCount) {
+						toast.error(
+							$i18n.t('You can upload up to {{maxCount}} documents at a time.', { maxCount })
+						);
+						documentsInputElement.value = '';
+						return;
+					}
+
+					const validFiles = [];
+					for (const file of docFiles) {
+						if (file.size > maxSizeMB * 1024 * 1024) {
+							toast.error(
+								$i18n.t('File "{{name}}" exceeds {{maxSize}} MB limit.', { name: file.name, maxSize: maxSizeMB })
+							);
+							continue;
+						}
+						validFiles.push(file);
+					}
+
+					if (validFiles.length > 0) {
+						inputFilesHandler(validFiles);
+					}
+				} else {
+					toast.error($i18n.t(`File not found.`));
+				}
+
+				documentsInputElement.value = '';
+			}}
+		/>
+
+		<input
+			bind:this={imagesInputElement}
+			bind:files={inputImages}
+			type="file"
+			hidden
+			multiple
+			accept=".jpg,.jpeg,.png,.bmp,.webp,.gif"
+			on:change={async () => {
+				if (inputImages && inputImages.length > 0) {
+					const imgFiles = Array.from(inputImages);
+					const maxCount = 10;
+					const maxSizeMB = 10;
+
+					if (files.length + imgFiles.length > maxCount) {
+						toast.error(
+							$i18n.t('You can upload up to {{maxCount}} images at a time.', { maxCount })
+						);
+						imagesInputElement.value = '';
+						return;
+					}
+
+					const validFiles = [];
+					for (const file of imgFiles) {
+						if (file.size > maxSizeMB * 1024 * 1024) {
+							toast.error(
+								$i18n.t('Image "{{name}}" exceeds {{maxSize}} MB limit.', { name: file.name, maxSize: maxSizeMB })
+							);
+							continue;
+						}
+						validFiles.push(file);
+					}
+
+					if (validFiles.length > 0) {
+						inputFilesHandler(validFiles);
+					}
+				} else {
+					toast.error($i18n.t(`File not found.`));
+				}
+
+				imagesInputElement.value = '';
+			}}
+		/>
 	{/if}
 
 	<InputVariablesModal
@@ -961,12 +1051,15 @@
 								<div class="ml-1 self-end flex space-x-1 flex-1">
 									<slot name="menu">
 										{#if acceptFiles}
-											<InputMenu
-												{screenCaptureHandler}
-												uploadFilesHandler={() => {
-													filesInputElement.click();
-												}}
-											>
+										<InputMenu
+											{screenCaptureHandler}
+											uploadDocumentsHandler={() => {
+												documentsInputElement.click();
+											}}
+											uploadImagesHandler={() => {
+												imagesInputElement.click();
+											}}
+										>
 												<button
 													id="input-menu-button"
 													class="bg-transparent hover:bg-white/80 text-gray-800 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-1.5 outline-hidden focus:outline-hidden"

@@ -60,18 +60,18 @@
 				<div class=" self-center truncate">{$i18n.t('New Tool')}</div>
 			</button>
 
-			<button
-				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
-				on:click={async () => {
-					importFromLinkHandler();
-					show = false;
-				}}
-			>
-				<div class=" self-center mr-2">
-					<Link />
-				</div>
-				<div class=" self-center truncate">{$i18n.t('Import From Link')}</div>
-			</button>
+		<button
+			class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
+			on:click={async () => {
+				importFromLinkHandler();
+				show = false;
+			}}
+		>
+			<div class=" self-center mr-2">
+				<Link />
+			</div>
+			<div class=" self-center truncate">{$i18n.t('Import From Link')}</div>
+		</button>
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>

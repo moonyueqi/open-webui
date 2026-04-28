@@ -240,13 +240,7 @@ class KnowledgeTable:
                     query_key = filter.get("query")
                     if query_key:
                         query = query.filter(
-                            or_(
-                                Knowledge.name.ilike(f"%{query_key}%"),
-                                Knowledge.description.ilike(f"%{query_key}%"),
-                                User.name.ilike(f"%{query_key}%"),
-                                User.email.ilike(f"%{query_key}%"),
-                                User.username.ilike(f"%{query_key}%"),
-                            )
+                            Knowledge.name.ilike(f"%{query_key}%")
                         )
 
                     view_option = filter.get("view_option")
@@ -414,6 +408,20 @@ class KnowledgeTable:
                 db=db,
             )
         ]
+
+    def get_knowledge_by_user_id_and_name(
+        self, user_id: str, name: str, db: Optional[Session] = None
+    ) -> Optional[KnowledgeModel]:
+        try:
+            with get_db_context(db) as db:
+                knowledge = (
+                    db.query(Knowledge)
+                    .filter_by(user_id=user_id, name=name)
+                    .first()
+                )
+                return self._to_knowledge_model(knowledge, db=db) if knowledge else None
+        except Exception:
+            return None
 
     def get_knowledge_by_id(
         self, id: str, db: Optional[Session] = None

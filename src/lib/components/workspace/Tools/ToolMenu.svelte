@@ -82,16 +82,16 @@
 				</DropdownMenu.Item>
 			{/if}
 
-			<DropdownMenu.Item
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
-				on:click={() => {
-					cloneHandler();
-				}}
-			>
-				<DocumentDuplicate />
+		<!-- <DropdownMenu.Item
+			class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+			on:click={() => {
+				cloneHandler();
+			}}
+		>
+			<DocumentDuplicate />
 
-				<div class="flex items-center">{$i18n.t('Clone')}</div>
-			</DropdownMenu.Item>
+			<div class="flex items-center">{$i18n.t('Clone')}</div>
+		</DropdownMenu.Item> -->
 
 			{#if $user?.role === 'admin' || $user?.permissions?.workspace?.tools_export}
 				<DropdownMenu.Item

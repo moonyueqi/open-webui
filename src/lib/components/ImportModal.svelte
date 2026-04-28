@@ -63,10 +63,10 @@
 
 <Modal size="sm" bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-300 px-5 pt-4 pb-2">
-			<div class=" text-lg font-medium self-center">{$i18n.t('Import')}</div>
+		<div class="flex justify-between items-center dark:text-gray-300 px-5 pt-4 pb-3">
+			<div class="text-lg font-semibold">{$i18n.t('Import')}</div>
 			<button
-				class="self-center"
+				class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 				aria-label={$i18n.t('Close')}
 				on:click={() => {
 					show = false;
@@ -76,51 +76,45 @@
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-4 pb-3 md:space-x-4 dark:text-gray-200">
-			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
-				<form
-					class="flex flex-col w-full"
-					on:submit|preventDefault={() => {
-						submitHandler();
-					}}
-				>
-					<div class="px-1">
-						<div class="flex flex-col w-full">
-							<div class=" mb-1 text-xs text-gray-500">{$i18n.t('URL')}</div>
+		<div class="px-5 pb-5 dark:text-gray-200">
+			<form
+				class="flex flex-col w-full"
+				on:submit|preventDefault={() => {
+					submitHandler();
+				}}
+			>
+				<div class="flex items-center w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus-within:border-gray-400 dark:focus-within:border-gray-500 transition">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-4 text-gray-400 dark:text-gray-500 shrink-0 mr-2">
+						<path d="M12.232 4.232a2.5 2.5 0 0 1 3.536 3.536l-1.225 1.224a.75.75 0 0 0 1.061 1.06l1.224-1.224a4 4 0 0 0-5.656-5.656l-3 3a4 4 0 0 0 .225 5.865.75.75 0 0 0 .977-1.138 2.5 2.5 0 0 1-.142-3.667l3-3Z" />
+						<path d="M11.603 7.963a.75.75 0 0 0-.977 1.138 2.5 2.5 0 0 1 .142 3.667l-3 3a2.5 2.5 0 0 1-3.536-3.536l1.225-1.224a.75.75 0 0 0-1.061-1.06l-1.224 1.224a4 4 0 1 0 5.656 5.656l3-3a4 4 0 0 0-.225-5.865Z" />
+					</svg>
+					<input
+						class="w-full text-sm bg-transparent disabled:text-gray-500 dark:disabled:text-gray-500 outline-none placeholder-gray-400 dark:placeholder-gray-500"
+						type="url"
+						bind:value={url}
+						placeholder={$i18n.t('Enter the URL to import')}
+						required
+					/>
+				</div>
 
-							<div class="flex-1">
-								<input
-									class="w-full text-sm bg-transparent disabled:text-gray-500 dark:disabled:text-gray-500 outline-hidden"
-									type="url"
-									bind:value={url}
-									placeholder={$i18n.t('Enter the URL to import')}
-									required
-								/>
+				<div class="flex justify-end pt-4">
+					<button
+						class="px-4 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg flex items-center {loading
+							? ' cursor-not-allowed'
+							: ''}"
+						type="submit"
+						disabled={loading}
+					>
+						{$i18n.t('Import')}
 
-								<!-- $i18n.t('Enter the URL of the function to import') -->
+						{#if loading}
+							<div class="ml-2 self-center">
+								<Spinner />
 							</div>
-						</div>
-					</div>
-
-					<div class="flex justify-end pt-3 text-sm font-medium">
-						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
-								? ' cursor-not-allowed'
-								: ''}"
-							type="submit"
-							disabled={loading}
-						>
-							{$i18n.t('Import')}
-
-							{#if loading}
-								<div class="ml-2 self-center">
-									<Spinner />
-								</div>
-							{/if}
-						</button>
-					</div>
-				</form>
-			</div>
+						{/if}
+					</button>
+				</div>
+			</form>
 		</div>
 	</div>
 </Modal>

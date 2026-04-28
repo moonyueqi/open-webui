@@ -350,6 +350,16 @@ class GroupTable:
         except Exception:
             return None
 
+    def get_group_by_name(
+        self, name: str, db: Optional[Session] = None
+    ) -> Optional[GroupModel]:
+        try:
+            with get_db_context(db) as db:
+                group = db.query(Group).filter_by(name=name).first()
+                return GroupModel.model_validate(group) if group else None
+        except Exception:
+            return None
+
     def get_group_user_ids_by_id(
         self, id: str, db: Optional[Session] = None
     ) -> list[str]:

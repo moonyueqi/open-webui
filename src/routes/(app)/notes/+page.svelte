@@ -77,33 +77,34 @@
 					</div>
 
 					<div class=" self-center flex items-center gap-1">
-						{#if $user !== undefined && $user !== null}
-							<UserMenu
-								className="max-w-[240px]"
-								role={$user?.role}
-								help={true}
-								on:show={(e) => {
-									if (e.detail === 'archived-chat') {
-										showArchivedChats.set(true);
-									}
-								}}
+					<!-- 右上角用户头像已隐藏，保留左下角的 -->
+					<!-- {#if $user !== undefined && $user !== null}
+						<UserMenu
+							className="max-w-[240px]"
+							role={$user?.role}
+							help={true}
+							on:show={(e) => {
+								if (e.detail === 'archived-chat') {
+									showArchivedChats.set(true);
+								}
+							}}
+						>
+							<button
+								class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
+								aria-label="User Menu"
 							>
-								<button
-									class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-									aria-label="User Menu"
-								>
-									<div class=" self-center">
-										<img
-											src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-											class="size-6 object-cover rounded-full"
-											alt="User profile"
-											draggable="false"
-										/>
-									</div>
-								</button>
-							</UserMenu>
-						{/if}
-					</div>
+								<div class=" self-center">
+									<img
+										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+										class="size-6 object-cover rounded-full"
+										alt="User profile"
+										draggable="false"
+									/>
+								</div>
+							</button>
+						</UserMenu>
+					{/if} -->
+				</div>
 				</div>
 			</div>
 		</nav>

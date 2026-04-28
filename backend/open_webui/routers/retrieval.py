@@ -1,3 +1,4 @@
+import aiohttp
 import json
 import logging
 import mimetypes
@@ -96,7 +97,7 @@ from open_webui.utils.misc import (
     sanitize_text_for_db,
 )
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_permission
+from open_webui.utils.access_control import require_permission
 
 from open_webui.config import (
     ENV,
@@ -110,6 +111,8 @@ from open_webui.config import (
     RAG_EMBEDDING_QUERY_PREFIX,
 )
 from open_webui.env import (
+    AIOHTTP_CLIENT_SESSION_SSL,
+    AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST,
     DEVICE_TYPE,
     DOCKER,
     RAG_EMBEDDING_TIMEOUT,
@@ -179,7 +182,7 @@ def get_rf(
 
             except Exception as e:
                 log.error(f"ColBERT: {e}")
-                raise Exception(ERROR_MESSAGES.DEFAULT(e))
+                raise Exception(ERROR_MESSAGES.RERANKING_MODEL_UNAVAILABLE)
         else:
             if engine == "external":
                 try:
@@ -193,7 +196,7 @@ def get_rf(
                     )
                 except Exception as e:
                     log.error(f"ExternalReranking: {e}")
-                    raise Exception(ERROR_MESSAGES.DEFAULT(e))
+                    raise Exception(ERROR_MESSAGES.RERANKING_MODEL_UNAVAILABLE)
             else:
                 import sentence_transformers
                 import torch
@@ -213,7 +216,7 @@ def get_rf(
                     )
                 except Exception as e:
                     log.error(f"CrossEncoder: {e}")
-                    raise Exception(ERROR_MESSAGES.DEFAULT("CrossEncoder error"))
+                    raise Exception(ERROR_MESSAGES.RERANKING_MODEL_UNAVAILABLE)
 
                 # Safely adjust pad_token_id if missing as some models do not have this in config
                 try:
@@ -458,7 +461,7 @@ async def update_embedding_config(
         log.exception(f"Problem updating embedding model: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ERROR_MESSAGES.DEFAULT(e),
+            detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
         )
 
 
@@ -1024,7 +1027,7 @@ async def update_rag_config(
         log.exception(f"Problem updating reranking model: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ERROR_MESSAGES.DEFAULT(e),
+            detail=ERROR_MESSAGES.RERANKING_MODEL_UNAVAILABLE,
         )
 
     # Chunking settings
@@ -1620,6 +1623,18 @@ def save_docs_to_vector_db(
         )
         embeddings = future.result(timeout=embedding_timeout)
         log.info(f"embeddings generated {len(embeddings)} for {len(texts)} items")
+
+        if not embeddings:
+            raise ValueError(
+                "Embedding generation failed: received empty embeddings from the embedding API. "
+                "Please check your embedding model configuration and API connectivity."
+            )
+
+        if len(embeddings) != len(texts):
+            raise ValueError(
+                f"Embedding count mismatch: got {len(embeddings)} embeddings for {len(texts)} texts. "
+                "Some embedding batches may have failed. Check your embedding API logs."
+            )
 
         items = [
             {
@@ -2329,13 +2344,7 @@ async def process_web_search(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    if user.role != "admin" and not has_permission(
-        user.id, "features.web_search", request.app.state.config.USER_PERMISSIONS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
-        )
+    require_permission(user, "features.web_search", request)
 
     urls = []
     result_items = []
@@ -2873,3 +2882,205 @@ async def process_files_batch(
                 )
 
     return BatchProcessFilesResponse(results=file_results, errors=file_errors)
+
+
+##########################################
+#
+# Embedding / Reranking model verification
+#
+# These endpoints perform a minimal real call against the configured
+# OpenAI-compatible service to confirm that:
+#   1) the URL is reachable
+#   2) the API key is accepted
+#   3) the configured model name actually works
+#
+# They return a structured payload so the frontend can show
+# user-friendly Chinese messages without leaking raw upstream errors.
+#
+##########################################
+
+
+class EmbeddingVerifyForm(BaseModel):
+    url: str
+    key: Optional[str] = ""
+    model: str
+    prefix_field_name: Optional[str] = None
+    prefix: Optional[str] = None
+
+
+class RerankerVerifyForm(BaseModel):
+    url: str
+    key: Optional[str] = ""
+    model: str
+    timeout: Optional[int] = None
+
+
+def _classify_http_error(status_code: int) -> str:
+    """Map an HTTP status code to a coarse error stage used by the frontend."""
+    if status_code in (401, 403):
+        return "auth"
+    if status_code == 404:
+        return "endpoint"
+    if status_code in (400, 422):
+        return "model"
+    return "model"
+
+
+@router.post("/embedding/verify")
+async def verify_embedding_model(
+    form_data: EmbeddingVerifyForm, user=Depends(get_admin_user)
+):
+    """Send a minimal embedding request to confirm the model works."""
+    if not form_data.url:
+        return {"ok": False, "stage": "input", "message": "missing url"}
+    if not form_data.model:
+        return {"ok": False, "stage": "input", "message": "missing model"}
+
+    url = form_data.url.rstrip("/")
+    payload = {"input": "test", "model": form_data.model}
+    if form_data.prefix_field_name and form_data.prefix:
+        payload[form_data.prefix_field_name] = form_data.prefix
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {form_data.key or ''}",
+    }
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST)
+        async with aiohttp.ClientSession(
+            trust_env=True, timeout=timeout
+        ) as session:
+            async with session.post(
+                f"{url}/embeddings",
+                headers=headers,
+                json=payload,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as r:
+                if r.status != 200:
+                    # 把上游错误信息透传回去（截断防长），前端用它来识别"余额不足"等场景。
+                    upstream_msg = ""
+                    try:
+                        body = await r.json()
+                        if isinstance(body, dict):
+                            err = body.get("error")
+                            if isinstance(err, dict):
+                                upstream_msg = (
+                                    err.get("message") or err.get("code") or ""
+                                )
+                            else:
+                                upstream_msg = (
+                                    body.get("message") or body.get("detail") or ""
+                                )
+                    except Exception:
+                        try:
+                            upstream_msg = await r.text()
+                        except Exception:
+                            upstream_msg = ""
+                    return {
+                        "ok": False,
+                        "stage": _classify_http_error(r.status),
+                        "status": r.status,
+                        "message": (upstream_msg or "")[:200],
+                    }
+
+                data = await r.json()
+                if (
+                    isinstance(data, dict)
+                    and isinstance(data.get("data"), list)
+                    and data["data"]
+                    and isinstance(data["data"][0].get("embedding"), list)
+                ):
+                    return {"ok": True, "model": form_data.model}
+
+                return {
+                    "ok": False,
+                    "stage": "model",
+                    "status": r.status,
+                    "message": "unexpected response shape",
+                }
+    except aiohttp.ClientConnectorError:
+        return {"ok": False, "stage": "connection"}
+    except aiohttp.ClientSSLError:
+        return {"ok": False, "stage": "connection"}
+    except asyncio.TimeoutError:
+        return {"ok": False, "stage": "timeout"}
+    except aiohttp.ClientError as e:
+        log.exception(f"verify_embedding_model client error: {e}")
+        return {"ok": False, "stage": "connection"}
+    except Exception as e:
+        log.exception(f"verify_embedding_model error: {e}")
+        return {"ok": False, "stage": "model"}
+
+
+@router.post("/reranking/verify")
+async def verify_reranker_model(
+    form_data: RerankerVerifyForm, user=Depends(get_admin_user)
+):
+    """Send a minimal rerank request to confirm the model works."""
+    if not form_data.url:
+        return {"ok": False, "stage": "input", "message": "missing url"}
+    if not form_data.model:
+        return {"ok": False, "stage": "input", "message": "missing model"}
+
+    # Reuse the same URL normalization that the actual ExternalReranker uses,
+    # so users can paste either a base URL or a full /rerank endpoint.
+    from open_webui.retrieval.models.external import ExternalReranker
+
+    url = ExternalReranker._normalize_url(form_data.url)
+
+    payload = {
+        "model": form_data.model,
+        "query": "test",
+        "documents": ["alpha", "beta"],
+        "top_n": 2,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {form_data.key or ''}",
+    }
+
+    timeout_total = (
+        form_data.timeout if form_data.timeout else AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST
+    )
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=timeout_total)
+        async with aiohttp.ClientSession(
+            trust_env=True, timeout=timeout
+        ) as session:
+            async with session.post(
+                url,
+                headers=headers,
+                json=payload,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as r:
+                if r.status != 200:
+                    return {
+                        "ok": False,
+                        "stage": _classify_http_error(r.status),
+                        "status": r.status,
+                    }
+
+                data = await r.json()
+                if isinstance(data, dict) and isinstance(data.get("results"), list):
+                    return {"ok": True, "model": form_data.model}
+
+                return {
+                    "ok": False,
+                    "stage": "model",
+                    "status": r.status,
+                    "message": "unexpected response shape",
+                }
+    except aiohttp.ClientConnectorError:
+        return {"ok": False, "stage": "connection"}
+    except aiohttp.ClientSSLError:
+        return {"ok": False, "stage": "connection"}
+    except asyncio.TimeoutError:
+        return {"ok": False, "stage": "timeout"}
+    except aiohttp.ClientError as e:
+        log.exception(f"verify_reranker_model client error: {e}")
+        return {"ok": False, "stage": "connection"}
+    except Exception as e:
+        log.exception(f"verify_reranker_model error: {e}")
+        return {"ok": False, "stage": "model"}

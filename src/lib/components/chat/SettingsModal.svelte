@@ -10,7 +10,8 @@
 	import Account from './Settings/Account.svelte';
 	import About from './Settings/About.svelte';
 	import General from './Settings/General.svelte';
-	import Interface from './Settings/Interface.svelte';
+	// 【已注释】界面标签页已禁用
+	// import Interface from './Settings/Interface.svelte';
 	import Audio from './Settings/Audio.svelte';
 	import DataControls from './Settings/DataControls.svelte';
 	import Personalization from './Settings/Personalization.svelte';
@@ -46,332 +47,25 @@
 	}
 
 	const allSettings: SettingsTab[] = [
-		{
-			id: 'general',
-			title: 'General',
-			keywords: [
-				'advancedparams',
-				'advancedparameters',
-				'advanced params',
-				'advanced parameters',
-				'configuration',
-				'defaultparameters',
-				'default parameters',
-				'defaultsettings',
-				'default settings',
-				'general',
-				'keepalive',
-				'keep alive',
-				'languages',
-				'notifications',
-				'requestmode',
-				'request mode',
-				'systemparameters',
-				'system parameters',
-				'systemprompt',
-				'system prompt',
-				'systemsettings',
-				'system settings',
-				'theme',
-				'translate',
-				'webuisettings',
-				'webui settings'
-			]
-		},
-		{
-			id: 'interface',
-			title: 'Interface',
-			keywords: [
-				'allow user location',
-				'allow voice interruption in call',
-				'allowuserlocation',
-				'allowvoiceinterruptionincall',
-				'always collapse codeblocks',
-				'always collapse code blocks',
-				'always expand details',
-				'always on web search',
-				'always play notification sound',
-				'alwayscollapsecodeblocks',
-				'alwaysexpanddetails',
-				'alwaysonwebsearch',
-				'alwaysplaynotificationsound',
-				'android',
-				'auto chat tags',
-				'auto copy response to clipboard',
-				'auto title',
-				'autochattags',
-				'autocopyresponsetoclipboard',
-				'autotitle',
-				'beta',
-				'call',
-				'chat background image',
-				'chat bubble ui',
-				'chat direction',
-				'chat tags autogen',
-				'chat tags autogeneration',
-				'chat ui',
-				'chatbackgroundimage',
-				'chatbubbleui',
-				'chatdirection',
-				'chat tags autogeneration',
-				'chattagsautogeneration',
-				'chatui',
-				'copy formatted text',
-				'copyformattedtext',
-				'default model',
-				'defaultmodel',
-				'design',
-				'detect artifacts automatically',
-				'detectartifactsautomatically',
-				'display emoji in call',
-				'display username',
-				'displayemojiincall',
-				'displayusername',
-				'enter key behavior',
-				'enterkeybehavior',
-				'expand mode',
-				'expandmode',
-				'file',
-				'followup autogeneration',
-				'followupautogeneration',
-				'fullscreen',
-				'fullwidthmode',
-				'full width mode',
-				'haptic feedback',
-				'hapticfeedback',
-				'high contrast mode',
-				'highcontrastmode',
-				'iframe sandbox allow forms',
-				'iframe sandbox allow same origin',
-				'iframesandboxallowforms',
-				'iframesandboxallowsameorigin',
-				'imagecompression',
-				'image compression',
-				'imagemaxcompressionsize',
-				'image max compression size',
-				'interface customization',
-				'interface options',
-				'interfacecustomization',
-				'interfaceoptions',
-				'landing page mode',
-				'landingpagemode',
-				'layout',
-				'left to right',
-				'left-to-right',
-				'lefttoright',
-				'ltr',
-				'paste large text as file',
-				'pastelargetextasfile',
-				'reset background',
-				'resetbackground',
-				'response auto copy',
-				'responseautocopy',
-				'rich text input for chat',
-				'richtextinputforchat',
-				'right to left',
-				'right-to-left',
-				'righttoleft',
-				'rtl',
-				'scroll behavior',
-				'scroll on branch change',
-				'scrollbehavior',
-				'scrollonbranchchange',
-				'select model',
-				'selectmodel',
-				'settings',
-				'show username',
-				'showusername',
-				'stream large chunks',
-				'streamlargechunks',
-				'stylized pdf export',
-				'stylizedpdfexport',
-				'title autogeneration',
-				'titleautogeneration',
-				'toast notifications for new updates',
-				'toastnotificationsfornewupdates',
-				'upload background',
-				'uploadbackground',
-				'user interface',
-				'user location access',
-				'userinterface',
-				'userlocationaccess',
-				'vibration',
-				'voice control',
-				'voicecontrol',
-				'widescreen mode',
-				'widescreenmode',
-				'whatsnew',
-				'whats new',
-				'websearchinchat',
-				'web search in chat'
-			]
-		},
-		{
-			id: 'connections',
-			title: 'Connections',
-			keywords: [
-				'addconnection',
-				'add connection',
-				'manageconnections',
-				'manage connections',
-				'manage direct connections',
-				'managedirectconnections',
-				'settings'
-			]
-		},
-		{
-			id: 'tools',
-			title: 'Integrations',
-			keywords: [
-				'addconnection',
-				'add connection',
-				'integrations',
-				'managetools',
-				'manage tools',
-				'manage tool servers',
-				'managetoolservers',
-				'open terminal',
-				'openterminal',
-				'terminal',
-				'settings'
-			]
-		},
-
-		{
-			id: 'personalization',
-			title: 'Personalization',
-			keywords: [
-				'account preferences',
-				'account settings',
-				'accountpreferences',
-				'accountsettings',
-				'custom settings',
-				'customsettings',
-				'experimental',
-				'memories',
-				'memory',
-				'personalization',
-				'personalize',
-				'personal settings',
-				'personalsettings',
-				'profile',
-				'user preferences',
-				'userpreferences'
-			]
-		},
-		{
-			id: 'audio',
-			title: 'Audio',
-			keywords: [
-				'audio config',
-				'audio control',
-				'audio features',
-				'audio input',
-				'audio output',
-				'audio playback',
-				'audio voice',
-				'audioconfig',
-				'audiocontrol',
-				'audiofeatures',
-				'audioinput',
-				'audiooutput',
-				'audioplayback',
-				'audiovoice',
-				'auto playback response',
-				'autoplaybackresponse',
-				'auto transcribe',
-				'autotranscribe',
-				'instant auto send after voice transcription',
-				'instantautosendaftervoicetranscription',
-				'language',
-				'non local voices',
-				'nonlocalvoices',
-				'save settings',
-				'savesettings',
-				'set voice',
-				'setvoice',
-				'sound settings',
-				'soundsettings',
-				'speech config',
-				'speech mode',
-				'speech playback speed',
-				'speech rate',
-				'speech recognition',
-				'speech settings',
-				'speech speed',
-				'speech synthesis',
-				'speech to text engine',
-				'speechconfig',
-				'speechmode',
-				'speechplaybackspeed',
-				'speechrate',
-				'speechrecognition',
-				'speechsettings',
-				'speechspeed',
-				'speechsynthesis',
-				'speechtotextengine',
-				'speedch playback rate',
-				'speedchplaybackrate',
-				'stt settings',
-				'sttsettings',
-				'text to speech engine',
-				'text to speech',
-				'textospeechengine',
-				'texttospeech',
-				'texttospeechvoice',
-				'text to speech voice',
-				'voice control',
-				'voice modes',
-				'voice options',
-				'voice playback',
-				'voice recognition',
-				'voice speed',
-				'voicecontrol',
-				'voicemodes',
-				'voiceoptions',
-				'voiceplayback',
-				'voicerecognition',
-				'voicespeed',
-				'volume'
-			]
-		},
-		{
-			id: 'data_controls',
-			title: 'Data Controls',
-			keywords: [
-				'archive all chats',
-				'archive chats',
-				'archiveallchats',
-				'archivechats',
-				'archived chats',
-				'archivedchats',
-				'chat activity',
-				'chat history',
-				'chat settings',
-				'chatactivity',
-				'chathistory',
-				'chatsettings',
-				'conversation activity',
-				'conversation history',
-				'conversationactivity',
-				'conversationhistory',
-				'conversations',
-				'convos',
-				'delete all chats',
-				'delete chats',
-				'deleteallchats',
-				'deletechats',
-				'export chats',
-				'exportchats',
-				'import chats',
-				'importchats',
-				'message activity',
-				'message archive',
-				'message history',
-				'messagearchive',
-				'messagehistory'
-			]
-		},
+		// 【已注释】通用标签页 - 语言和系统提示词由系统统一配置，不允许用户修改
+		// {
+		// 	id: 'general',
+		// 	title: 'General',
+		// 	keywords: [
+		// 		'advancedparams', 'advancedparameters', 'advanced params', 'advanced parameters',
+		// 		'configuration', 'defaultparameters', 'default parameters', 'defaultsettings',
+		// 		'default settings', 'general', 'keepalive', 'keep alive', 'languages',
+		// 		'notifications', 'requestmode', 'request mode', 'systemparameters',
+		// 		'system parameters', 'systemprompt', 'system prompt', 'systemsettings',
+		// 		'system settings', 'theme', 'translate', 'webuisettings', 'webui settings'
+		// 	]
+		// },
+		// 【已注释】界面标签页 - 所有界面设置沿用系统默认，不允许用户修改
+		// {
+		// 	id: 'interface',
+		// 	title: 'Interface',
+		// 	keywords: [...]
+		// },
 		{
 			id: 'account',
 			title: 'Account',
@@ -422,6 +116,175 @@
 				'webhookurl'
 			]
 		},
+		{
+			id: 'connections',
+			title: 'Connections',
+			keywords: [
+				'addconnection',
+				'add connection',
+				'manageconnections',
+				'manage connections',
+				'manage direct connections',
+				'managedirectconnections',
+				'settings'
+			]
+		},
+		// 【已注释】扩展功能标签页 - 不允许普通用户修改
+		// {
+		// 	id: 'tools',
+		// 	title: 'Integrations',
+		// 	keywords: [
+		// 		'addconnection',
+		// 		'add connection',
+		// 		'integrations',
+		// 		'managetools',
+		// 		'manage tools',
+		// 		'manage tool servers',
+		// 		'managetoolservers',
+		// 		'open terminal',
+		// 		'openterminal',
+		// 		'terminal',
+		// 		'settings'
+		// 	]
+		// },
+		// 【已注释】个性化标签页 - 不允许普通用户修改
+		// {
+		// 	id: 'personalization',
+		// 	title: 'Personalization',
+		// 	keywords: [
+		// 		'account preferences',
+		// 		'account settings',
+		// 		'accountpreferences',
+		// 		'accountsettings',
+		// 		'custom settings',
+		// 		'customsettings',
+		// 		'experimental',
+		// 		'memories',
+		// 		'memory',
+		// 		'personalization',
+		// 		'personalize',
+		// 		'personal settings',
+		// 		'personalsettings',
+		// 		'profile',
+		// 		'user preferences',
+		// 		'userpreferences'
+		// 	]
+		// },
+		// 【已注释】语音标签页 - 不允许普通用户修改
+		// {
+		// 	id: 'audio',
+		// 	title: 'Audio',
+		// 	keywords: [
+		// 		'audio config',
+		// 		'audio control',
+		// 		'audio features',
+		// 		'audio input',
+		// 		'audio output',
+		// 		'audio playback',
+		// 		'audio voice',
+		// 		'audioconfig',
+		// 		'audiocontrol',
+		// 		'audiofeatures',
+		// 		'audioinput',
+		// 		'audiooutput',
+		// 		'audioplayback',
+		// 		'audiovoice',
+		// 		'auto playback response',
+		// 		'autoplaybackresponse',
+		// 		'auto transcribe',
+		// 		'autotranscribe',
+		// 		'instant auto send after voice transcription',
+		// 		'instantautosendaftervoicetranscription',
+		// 		'language',
+		// 		'non local voices',
+		// 		'nonlocalvoices',
+		// 		'save settings',
+		// 		'savesettings',
+		// 		'set voice',
+		// 		'setvoice',
+		// 		'sound settings',
+		// 		'soundsettings',
+		// 		'speech config',
+		// 		'speech mode',
+		// 		'speech playback speed',
+		// 		'speech rate',
+		// 		'speech recognition',
+		// 		'speech settings',
+		// 		'speech speed',
+		// 		'speech synthesis',
+		// 		'speech to text engine',
+		// 		'speechconfig',
+		// 		'speechmode',
+		// 		'speechplaybackspeed',
+		// 		'speechrate',
+		// 		'speechrecognition',
+		// 		'speechsettings',
+		// 		'speechspeed',
+		// 		'speechsynthesis',
+		// 		'speechtotextengine',
+		// 		'speedch playback rate',
+		// 		'speedchplaybackrate',
+		// 		'stt settings',
+		// 		'sttsettings',
+		// 		'text to speech engine',
+		// 		'text to speech',
+		// 		'textospeechengine',
+		// 		'texttospeech',
+		// 		'texttospeechvoice',
+		// 		'text to speech voice',
+		// 		'voice control',
+		// 		'voice modes',
+		// 		'voice options',
+		// 		'voice playback',
+		// 		'voice recognition',
+		// 		'voice speed',
+		// 		'voicecontrol',
+		// 		'voicemodes',
+		// 		'voiceoptions',
+		// 		'voiceplayback',
+		// 		'voicerecognition',
+		// 		'voicespeed',
+		// 		'volume'
+		// 	]
+		// },
+		// 【已注释】数据标签页 - 不允许普通用户修改
+		// {
+		// 	id: 'data_controls',
+		// 	title: 'Data Controls',
+		// 	keywords: [
+		// 		'archive all chats',
+		// 		'archive chats',
+		// 		'archiveallchats',
+		// 		'archivechats',
+		// 		'archived chats',
+		// 		'archivedchats',
+		// 		'chat activity',
+		// 		'chat history',
+		// 		'chat settings',
+		// 		'chatactivity',
+		// 		'chathistory',
+		// 		'chatsettings',
+		// 		'conversation activity',
+		// 		'conversation history',
+		// 		'conversationactivity',
+		// 		'conversationhistory',
+		// 		'conversations',
+		// 		'convos',
+		// 		'delete all chats',
+		// 		'delete chats',
+		// 		'deleteallchats',
+		// 		'deletechats',
+		// 		'export chats',
+		// 		'exportchats',
+		// 		'import chats',
+		// 		'importchats',
+		// 		'message activity',
+		// 		'message archive',
+		// 		'message history',
+		// 		'messagearchive',
+		// 		'messagehistory'
+		// 	]
+		// },
 		{
 			id: 'about',
 			title: 'About',
@@ -484,23 +347,26 @@
 				return $config?.features?.enable_direct_connections;
 			}
 
-			if (tab.id === 'tools') {
-				return (
-					$user?.role === 'admin' ||
-					($user?.role === 'user' && $user?.permissions?.features?.direct_tool_servers)
-				);
-			}
+			// 【已注释】扩展功能标签页已禁用
+			// if (tab.id === 'tools') {
+			// 	return (
+			// 		$user?.role === 'admin' ||
+			// 		($user?.role === 'user' && $user?.permissions?.features?.direct_tool_servers)
+			// 	);
+			// }
 
-			if (tab.id === 'interface') {
-				return $user?.role === 'admin' || ($user?.permissions?.settings?.interface ?? true);
-			}
+			// 【已注释】界面标签页已禁用
+			// if (tab.id === 'interface') {
+			// 	return $user?.role === 'admin' || ($user?.permissions?.settings?.interface ?? true);
+			// }
 
-			if (tab.id === 'personalization') {
-				return (
-					$config?.features?.enable_memories &&
-					($user?.role === 'admin' || ($user?.permissions?.features?.memories ?? true))
-				);
-			}
+			// 【已注释】个性化标签页已禁用
+			// if (tab.id === 'personalization') {
+			// 	return (
+			// 		$config?.features?.enable_memories &&
+			// 		($user?.role === 'admin' || ($user?.permissions?.features?.memories ?? true))
+			// 	);
+			// }
 
 			return true;
 		});
@@ -546,7 +412,7 @@
 		);
 	};
 
-	let selectedTab = 'general';
+	let selectedTab = 'account';
 
 	// Function to handle sideways scrolling
 	const scrollHandler = (event) => {
@@ -584,96 +450,55 @@
 	});
 </script>
 
-<Modal size="2xl" bind:show>
-	<div class="text-gray-700 dark:text-gray-100 mx-1">
-		<div class=" flex justify-between dark:text-gray-300 px-4 md:px-4.5 pt-4.5 pb-0.5 md:pb-2.5">
-			<div class=" text-lg font-medium self-center">{$i18n.t('Settings')}</div>
+<Modal size="sm" bind:show>
+	<div class="text-gray-700 dark:text-gray-100">
+		<div class="flex items-center justify-between px-6 pt-5 pb-4">
+			<div class="flex items-center gap-2.5">
+				<div class="p-2 rounded-xl bg-gray-100 dark:bg-gray-800">
+					<SettingsAlt strokeWidth="1.5" className="size-5 text-gray-600 dark:text-gray-300" />
+				</div>
+				<div>
+					<div class="text-lg font-semibold tracking-tight">{$i18n.t('Settings')}</div>
+					<div class="text-xs text-gray-400 dark:text-gray-500">{$i18n.t('Manage your preferences')}</div>
+				</div>
+			</div>
 			<button
 				aria-label={$i18n.t('Close settings modal')}
-				class="self-center"
+				class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
 				on:click={() => {
 					show = false;
 				}}
 			>
-				<XMark className="w-5 h-5"></XMark>
+				<XMark className="size-4 text-gray-500" />
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full pt-1 pb-4">
+		<div class="px-6 pb-1">
 			<div
 				role="tablist"
 				id="settings-tabs-container"
-				class="tabs flex flex-row overflow-x-auto gap-2.5 mx-3 md:pr-4 md:gap-1 md:flex-col flex-1 md:flex-none md:w-50 md:min-h-[42rem] md:max-h-[42rem] dark:text-gray-200 text-sm text-left mb-1 md:mb-0 -translate-y-1"
+				class="tabs flex flex-row gap-1 overflow-x-auto border-b border-gray-100 dark:border-gray-800"
 			>
-				<div
-					class="hidden md:flex w-full rounded-full px-2.5 gap-2 bg-gray-100/80 dark:bg-gray-850/80 backdrop-blur-2xl my-1 mb-1.5"
-					id="settings-search"
-				>
-					<div class="self-center rounded-l-xl bg-transparent">
-						<Search
-							className="size-3.5"
-							strokeWidth={($settings?.highContrastMode ?? false) ? '3' : '1.5'}
-						/>
-					</div>
-					<label class="sr-only" for="search-input-settings-modal">{$i18n.t('Search')}</label>
-					<input
-						class={`w-full py-1 text-sm bg-transparent dark:text-gray-300 outline-hidden
-								${($settings?.highContrastMode ?? false) ? 'placeholder-gray-800' : ''}`}
-						bind:value={search}
-						id="search-input-settings-modal"
-						on:input={searchDebounceHandler}
-						placeholder={$i18n.t('Search')}
-					/>
-				</div>
 				{#if filteredSettings.length > 0}
 					{#each filteredSettings as tabId (tabId)}
-						{#if tabId === 'general'}
+						{#if tabId === 'account'}
 							<button
 								role="tab"
-								aria-controls="tab-general"
-								aria-selected={selectedTab === 'general'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'general'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'general';
-								}}
+								aria-controls="tab-account"
+								aria-selected={selectedTab === 'account'}
+								class="relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors
+									{selectedTab === 'account'
+										? 'text-gray-900 dark:text-white'
+										: 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}"
+								on:click={() => { selectedTab = 'account'; }}
 							>
-								<div class=" self-center mr-2">
-									<SettingsAlt strokeWidth="2" />
+								<div class="flex items-center gap-2">
+									<UserCircle strokeWidth="2" className="size-4" />
+									<span>{$i18n.t('Account')}</span>
 								</div>
-								<div class=" self-center">{$i18n.t('General')}</div>
-							</button>
-						{:else if tabId === 'interface'}
-							<button
-								role="tab"
-								aria-controls="tab-interface"
-								aria-selected={selectedTab === 'interface'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'interface'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'interface';
-								}}
-							>
-								<div class=" self-center mr-2">
-									<AppNotification strokeWidth="2" />
-								</div>
-								<div class=" self-center">{$i18n.t('Interface')}</div>
+								{#if selectedTab === 'account'}
+									<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 dark:bg-white rounded-full"></div>
+								{/if}
 							</button>
 						{:else if tabId === 'connections'}
 							{#if $user?.role === 'admin' || ($user?.role === 'user' && $config?.features?.enable_direct_connections)}
@@ -681,256 +506,82 @@
 									role="tab"
 									aria-controls="tab-connections"
 									aria-selected={selectedTab === 'connections'}
-									class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'connections'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-									on:click={() => {
-										selectedTab = 'connections';
-									}}
+									class="relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors
+										{selectedTab === 'connections'
+											? 'text-gray-900 dark:text-white'
+											: 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}"
+									on:click={() => { selectedTab = 'connections'; }}
 								>
-									<div class=" self-center mr-2">
-										<Link strokeWidth="2" />
+									<div class="flex items-center gap-2">
+										<Link strokeWidth="2" className="size-4" />
+										<span>{$i18n.t('Connections')}</span>
 									</div>
-									<div class=" self-center">{$i18n.t('Connections')}</div>
+									{#if selectedTab === 'connections'}
+										<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 dark:bg-white rounded-full"></div>
+									{/if}
 								</button>
 							{/if}
-						{:else if tabId === 'tools'}
-							{#if $user?.role === 'admin' || ($user?.role === 'user' && $user?.permissions?.features?.direct_tool_servers)}
-								<button
-									role="tab"
-									aria-controls="tab-tools"
-									aria-selected={selectedTab === 'tools'}
-									class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'tools'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-									on:click={() => {
-										selectedTab = 'tools';
-									}}
-								>
-									<div class=" self-center mr-2">
-										<WrenchAlt strokeWidth="2" />
-									</div>
-									<div class=" self-center">{$i18n.t('Integrations')}</div>
-								</button>
-							{/if}
-						{:else if tabId === 'personalization'}
-							<button
-								role="tab"
-								aria-controls="tab-personalization"
-								aria-selected={selectedTab === 'personalization'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'personalization'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'personalization';
-								}}
-							>
-								<div class=" self-center mr-2">
-									<Face strokeWidth="2" />
-								</div>
-								<div class=" self-center">{$i18n.t('Personalization')}</div>
-							</button>
-						{:else if tabId === 'audio'}
-							<button
-								role="tab"
-								aria-controls="tab-audio"
-								aria-selected={selectedTab === 'audio'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'audio'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'audio';
-								}}
-							>
-								<div class=" self-center mr-2">
-									<SoundHigh strokeWidth="2" />
-								</div>
-								<div class=" self-center">{$i18n.t('Audio')}</div>
-							</button>
-						{:else if tabId === 'data_controls'}
-							<button
-								role="tab"
-								aria-controls="tab-data-controls"
-								aria-selected={selectedTab === 'data_controls'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'data_controls'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'data_controls';
-								}}
-							>
-								<div class=" self-center mr-2">
-									<DatabaseSettings strokeWidth="2" />
-								</div>
-								<div class=" self-center">{$i18n.t('Data Controls')}</div>
-							</button>
-						{:else if tabId === 'account'}
-							<button
-								role="tab"
-								aria-controls="tab-account"
-								aria-selected={selectedTab === 'account'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'account'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'account';
-								}}
-							>
-								<div class=" self-center mr-2">
-									<UserCircle strokeWidth="2" />
-								</div>
-								<div class=" self-center">{$i18n.t('Account')}</div>
-							</button>
 						{:else if tabId === 'about'}
 							<button
 								role="tab"
 								aria-controls="tab-about"
 								aria-selected={selectedTab === 'about'}
-								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
-								${
-									selectedTab === 'about'
-										? ($settings?.highContrastMode ?? false)
-											? 'dark:bg-gray-800 bg-gray-200'
-											: ''
-										: ($settings?.highContrastMode ?? false)
-											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
-								}`}
-								on:click={() => {
-									selectedTab = 'about';
-								}}
+								class="relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors
+									{selectedTab === 'about'
+										? 'text-gray-900 dark:text-white'
+										: 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}"
+								on:click={() => { selectedTab = 'about'; }}
 							>
-								<div class=" self-center mr-2">
-									<InfoCircle strokeWidth="2" />
+								<div class="flex items-center gap-2">
+									<InfoCircle strokeWidth="2" className="size-4" />
+									<span>{$i18n.t('About')}</span>
 								</div>
-								<div class=" self-center">{$i18n.t('About')}</div>
+								{#if selectedTab === 'about'}
+									<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 dark:bg-white rounded-full"></div>
+								{/if}
 							</button>
 						{/if}
 					{/each}
-				{:else}
-					<div class="text-center text-gray-500 mt-4">
-						{$i18n.t('No results found')}
-					</div>
 				{/if}
+
 				{#if $user?.role === 'admin'}
 					<a
 						href="/admin/settings"
 						draggable="false"
-						class="px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none md:mt-auto flex select-none text-left transition {$settings?.highContrastMode
-							? 'hover:bg-gray-200 dark:hover:bg-gray-800'
-							: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+						class="relative ml-auto px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 select-none"
 						on:click={async (e) => {
 							e.preventDefault();
 							await goto('/admin/settings');
 							show = false;
 						}}
 					>
-						<div class=" self-center mr-2">
-							<UserBadgeCheck strokeWidth="2" />
+						<div class="flex items-center gap-2">
+							<UserBadgeCheck strokeWidth="2" className="size-4" />
+							<span>{$i18n.t('Admin Settings')}</span>
 						</div>
-						<div class=" self-center">{$i18n.t('Admin Settings')}</div>
 					</a>
 				{/if}
 			</div>
-			<div class="flex-1 px-3.5 md:pl-0 md:pr-4.5 md:min-h-[42rem] max-h-[42rem]">
-				{#if selectedTab === 'general'}
-					<General
-						{getModels}
-						{saveSettings}
-						on:save={() => {
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'interface'}
-					<Interface
-						{saveSettings}
-						on:save={() => {
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'connections'}
-					<Connections
-						saveSettings={async (updated) => {
-							await saveSettings(updated);
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'tools'}
-					<Integrations
-						saveSettings={async (updated) => {
-							await saveSettings(updated);
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'personalization'}
-					<Personalization
-						{saveSettings}
-						on:save={() => {
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'audio'}
-					<Audio
-						{saveSettings}
-						on:save={() => {
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'data_controls'}
-					<DataControls {saveSettings} />
-				{:else if selectedTab === 'account'}
-					<Account
-						{saveSettings}
-						saveHandler={() => {
-							toast.success($i18n.t('Settings saved successfully!'));
-						}}
-					/>
-				{:else if selectedTab === 'about'}
-					<About />
-				{/if}
-			</div>
+		</div>
+
+		<div class="px-6 pt-4 pb-6 min-h-[24rem] max-h-[28rem] overflow-y-auto">
+			{#if selectedTab === 'account'}
+				<Account
+					{saveSettings}
+					saveHandler={() => {
+						toast.success($i18n.t('Settings saved successfully!'));
+					}}
+				/>
+			{:else if selectedTab === 'connections'}
+				<Connections
+					saveSettings={async (updated) => {
+						await saveSettings(updated);
+						toast.success($i18n.t('Settings saved successfully!'));
+					}}
+				/>
+			{:else if selectedTab === 'about'}
+				<About />
+			{/if}
 		</div>
 	</div>
 </Modal>

@@ -20,6 +20,7 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 
 from open_webui.config import VECTOR_DB
+from open_webui.constants import ERROR_MESSAGES
 from open_webui.retrieval.vector.factory import VECTOR_DB_CLIENT
 
 
@@ -590,7 +591,7 @@ def generate_openai_batch_embeddings(
         if "data" in data:
             return [elem["embedding"] for elem in data["data"]]
         else:
-            raise "Something went wrong :/"
+            raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
     except Exception as e:
         log.exception(f"Error generating openai batch embeddings: {e}")
         return None
@@ -628,12 +629,17 @@ async def agenerate_openai_batch_embeddings(
                 json=form_data,
                 ssl=AIOHTTP_CLIENT_SESSION_SSL,
             ) as r:
-                r.raise_for_status()
+                if r.status != 200:
+                    error_body = await r.text()
+                    log.error(
+                        f"Embedding API returned status {r.status}: {error_body}"
+                    )
+                    r.raise_for_status()
                 data = await r.json()
                 if "data" in data:
                     return [item["embedding"] for item in data["data"]]
                 else:
-                    raise Exception("Something went wrong :/")
+                    raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
     except Exception as e:
         log.exception(f"Error generating openai batch embeddings: {e}")
         return None
@@ -727,7 +733,7 @@ async def agenerate_azure_openai_batch_embeddings(
                 if "data" in data:
                     return [item["embedding"] for item in data["data"]]
                 else:
-                    raise Exception("Something went wrong :/")
+                    raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
     except Exception as e:
         log.exception(f"Error generating azure openai batch embeddings: {e}")
         return None
@@ -899,12 +905,23 @@ def get_embedding_function(
 
                 # Flatten results
                 embeddings = []
-                for batch_embeddings in batch_results:
-                    if isinstance(batch_embeddings, list):
+                failed_batches = 0
+                for i, batch_embeddings in enumerate(batch_results):
+                    if batch_embeddings is None:
+                        failed_batches += 1
+                        log.error(
+                            f"generate_multiple_async: Batch {i+1}/{len(batches)} returned None (embedding API call failed)"
+                        )
+                    elif isinstance(batch_embeddings, list):
                         embeddings.extend(batch_embeddings)
 
+                if failed_batches > 0:
+                    log.warning(
+                        f"generate_multiple_async: {failed_batches}/{len(batches)} batches failed"
+                    )
+
                 log.debug(
-                    f"generate_multiple_async: Generated {len(embeddings)} embeddings from {len(batches)} parallel batches"
+                    f"generate_multiple_async: Generated {len(embeddings)} embeddings from {len(batches)} batches ({failed_batches} failed)"
                 )
                 return embeddings
             else:
@@ -1080,12 +1097,27 @@ async def get_sources_from_items(
                     }
 
         elif item.get("type") == "url":
-            content, docs = get_content_from_url(request, item.get("url"))
-            if docs:
-                query_result = {
-                    "documents": [[content]],
-                    "metadatas": [[{"url": item.get("url"), "name": item.get("url")}]],
-                }
+            try:
+                url = item.get("url")
+                log.debug(f"Fetching URL content: {url}")
+                loop = asyncio.get_event_loop()
+                content, docs = await loop.run_in_executor(
+                    None, get_content_from_url, request, url
+                )
+                log.debug(
+                    f"URL fetch result for {url}: content_length={len(content) if content else 0}, docs_count={len(docs) if docs else 0}"
+                )
+                if docs and content and content.strip():
+                    query_result = {
+                        "documents": [[content]],
+                        "metadatas": [
+                            [{"url": url, "name": url}]
+                        ],
+                    }
+                else:
+                    log.warning(f"URL fetch returned empty content for: {url}")
+            except Exception as e:
+                log.exception(f"Error fetching URL content for {item.get('url')}: {e}")
         elif item.get("type") == "file":
             if (
                 item.get("context") == "full"

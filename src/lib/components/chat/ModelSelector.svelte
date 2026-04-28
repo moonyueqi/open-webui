@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { models, showSettings, settings, user, mobile, config } from '$lib/stores';
-	import { onMount, tick, getContext } from 'svelte';
+	import { models, settings, user, config } from '$lib/stores';
+	import { getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Selector from './ModelSelector/Selector.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -11,30 +11,18 @@
 	export let selectedModels = [''];
 	export let disabled = false;
 
-	export let showSetDefault = true;
+	const setDefaultModelHandler = async (modelId) => {
+		const currentDefault = ($settings?.models ?? [])[0] ?? '';
+		const isAlreadyDefault = currentDefault === modelId;
 
-	const saveDefaultModel = async () => {
-		const hasEmptyModel = selectedModels.filter((it) => it === '');
-		if (hasEmptyModel.length) {
-			toast.error($i18n.t('Choose a model before saving...'));
-			return;
-		}
-		settings.set({ ...$settings, models: selectedModels });
-		await updateUserSettings(localStorage.token, { ui: $settings });
-
-		toast.success($i18n.t('Default model updated'));
-	};
-
-	const pinModelHandler = async (modelId) => {
-		let pinnedModels = $settings?.pinnedModels ?? [];
-
-		if (pinnedModels.includes(modelId)) {
-			pinnedModels = pinnedModels.filter((id) => id !== modelId);
+		if (isAlreadyDefault) {
+			settings.set({ ...$settings, models: [] });
+			toast.success($i18n.t('Default model removed'));
 		} else {
-			pinnedModels = [...new Set([...pinnedModels, modelId])];
+			settings.set({ ...$settings, models: [modelId] });
+			toast.success($i18n.t('Default model updated'));
 		}
 
-		settings.set({ ...$settings, pinnedModels: pinnedModels });
 		await updateUserSettings(localStorage.token, { ui: $settings });
 	};
 
@@ -62,13 +50,13 @@
 							label: model.name,
 							model: model
 						}))}
-						{pinModelHandler}
+						{setDefaultModelHandler}
 						bind:value={selectedModel}
 					/>
 				</div>
 			</div>
 
-			{#if $user?.role === 'admin' || ($user?.permissions?.chat?.multiple_models ?? true)}
+			{#if false && ($user?.role === 'admin' || ($user?.permissions?.chat?.multiple_models ?? true))}
 				{#if selectedModelIdx === 0}
 					<div
 						class="  self-center mx-1 disabled:text-gray-600 disabled:hover:text-gray-600 -translate-y-[0.5px]"
@@ -127,10 +115,3 @@
 	{/each}
 </div>
 
-{#if showSetDefault}
-	<div
-		class="relative text-left mt-[1px] ml-1 text-[0.7rem] text-gray-600 dark:text-gray-400 font-primary"
-	>
-		<button on:click={saveDefaultModel}> {$i18n.t('Set as default')}</button>
-	</div>
-{/if}
