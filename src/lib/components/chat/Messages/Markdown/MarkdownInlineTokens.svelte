@@ -19,7 +19,8 @@
 	import CodespanToken from './MarkdownInlineTokens/CodespanToken.svelte';
 	import MentionToken from './MarkdownInlineTokens/MentionToken.svelte';
 	import NoteLinkToken from './MarkdownInlineTokens/NoteLinkToken.svelte';
-	import SourceToken from './SourceToken.svelte';
+	// import SourceToken from './SourceToken.svelte'; // 已禁用行内引用标签，统一在消息末尾的 Sources 折叠列表中展示
+	import FileDownloadCard from './FileDownloadCard.svelte';
 
 	export let id: string;
 	export let done = true;
@@ -42,6 +43,42 @@
 	};
 	*/
 	const getNoteIdFromHref = (href: string): string | null => null;
+
+	/**
+	 * Detect whether a markdown link points to a Open WebUI file download
+	 * (e.g. /api/v1/files/<uuid>/content). If so we render a richer card UI
+	 * instead of a plain underlined link.
+	 */
+	const isFileDownloadHref = (href: string): boolean => {
+		if (!href) return false;
+		try {
+			const path = (() => {
+				try {
+					return new URL(href, window.location.origin).pathname;
+				} catch {
+					return href;
+				}
+			})();
+			return /\/api\/v1\/files\/[0-9a-fA-F-]{8,}(\/content)?\/?$/.test(path);
+		} catch {
+			return false;
+		}
+	};
+
+	/**
+	 * Extract plain text from inline marked tokens for use as fallback file name.
+	 */
+	const tokensToPlainText = (innerTokens: Token[] | undefined): string => {
+		if (!innerTokens || innerTokens.length === 0) return '';
+		return innerTokens
+			.map((t: any) => {
+				if (typeof t?.text === 'string') return t.text;
+				if (Array.isArray(t?.tokens)) return tokensToPlainText(t.tokens);
+				return '';
+			})
+			.join('')
+			.trim();
+	};
 
 	/**
 	 * Handle link clicks - intercept same-origin app URLs for in-app navigation
@@ -73,6 +110,12 @@
 		{@const noteId = getNoteIdFromHref(token.href)}
 		{#if noteId}
 			<NoteLinkToken {noteId} href={token.href} />
+		{:else if isFileDownloadHref(token.href)}
+			<FileDownloadCard
+				href={token.href}
+				fallbackName={token.tokens ? tokensToPlainText(token.tokens) : token.text}
+				{done}
+			/>
 		{:else if token.tokens}
 			<a
 				href={token.href}
@@ -128,8 +171,10 @@
 			`<sup class="footnote-ref footnote-ref-text">${token.escapedText}</sup>`
 		) || ''}
 	{:else if token.type === 'citation'}
+		<!-- 行内引用标签已隐藏，统一在消息末尾的 Sources 折叠列表中展示。
+		     若上下文中没有可用 source（sourceIds 为空），则保留原始文本，避免吞掉内容。 -->
 		{#if (sourceIds ?? []).length > 0}
-			<SourceToken {id} {token} {sourceIds} onClick={onSourceClick} />
+			<!-- intentionally render nothing -->
 		{:else}
 			<TextToken {token} {done} />
 		{/if}

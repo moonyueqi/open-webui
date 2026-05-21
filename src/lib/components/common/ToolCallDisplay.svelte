@@ -116,7 +116,7 @@
 			}}
 		>
 			<div
-				class="w-full max-w-full font-medium flex items-center gap-1.5 {isExecuting
+				class="w-full max-w-full text-sm font-normal flex items-center gap-2 {isExecuting
 					? 'shimmer'
 					: ''}"
 			>
@@ -136,9 +136,11 @@
 				{/if}
 
 				<!-- Label -->
-				<div class="flex-1 line-clamp-1">
+				<div class="flex-1 line-clamp-1 tool-call-label text-sm text-gray-700 dark:text-gray-300">
 					<!-- Short label (below md) -->
-					<span class="@md:hidden font-semibold text-black dark:text-white">{attributes.name}</span>
+					<span class="@md:hidden font-medium text-gray-800 dark:text-gray-100"
+						>{attributes.name}</span
+					>
 					<!-- Full label (md and above) -->
 					<span class="hidden @md:inline">
 						{#if isDone}
@@ -172,7 +174,7 @@
 
 		{#if open}
 			<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
-				<div class="border border-gray-50 dark:border-gray-850/30 rounded-2xl my-1.5 p-3 space-y-3">
+				<div class="ml-1.5 mt-1 mb-1.5 pl-3 border-l border-gray-200 dark:border-gray-700/60 space-y-3">
 					<!-- Input -->
 					{#if args}
 						<div>
@@ -265,3 +267,19 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	/* Force the tool-call title (rendered via Markdown) to match the surrounding
+		 status text size, regardless of the parent .chat-assistant typography rules. */
+	.tool-call-label :global(.markdown-prose),
+	.tool-call-label :global(.markdown-prose p),
+	.tool-call-label :global(.markdown-prose strong) {
+		font-size: 0.875rem !important; /* 14px */
+		line-height: 1.4 !important;
+		margin: 0 !important;
+		font-weight: inherit;
+	}
+	.tool-call-label :global(.markdown-prose strong) {
+		font-weight: 600;
+	}
+</style>
