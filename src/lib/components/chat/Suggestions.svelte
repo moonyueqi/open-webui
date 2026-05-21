@@ -3,7 +3,7 @@
 	import Bolt from '$lib/components/icons/Bolt.svelte';
 	import { onMount, getContext } from 'svelte';
 	import { settings, WEBUI_NAME } from '$lib/stores';
-	import { WEBUI_VERSION } from '$lib/constants';
+	import { WEBUI_VERSION, APP_NAME, APP_VERSION_LOCAL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
 
@@ -76,7 +76,7 @@
 				? ' -mt-1'
 				: 'text-center items-center justify-center'}  self-start text-gray-600 dark:text-gray-400"
 		>
-			苏州市气象预报智能助手 v0.2.1
+			{APP_NAME} v{APP_VERSION_LOCAL}
 		</div>
 	{/if}
 </div>
