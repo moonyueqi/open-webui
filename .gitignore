@@ -314,3 +314,24 @@ dist
 cypress/videos
 cypress/screenshots
 .vscode/settings.json
+
+# ---------------------------------------------------------------------------
+# Project-local data / scratch files (do NOT commit, keep out of both bj & sz)
+# ---------------------------------------------------------------------------
+# 业务原始数据 / 抓取的天气文件
+BJ-240/
+weather_pics/
+
+# 调研、模板拆解、临时脚本产物
+_tmp_template_inspect/
+
+# 中文目录：材料模板（仅本地参考，不入库）
+材料模板/
+
+# 渲染出来的临时 docx
+*.tmp.docx
+render_*.docx
+
+# 本地报告生成脚本 & docx 模板（不属于 openwebui 主仓，仅本地使用）
+tools/
+weather_templates/
