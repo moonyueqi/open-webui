@@ -66,7 +66,7 @@
 	let models = [];
 	let selectedModelIdx = 0;
 
-	const greetingText = '我是灵犀智能预报员，很高兴见到您！';
+	const greetingText = '我是苏州市气象预报智能助手，很高兴见到您！';
 	let displayedText = '';
 	let typingComplete = false;
 
@@ -183,7 +183,7 @@
 				<div
 					class="flex w-full items-center justify-center text-center text-xs font-medium text-gray-600 dark:text-gray-400"
 				>
-					灵犀智能预报员 v{APP_VERSION_LOCAL}
+					苏州市气象预报智能助手 v{APP_VERSION_LOCAL}
 				</div>
 				<!-- 暂时禁用首页建议功能，后续重做为面向气象预报员的场景化建议
 				<Suggestions
