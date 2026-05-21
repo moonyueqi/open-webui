@@ -63,17 +63,17 @@ $mergeExit = $LASTEXITCODE
 if ($mergeExit -ne 0) {
     Write-Host ""
     Write-Host "[!] 出现冲突. 处理规则:" -ForegroundColor Yellow
-    Write-Host "    - 品牌字段 (APP_NAME / WEBUI_NAME / <title> / METEO_SYSTEM_PROMPT)"
-    Write-Host "      => 保留 ours (当前部署的版本)"
-    Write-Host "      => git checkout --ours <file>"
-    Write-Host "    - logo / favicon / splash / web-app-manifest 等品牌图片"
-    Write-Host "      => 保留 ours"
-    Write-Host "      => git checkout --ours <file>"
-    Write-Host "    - 其他业务代码冲突 => 手工解决, 优先 theirs (来自 common 的新版本)"
-    Write-Host ""
-    Write-Host "    解决完后:"
-    Write-Host "      git add <files>"
-    Write-Host "      git merge --continue"
+    Write-Host '    - 品牌字段 (APP_NAME / WEBUI_NAME / <title> / METEO_SYSTEM_PROMPT)'
+    Write-Host '      => 保留 ours (当前部署的版本)'
+    Write-Host '      => git checkout --ours <file>'
+    Write-Host '    - logo / favicon / splash / web-app-manifest 等品牌图片'
+    Write-Host '      => 保留 ours'
+    Write-Host '      => git checkout --ours <file>'
+    Write-Host '    - 其他业务代码冲突 => 手工解决, 优先 theirs (来自 common 的新版本)'
+    Write-Host ''
+    Write-Host '    解决完后:'
+    Write-Host '      git add <files>'
+    Write-Host '      git merge --continue'
     Write-Host "      git push origin $current"
     exit 1
 }
