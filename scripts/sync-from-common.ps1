@@ -1,4 +1,4 @@
-﻿# sync-from-common.ps1
+# sync-from-common.ps1
 #
 # Sync latest changes from origin/common into the current deployment branch
 # (dev-bj or dev-sz).
@@ -39,9 +39,11 @@ if ($current -ne 'dev-bj' -and $current -ne 'dev-sz') {
     exit 1
 }
 
-$dirty = git status --porcelain
+# Untracked files are fine (the sz worktree, for example, keeps local tools
+# and docs untracked). Only block on modified/staged changes to tracked files.
+$dirty = git status --porcelain --untracked-files=no
 if ($dirty) {
-    Write-Host '[ERROR] working tree is not clean. Commit or stash first:' -ForegroundColor Red
+    Write-Host '[ERROR] tracked files have uncommitted changes. Commit or stash first:' -ForegroundColor Red
     Write-Host $dirty
     exit 1
 }
