@@ -29,18 +29,19 @@
 	}
 </script>
 
+
 {#if history && history.length > 0}
 	{#if status?.hidden !== true}
-		<div class="text-sm flex flex-col w-full">
+		<div class="status-history-inline text-sm flex flex-col w-fit max-w-full my-0">
 			<button
-				class="w-full"
+				class="w-full group/status"
 				aria-label={$i18n.t('Toggle status history')}
 				aria-expanded={showHistory}
 				on:click={() => {
 					showHistory = !showHistory;
 				}}
 			>
-				<div class="flex items-start gap-2">
+				<div class="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
 					<StatusItem {status} />
 				</div>
 			</button>

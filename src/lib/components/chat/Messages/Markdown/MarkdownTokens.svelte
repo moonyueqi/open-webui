@@ -131,20 +131,22 @@
 			{token.text}
 		{/if}
 	{:else if token.type === 'table'}
-		<div class="relative w-full group mb-2">
-			<div class="scrollbar-hidden relative overflow-x-auto max-w-full">
+		<div class="relative w-full group my-3">
+			<div
+				class="scrollbar-hidden relative overflow-x-auto max-w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs"
+			>
 				<table
-					class=" w-full text-sm text-start text-gray-500 dark:text-gray-400 max-w-full rounded-xl"
+					class="w-full text-[0.8125rem] text-start text-gray-700 dark:text-gray-300 max-w-full border-collapse"
 					dir="auto"
 				>
 					<thead
-						class="text-xs text-gray-700 uppercase bg-white dark:bg-gray-900 dark:text-gray-400 border-none"
+						class="text-[0.8125rem] text-gray-600 tracking-normal bg-gray-50/80 dark:bg-gray-850/60 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800"
 					>
-						<tr class="">
+						<tr>
 							{#each token.header as header, headerIdx}
 								<th
 									scope="col"
-									class="px-2.5! py-2! cursor-pointer border-b border-gray-100! dark:border-gray-800!"
+									class="px-3.5! py-2.5! font-semibold whitespace-nowrap"
 									style={token.align[headerIdx] ? `text-align: ${token.align[headerIdx]}` : ''}
 								>
 									<div class="gap-1.5 text-start">
@@ -164,14 +166,19 @@
 					</thead>
 					<tbody>
 						{#each token.rows as row, rowIdx}
-							<tr class="bg-white dark:bg-gray-900 text-xs">
+							<tr
+								class="transition-colors {rowIdx % 2 === 1
+									? 'bg-gray-50/40 dark:bg-gray-850/30'
+									: 'bg-transparent'} hover:bg-sky-50/50 dark:hover:bg-sky-900/10 {token.rows
+									.length -
+									1 ===
+								rowIdx
+									? ''
+									: 'border-b border-gray-50 dark:border-gray-850'}"
+							>
 								{#each row ?? [] as cell, cellIdx}
 									<td
-										class="px-3! py-2! text-gray-900 dark:text-white w-max {token.rows.length -
-											1 ===
-										rowIdx
-											? ''
-											: 'border-b border-gray-50! dark:border-gray-850!'}"
+										class="px-3.5! py-2! text-gray-800 dark:text-gray-200 align-top"
 										style={token.align[cellIdx] ? `text-align: ${token.align[cellIdx]}` : ''}
 									>
 										<div class="break-normal">
@@ -191,10 +198,12 @@
 				</table>
 			</div>
 
-			<div class=" absolute top-1 right-1.5 z-20 invisible group-hover:visible flex gap-0.5">
+			<div
+				class="absolute top-1.5 right-1.5 z-20 invisible group-hover:visible flex gap-0.5 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-lg border border-gray-100 dark:border-gray-800 p-0.5 shadow-sm"
+			>
 				<Tooltip content={$i18n.t('Copy')}>
 					<button
-						class="p-1 rounded-lg bg-transparent transition"
+						class="p-1 rounded-md bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 						on:click={(e) => {
 							e.stopPropagation();
 							copyToClipboard(token.raw.trim(), null, $settings?.copyFormatted ?? false);
@@ -206,7 +215,7 @@
 
 				<Tooltip content={$i18n.t('Export to CSV')}>
 					<button
-						class="p-1 rounded-lg bg-transparent transition"
+						class="p-1 rounded-md bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 						on:click={(e) => {
 							e.stopPropagation();
 							exportTableToCSVHandler(token, tokenIdx);
@@ -329,7 +338,7 @@
 				id={`${id}-${tokenIdx}-tc`}
 				attributes={token.attributes}
 				open={false}
-				className="w-full space-y-1 mb-2"
+				className="tool-call-inline w-fit max-w-full my-0"
 			/>
 		{:else if textContent.length > 0}
 			<Collapsible

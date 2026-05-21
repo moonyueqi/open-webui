@@ -10,14 +10,14 @@
 </script>
 
 {#if !status?.hidden}
-	<div class="status-description flex items-center gap-2 py-0.5 w-full text-left">
+	<div class="status-description flex items-center gap-2 py-0 w-full text-left">
 		{#if status?.action === 'web_search' && (status?.urls || status?.items)}
 			<WebSearchResults {status}>
 				<div class="flex flex-col justify-center -space-y-0.5">
 					<div
 						class="{(done || status?.done) === false
 							? 'shimmer'
-							: ''} text-base line-clamp-1 text-wrap"
+							: ''} text-sm text-gray-700 dark:text-gray-300 line-clamp-1 text-wrap"
 					>
 						<!-- $i18n.t("Generating search query") -->
 						<!-- $i18n.t("No search query generated") -->
@@ -41,7 +41,7 @@
 				<div
 					class="{(done || status?.done) === false
 						? 'shimmer'
-						: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+						: ''} text-gray-700 dark:text-gray-300 text-sm line-clamp-1 text-wrap"
 				>
 					{$i18n.t(`Searching Knowledge for "{{searchQuery}}"`, {
 						searchQuery: status.query
@@ -53,7 +53,7 @@
 				<div
 					class="{(done || status?.done) === false
 						? 'shimmer'
-						: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+						: ''} text-gray-700 dark:text-gray-300 text-sm line-clamp-1 text-wrap"
 				>
 					{$i18n.t(`Searching`)}
 				</div>
@@ -79,7 +79,7 @@
 				<div
 					class="{(done || status?.done) === false
 						? 'shimmer'
-						: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+						: ''} text-gray-700 dark:text-gray-300 text-sm line-clamp-1 text-wrap"
 				>
 					{$i18n.t(`Querying`)}
 				</div>
@@ -125,7 +125,7 @@
 				<div
 					class="{(done || status?.done) === false
 						? 'shimmer'
-						: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+						: ''} text-gray-700 dark:text-gray-300 text-sm line-clamp-1 text-wrap"
 				>
 					<!-- $i18n.t(`Searching "{{searchQuery}}"`) -->
 					{#if status?.description?.includes('{{searchQuery}}')}

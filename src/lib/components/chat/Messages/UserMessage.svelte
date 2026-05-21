@@ -366,8 +366,8 @@
 				<div class="w-full">
 					<div class="flex {($settings?.chatBubble ?? true) ? 'justify-end pb-1' : 'w-full'}">
 						<div
-						class="rounded-xl {($settings?.chatBubble ?? true)
-							? `max-w-[90%] px-4 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-gray-900 dark:text-gray-100 ${
+						class="user-bubble rounded-2xl {($settings?.chatBubble ?? true)
+							? `w-fit max-w-[85%] sm:max-w-[80%] md:max-w-[75%] px-4 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-gray-900 dark:text-gray-100 ${
 									message.files ? 'rounded-tr-lg' : ''
 								}`
 							: ' w-full'}"
@@ -670,3 +670,11 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	.user-bubble :global(.markdown-prose) :global(p) {
+		margin-top: 0;
+		margin-bottom: 0;
+		line-height: 1.4;
+	}
+</style>

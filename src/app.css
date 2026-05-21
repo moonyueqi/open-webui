@@ -108,6 +108,77 @@ textarea::placeholder {
 	@apply text-sm prose dark:prose-invert prose-blockquote:border-s-gray-100 prose-blockquote:dark:border-gray-800 prose-blockquote:border-s-2 prose-blockquote:not-italic prose-blockquote:font-normal  prose-headings:font-semibold prose-hr:my-4 prose-hr:border-gray-50 prose-hr:dark:border-gray-850 prose-p:my-0 prose-img:my-1 prose-headings:my-1 prose-pre:my-0 prose-table:my-0 prose-blockquote:my-0 prose-ul:-my-0 prose-ol:-my-0 prose-li:-my-0 whitespace-pre-line;
 }
 
+/*
+ * Tailwind Typography (`prose`) defaults to `max-width: 65ch`, which after a
+ * production build is applied to both the user message column and the bubble's
+ * inner markdown, shrinking the bubble to ~520px regardless of `max-w-[75%]`.
+ * For chat messages we always want the bubble to flow with its own width
+ * constraints, so explicitly opt out of the prose width limit on the
+ * per-message containers and their inner prose content.
+ */
+.chat-user.markdown-prose,
+.chat-assistant.markdown-prose {
+	max-width: none;
+}
+
+.chat-user.markdown-prose :where(.markdown-prose),
+.chat-assistant.markdown-prose :where(.markdown-prose) {
+	max-width: none;
+}
+
+/* The user bubble itself wraps its content in `.markdown-prose`; ensure that
+ * inner block is also unrestricted so multi-line user messages can use the
+ * full width budget allowed by `max-w-[75%]`. */
+.user-bubble :where(.markdown-prose) {
+	max-width: none;
+}
+
+/* Assistant (AI) reply: clean, business-friendly typography. User bubbles keep the original compact look. */
+.chat-assistant.markdown-prose {
+	@apply text-[0.9375rem]
+		prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-gray-900 dark:prose-headings:text-gray-100
+		prose-h1:text-xl prose-h1:mt-4 prose-h1:mb-2
+		prose-h2:text-lg prose-h2:mt-3.5 prose-h2:mb-1.5
+		prose-h3:text-base prose-h3:mt-3 prose-h3:mb-1.5
+		prose-h4:text-[0.9375rem] prose-h4:mt-2.5 prose-h4:mb-1
+		prose-p:my-1 prose-p:text-gray-900 dark:prose-p:text-gray-100
+		prose-li:my-0.5 prose-li:text-gray-900 dark:prose-li:text-gray-100
+		prose-ul:my-1 prose-ol:my-1
+		prose-img:my-1.5 prose-img:rounded-lg
+		prose-pre:my-2 prose-pre:rounded-xl
+		prose-table:my-2
+		prose-blockquote:my-2 prose-blockquote:border-s-2 prose-blockquote:border-s-gray-200 prose-blockquote:dark:border-s-gray-700 prose-blockquote:not-italic prose-blockquote:font-normal prose-blockquote:text-gray-700 prose-blockquote:dark:text-gray-300 prose-blockquote:bg-gray-50/60 prose-blockquote:dark:bg-gray-900/40 prose-blockquote:rounded-r-md prose-blockquote:py-1.5 prose-blockquote:px-3
+		prose-hr:my-4 prose-hr:border-gray-100 prose-hr:dark:border-gray-800
+		prose-strong:font-semibold prose-strong:text-gray-900 dark:prose-strong:text-gray-100
+		prose-a:font-normal prose-a:text-sky-700 dark:prose-a:text-sky-300 prose-a:no-underline hover:prose-a:underline prose-a:underline-offset-2;
+	line-height: 1.65;
+}
+
+.chat-assistant.markdown-prose :where(p, li) {
+	line-height: 1.65;
+}
+
+.chat-assistant.markdown-prose :where(p, li, blockquote, td, th) {
+	font-feature-settings: 'tnum' 1, 'cv01' 1, 'cv11' 1;
+}
+
+.chat-assistant.markdown-prose :where(h1, h2, h3, h4, h5, h6):first-child {
+	margin-top: 0;
+}
+
+.chat-assistant.markdown-prose :where(ul, ol) :where(ul, ol) {
+	margin-top: 0.15rem;
+	margin-bottom: 0.15rem;
+}
+
+.chat-assistant.markdown-prose :where(p) + :where(ul, ol) {
+	margin-top: -0.15rem;
+}
+
+.chat-assistant.markdown-prose :where(p) {
+	text-wrap: pretty;
+}
+
 .markdown-prose-sm {
 	@apply text-sm prose dark:prose-invert prose-blockquote:border-s-gray-100 prose-blockquote:dark:border-gray-800 prose-blockquote:border-s-2 prose-blockquote:not-italic prose-blockquote:font-normal  prose-headings:font-semibold prose-hr:my-2  prose-hr:border-gray-50 prose-hr:dark:border-gray-850 prose-p:my-0 prose-img:my-1 prose-headings:my-1 prose-pre:my-0 prose-table:my-0 prose-blockquote:my-0 prose-ul:-my-0 prose-ol:-my-0 prose-li:-my-0 whitespace-pre-line;
 }
@@ -340,9 +411,9 @@ input[type='number'] {
 }
 
 .codespan {
-	padding: 0.15rem 0.3rem;
+	padding: 0.15rem 0.4rem;
 	font-size: 0.85em;
-	@apply font-mono rounded-md text-gray-800 bg-gray-100 dark:text-gray-200 dark:bg-gray-800 mx-0.5;
+	@apply font-mono rounded-md border border-gray-100 dark:border-gray-800 text-pink-700 bg-pink-50 dark:text-pink-200 dark:bg-pink-900/20 mx-0.5;
 }
 
 .svelte-flow {
@@ -827,4 +898,32 @@ body {
 
 .dark #message-input-container:focus-within {
 	box-shadow: none;
+}
+
+/* Force pure black for user input text in light mode (chat input editor) */
+#chat-input,
+#chat-input .ProseMirror,
+#chat-input .ProseMirror p,
+#chat-input .ProseMirror li,
+#chat-input .ProseMirror span {
+	color: #000 !important;
+}
+
+.dark #chat-input,
+.dark #chat-input .ProseMirror,
+.dark #chat-input .ProseMirror p,
+.dark #chat-input .ProseMirror li,
+.dark #chat-input .ProseMirror span {
+	color: #fff !important;
+}
+
+/* Force pure black for assistant reply body text in light mode */
+.chat-assistant.markdown-prose,
+.chat-assistant.markdown-prose :where(p, li, h1, h2, h3, h4, h5, h6, strong, td, th, blockquote) {
+	color: #000;
+}
+
+.dark .chat-assistant.markdown-prose,
+.dark .chat-assistant.markdown-prose :where(p, li, h1, h2, h3, h4, h5, h6, strong, td, th, blockquote) {
+	color: #fff;
 }
