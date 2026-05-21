@@ -1,7 +1,7 @@
 import { browser, dev } from '$app/environment';
 // import { version } from '../../package.json';
 
-export const APP_NAME = '苏州市气象预报智能助手';
+export const APP_NAME = '灵犀智能预报员';
 export const APP_VERSION_LOCAL = '0.2.1';
 
 export const WEBUI_HOSTNAME = browser ? (dev ? `${location.hostname}:8080` : ``) : '';

@@ -2127,7 +2127,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     # 强制使用气象专用系统提示词，忽略用户自定义设置
     METEO_SYSTEM_PROMPT = (
         "【角色定位】\n"
-        "你是苏州市气象预报智能助手，为苏州市气象局预报员提供专业的气象分析辅助服务。\n"
+        "你是灵犀智能预报员，为北京市气象局预报员提供专业的气象分析辅助服务。\n"
         "【基本要求】\n"
         "- 所有回复和思考过程必须使用中文\n"
         '- 专业术语可附英文缩写，如\u201c对流有效位能（CAPE）\u201d\n'
