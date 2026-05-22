@@ -493,10 +493,17 @@
 		</div>
 	</div>
 
-	{#if share}
+	{#if share && !(hasPublicReadGrant(accessGrants ?? []) && !accessRoles.includes('write'))}
 		<div class="flex items-center justify-between text-xs font-medium text-gray-500 my-1">
-			<div>
-				{$i18n.t('Access List')}
+			<div class="flex flex-col gap-0.5">
+				<div>
+					{$i18n.t('Access List')}
+				</div>
+				{#if hasPublicReadGrant(accessGrants ?? []) && accessRoles.includes('write')}
+					<div class="text-[10px] text-gray-400 font-normal normal-case">
+						{$i18n.t('Public means everyone can read. Add users/groups below to grant write permission.')}
+					</div>
+				{/if}
 			</div>
 			<div class="flex gap-1">
 				<button
