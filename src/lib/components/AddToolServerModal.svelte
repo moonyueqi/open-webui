@@ -735,11 +735,11 @@
 							</label>
 
 							<div
-								class="flex items-stretch gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+								class="flex items-start gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
 							>
 								<select
 									id="select-spec-type"
-									class="shrink-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent dark:bg-gray-800/50 outline-hidden pr-2"
+									class="spec-type-select shrink-0 w-auto text-sm text-gray-700 dark:text-gray-200 bg-transparent dark:bg-gray-800/50 outline-hidden appearance-none pr-4 pl-0 cursor-pointer"
 									bind:value={spec_type}
 								>
 									<option value="url">{$i18n.t('URL')}</option>
@@ -841,23 +841,6 @@
 					</div>
 				{/if}
 
-				{#if type === 'mcp'}
-					<div
-						class="bg-yellow-500/20 text-yellow-700 dark:text-yellow-200 rounded-2xl text-xs px-4 py-3"
-					>
-						<span class="font-medium">{$i18n.t('Warning')}:</span>
-						{$i18n.t(
-							'MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.'
-						)}
-
-						<a
-							class="font-medium underline"
-							href="https://docs.openwebui.com/features/mcp"
-							target="_blank">{$i18n.t('Read more →')}</a
-						>
-					</div>
-				{/if}
-
 				<!-- Footer actions -->
 				<div
 					class="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800"
@@ -909,3 +892,19 @@
 </Modal>
 
 <AccessControlModal bind:show={showAccessControlModal} bind:accessGrants />
+
+<style>
+	.spec-type-select {
+		background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 8 10 12 14 8'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 2px center;
+		background-size: 10px 10px;
+	}
+
+	:global(.dark) .spec-type-select {
+		background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 8 10 12 14 8'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 2px center;
+		background-size: 10px 10px;
+	}
+</style>
