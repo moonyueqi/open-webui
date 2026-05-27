@@ -1,41 +1,40 @@
 services:
-  ollama:
-    volumes:
-      - ollama:/root/.ollama
-    container_name: ollama
-    pull_policy: always
-    tty: true
-    restart: unless-stopped
-    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
-
-  open-webui:
+  leadsee-webui:
+    # === 内网部署说明 ===
+    # 构建机（有外网）：docker compose build
+    #                  docker save leadsee-webui:local | zstd -19 > leadsee-webui.tar.zst
+    # 部署机（纯内网）：zstd -d leadsee-webui.tar.zst -c | docker load
+    #                  docker compose up -d
+    # 注意：内网部署机不要执行 `docker compose build`（会拉国内镜像源也访问不到）
     build:
       context: .
       dockerfile: Dockerfile
       args:
         USE_CUDA: "false"
         USE_OLLAMA: "false"
-    image: open-webui:${WEBUI_DOCKER_TAG-local}
-    container_name: open-webui
+        # 全部走外部 API（OpenAI 等），不需要把本地 RAG/Whisper/tiktoken 模型烘焙进镜像
+        # 可省下 ~300MB 镜像体积，并避免构建期访问 huggingface.co / openaipublic.blob.core.windows.net / raw.githubusercontent.com
+        USE_SLIM: "true"
+    image: leadsee-webui:${WEBUI_DOCKER_TAG-local}
+    container_name: leadsee-webui
     volumes:
-      - open-webui:/app/backend/data
-    depends_on:
-      - ollama
+      - leadsee-webui:/app/backend/data
     ports:
       - ${OPEN_WEBUI_PORT-3000}:8080
+    # === 从 .env 加载完整业务配置 ===
+    # 部署时把 .env.intranet.example 复制为 .env 并填写真实值
+    # env_file 中的变量优先级低于下面 environment 段（compose 规则）
+    env_file:
+      - .env
+    # === 不可被 .env 覆盖的固定配置 ===
+    # 这些是基础设施级开关，不应该让 .env 误改
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
-      - BYPASS_MODEL_ACCESS_CONTROL=${BYPASS_MODEL_ACCESS_CONTROL:-true}
-      - ENABLE_DIRECT_CONNECTIONS=${ENABLE_DIRECT_CONNECTIONS:-true}
-      - CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN:-*}
-      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-*}
-      - OPENAI_API_BASE_URL=${OPENAI_API_BASE_URL:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - UVICORN_WORKERS=1
+      # 启动 .webui_secret_key 文件的兜底逻辑由 start.sh 处理；
+      # 强烈建议在 .env 里显式设置 WEBUI_SECRET_KEY（openssl rand -hex 32）
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
 
 volumes:
-  ollama: {}
-  open-webui: {}
+  leadsee-webui: {}

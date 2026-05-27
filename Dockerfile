@@ -15,9 +15,6 @@ ARG USE_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ARG USE_RERANKING_MODEL=""
 ARG USE_AUXILIARY_EMBEDDING_MODEL=TaylorAI/bge-micro-v2
 
-# Tiktoken encoding name; models to use can be found at https://huggingface.co/models?library=tiktoken
-ARG USE_TIKTOKEN_ENCODING_NAME="cl100k_base"
-
 ARG BUILD_HASH=dev-build
 # Override at your own risk - non-root configurations are untested
 ARG UID=0
@@ -32,11 +29,23 @@ ARG BUILD_HASH
 
 WORKDIR /app
 
-# to store git revision in build
-RUN apk add --no-cache git
+# === 国内镜像加速：Alpine apk + npm ===
+# 1) Alpine 包源换成中科大镜像
+# 2) npm registry 换成 npmmirror（淘宝源）
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.ustc.edu.cn|g' /etc/apk/repositories && \
+    apk add --no-cache git && \
+    npm config set registry https://registry.npmmirror.com
+
+# Pyodide 在 prepare-pyodide.js 里会下载 Pyodide 运行时和一组 Python wheel
+# 通过环境变量改走国内镜像（jsdelivr 国内镜像 + 清华 PyPI）
+ENV PYODIDE_BASE_URL="https://cdn.jsdelivr.net.cn/pyodide/v0.28.2/full/" \
+    PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
 
 COPY package.json package-lock.json ./
-RUN npm ci --force
+# --legacy-peer-deps: 绕过 peer dependency 严格检查（tiptap 部分扩展是 2.26.1，
+# 与 @tiptap/core@3.0.7 的 peer 要求不匹配，但实际运行可用）
+# 注：长期方案是把 @tiptap/extension-bubble-menu 和 extension-floating-menu 升级到 3.x
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
@@ -99,8 +108,11 @@ ENV RAG_EMBEDDING_MODEL="$USE_EMBEDDING_MODEL_DOCKER" \
     SENTENCE_TRANSFORMERS_HOME="/app/backend/data/cache/embedding/models"
 
 ## Tiktoken model settings ##
+# 注意：缓存路径放在 /opt/cache 而不是 /app/backend/data 下
+# 原因：/app/backend/data 是命名卷挂载点，如果运维把它换成 bind mount，
+# 镜像里烘焙的 cl100k_base 字典会被空目录覆盖，导致运行期联网拉失败
 ENV TIKTOKEN_ENCODING_NAME="cl100k_base" \
-    TIKTOKEN_CACHE_DIR="/app/backend/data/cache/tiktoken"
+    TIKTOKEN_CACHE_DIR="/opt/cache/tiktoken"
 
 ## Hugging Face download cache ##
 ENV HF_HOME="/app/backend/data/cache/embedding/models"
@@ -127,6 +139,16 @@ RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry
 # Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
+# === 国内镜像加速：Debian apt + pip ===
+# 1) Debian 软件源换成清华镜像（bookworm 同时换 main 和 security）
+# 2) pip 全局换成清华 PyPI 镜像
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true && \
+    sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
+        /etc/apt/sources.list 2>/dev/null || true && \
+    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip config set install.trusted-host pypi.tuna.tsinghua.edu.cn
+
 # Install common system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -139,30 +161,71 @@ RUN apt-get update && \
 # install python dependencies
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
 
+# === 国内镜像加速：HuggingFace 镜像（仅 USE_SLIM=false 时构建期下载模型才用得到） ===
+# hf-mirror.com 是国内常用的 HuggingFace 镜像站
+ENV HF_ENDPOINT="https://hf-mirror.com"
+
+# === NLTK 数据存放路径 ===
+# nltk 默认从 raw.githubusercontent.com 下载数据，国内基本不通
+# 构建期把 punkt_tab.zip 解压到 NLTK_DATA 目录，运行期不联网
+# RAG 文档分块（部分 langchain loader）会用到 punkt_tab，无论 USE_SLIM 是否为 true 都需要
+# 同样放在 /opt/cache 而不是 /app/backend/data 下，避免被卷挂载覆盖
+ENV NLTK_DATA="/opt/cache/nltk_data"
+
 RUN pip3 install --no-cache-dir uv && \
     if [ "$USE_CUDA" = "true" ]; then \
     # If you use CUDA the whisper and embedding model will be downloaded on first use
     # fix: pin torch<=2.9.1 - torch 2.10.0 aarch64 wheels cause SIGILL on ARM devices (RPi 4 Cortex-A72) #21349
-    pip3 install 'torch<=2.9.1' torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
+    # PyTorch CUDA 走阿里云镜像（清华 mirrors.tuna.tsinghua.edu.cn 没有 pytorch-wheels 子站）
+    # 阿里云用 HTML 索引格式，需要用 --find-links + 清华 PyPI 作为基础 index
+    pip3 install 'torch<=2.9.1' torchvision torchaudio --find-links https://mirrors.aliyun.com/pytorch-wheels/$USE_CUDA_DOCKER_VER/ --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir && \
+    uv pip install --system -r requirements.txt --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
     python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')" && \
     python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
-    python -c "import nltk; nltk.download('punkt_tab')"; \
     else \
-    pip3 install 'torch<=2.9.1' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
+    # PyTorch CPU 走阿里云镜像（清华没有 pytorch-wheels 子站，原配置 404）
+    # --find-links 指向阿里云 HTML 索引，--index-url 用清华 PyPI 解析其他依赖
+    pip3 install 'torch<=2.9.1' torchvision torchaudio --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir && \
+    uv pip install --system -r requirements.txt --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
     if [ "$USE_SLIM" != "true" ]; then \
     python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
     python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')" && \
     python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
-    python -c "import nltk; nltk.download('punkt_tab')"; \
     fi; \
     fi; \
     mkdir -p /app/backend/data && chown -R $UID:$GID /app/backend/data/ && \
     rm -rf /var/lib/apt/lists/*;
+
+# === 离线注入 NLTK punkt_tab（RAG 文档分块必需） ===
+# 需要在项目根目录预先放置 punkt_tab.zip：
+#   下载：https://gh-proxy.com/https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip
+#   位置：<repo_root>/punkt_tab.zip
+# 这样构建期完全不联网，避免 raw.githubusercontent.com 被墙的问题
+# 用 Python 内置 zipfile 解压，避免引入 unzip 包，省一层镜像
+COPY --chown=$UID:$GID punkt_tab.zip /tmp/punkt_tab.zip
+RUN set -eux; \
+    mkdir -p "$NLTK_DATA/tokenizers"; \
+    python -c "import zipfile, os; zipfile.ZipFile('/tmp/punkt_tab.zip').extractall(os.environ['NLTK_DATA'] + '/tokenizers/')"; \
+    rm /tmp/punkt_tab.zip; \
+    chown -R $UID:$GID "$NLTK_DATA"; \
+    python -c "import nltk; nltk.data.find('tokenizers/punkt_tab')" && echo "punkt_tab OK"
+
+# === 离线注入 tiktoken cl100k_base（GPT-3.5/GPT-4 的 BPE 编码字典）===
+# 需要在项目根目录预先放置 cl100k_base.tiktoken：
+#   下载：curl -O https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken
+#   位置：<repo_root>/cl100k_base.tiktoken
+# tiktoken 缓存的文件名是下载 URL 的 SHA1：
+#   sha1("https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken")
+#   = 9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+# 直接以这个名字放进 TIKTOKEN_CACHE_DIR，运行期就不会触发联网下载
+COPY --chown=$UID:$GID cl100k_base.tiktoken /tmp/cl100k_base.tiktoken
+RUN set -eux; \
+    mkdir -p "$TIKTOKEN_CACHE_DIR"; \
+    cp /tmp/cl100k_base.tiktoken "$TIKTOKEN_CACHE_DIR/9b5ad71b2ce5302211f9c61530b329a4922fc6a4"; \
+    rm /tmp/cl100k_base.tiktoken; \
+    chown -R $UID:$GID "$TIKTOKEN_CACHE_DIR"; \
+    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])" && echo "cl100k_base OK"
 
 # Install Ollama if requested
 RUN if [ "$USE_OLLAMA" = "true" ]; then \

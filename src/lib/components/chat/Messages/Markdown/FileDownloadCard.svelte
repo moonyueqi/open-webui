@@ -230,6 +230,9 @@
 	// response we can show the real card. This prevents the raw URL from
 	// briefly appearing as the link label during streaming.
 	$: isResolving = !displayName && (loading || !done);
+	// 流式期间且尚未拿到真实文件名时整体不渲染，避免出现
+	// 「卡片骨架 → 原始链接 → 最终卡片」的中间闪烁。等流结束或解析到真实名再淡入。
+	$: shouldHide = !done && !displayName;
 	$: shownName = displayName || (isResolving ? '' : $i18n.t('Attachment'));
 	$: ext = getExtension(shownName);
 	$: pal = palette(ext);
@@ -240,8 +243,14 @@
 	<FileItemModal bind:show={showModal} bind:item={fileItem} edit={false} />
 {/if}
 
-<span class="file-download-card-wrapper file-download-card-enter inline-flex align-middle my-1 mr-1 max-w-full">
-	{#if isResolving}
+<span
+	class="file-download-card-wrapper file-download-card-enter inline-flex align-middle my-1 mr-1 max-w-full"
+	class:hidden={shouldHide}
+	aria-hidden={shouldHide ? 'true' : undefined}
+>
+	{#if shouldHide}
+		<!-- 流式中且无真实文件名：占位但不渲染任何可见内容 -->
+	{:else if isResolving}
 		<!-- Skeleton placeholder shown until we have a real filename or
 			streaming finishes. This prevents the raw URL from briefly
 			appearing as the link label during streaming. -->
