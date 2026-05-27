@@ -101,21 +101,25 @@
 	};
 </script>
 
-{#each tokens as token, tokenIdx (tokenIdx)}
+{#each tokens as token, tokenIdx (token.type === 'link' && isFileDownloadHref(token.href) ? `file:${token.href}` : tokenIdx)}
 	{#if token.type === 'escape'}
 		{unescapeHtml(token.text)}
 	{:else if token.type === 'html'}
 		<HtmlToken {id} {token} {onSourceClick} />
 	{:else if token.type === 'link'}
 		{@const noteId = getNoteIdFromHref(token.href)}
+		{@const fileLinkLabel = token.tokens ? tokensToPlainText(token.tokens) : token.text}
 		{#if noteId}
 			<NoteLinkToken {noteId} href={token.href} />
 		{:else if isFileDownloadHref(token.href)}
-			<FileDownloadCard
-				href={token.href}
-				fallbackName={token.tokens ? tokensToPlainText(token.tokens) : token.text}
-				{done}
-			/>
+			{#if done || (fileLinkLabel && fileLinkLabel !== token.href)}
+				<!-- 已有真实 markdown 链接 `[名字](url)` 或流已结束：正常渲染下载卡片 -->
+				<FileDownloadCard href={token.href} fallbackName={fileLinkLabel} {done} />
+			{:else}
+				<!-- 流式期间这是个裸 URL（autolink）：先占位，避免「卡片骨架 → 原始链接 → 卡片」闪烁。
+				     等流到 `[名字](url)` 闭合后会以同一 key 平滑切换为真实卡片。 -->
+				<span class="sr-only" aria-hidden="true">{token.href}</span>
+			{/if}
 		{:else if token.tokens}
 			<a
 				href={token.href}
