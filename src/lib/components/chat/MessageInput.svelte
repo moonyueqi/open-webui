@@ -1661,7 +1661,10 @@
 									class="flex self-center w-[1px] h-4 mx-1 bg-gray-200/50 dark:bg-gray-800/50"
 								/>
 
-							<Tooltip content={$i18n.t('Deep Thinking')} placement="top">
+							<Tooltip
+								content={`${$i18n.t('Deep Thinking')} — ${$i18n.t('Some thinking-only models (e.g. Qwen3 Thinking series) require this to be enabled. If the model returns "enable_thinking restricted to True", turn this on.')}`}
+								placement="top"
+							>
 								<button
 									on:click|preventDefault={() => deepThinking.set(!$deepThinking)}
 									type="button"
