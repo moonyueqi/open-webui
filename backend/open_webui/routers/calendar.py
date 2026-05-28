@@ -40,7 +40,7 @@ async def check_calendar_permission(request: Request, user):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
-    if user.role != 'admin' and not await has_permission(
+    if user.role != 'admin' and not has_permission(
         user.id, 'features.calendar', request.app.state.config.USER_PERMISSIONS
     ):
         raise HTTPException(
@@ -55,7 +55,7 @@ async def _user_has_automations(request: Request, user) -> bool:
         return False
     if user.role == 'admin':
         return True
-    return await has_permission(user.id, 'features.automations', request.app.state.config.USER_PERMISSIONS)
+    return has_permission(user.id, 'features.automations', request.app.state.config.USER_PERMISSIONS)
 
 
 async def _check_calendar_access(calendar_id: str, user: UserModel, permission: str = 'write') -> CalendarModel:
@@ -65,9 +65,9 @@ async def _check_calendar_access(calendar_id: str, user: UserModel, permission: 
         raise HTTPException(status_code=404, detail='Calendar not found')
     if cal.user_id == user.id or user.role == 'admin':
         return cal
-    user_groups = await Groups.get_groups_by_member_id(user.id)
+    user_groups = Groups.get_groups_by_member_id(user.id)
     user_group_ids = [g.id for g in user_groups]
-    if await AccessGrants.has_access(
+    if AccessGrants.has_access(
         user_id=user.id,
         resource_type='calendar',
         resource_id=cal.id,
@@ -116,7 +116,7 @@ async def create_calendar(request: Request, form_data: CalendarForm, user: UserM
     # (matches the channel/notes/models pattern). Without this, any verified user
     # could create a calendar with `principal_id='*' permission='read'|'write'`,
     # making their events readable or writable by any other verified user.
-    form_data.access_grants = await filter_allowed_access_grants(
+    form_data.access_grants = filter_allowed_access_grants(
         request.app.state.config.USER_PERMISSIONS,
         user.id,
         user.role,
@@ -367,7 +367,7 @@ async def update_calendar(
     # they may set, so a non-admin owner cannot make their calendar
     # publicly readable/writable without the corresponding sharing permission.
     if form_data.access_grants is not None:
-        form_data.access_grants = await filter_allowed_access_grants(
+        form_data.access_grants = filter_allowed_access_grants(
             request.app.state.config.USER_PERMISSIONS,
             user.id,
             user.role,

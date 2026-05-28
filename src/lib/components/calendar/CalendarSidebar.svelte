@@ -13,7 +13,7 @@
 	export let onDeleteCalendar: (id: string) => void = () => {};
 	export let onDateSelect: (date: Date) => void = () => {};
 
-	// Delete confirmation state
+	// 删除确认状态
 	let showDeleteConfirm = false;
 	let deleteTargetCalendar: CalendarModel | null = null;
 
@@ -34,9 +34,9 @@
 		deleteTargetCalendar = null;
 	}
 
-	// Mini calendar state
-	$: miniMonth = currentDate.getMonth();
-	$: miniYear = currentDate.getFullYear();
+	// 小日历状态
+	let miniMonth = currentDate.getMonth();
+	let miniYear = currentDate.getFullYear();
 
 	$: miniMonthStart = new Date(miniYear, miniMonth, 1);
 	$: miniCalStart = (() => {
@@ -55,39 +55,30 @@
 		return days;
 	})();
 
-	$: miniMonthNames = [
-		'January',
-		'February',
-		'March',
-		'April',
-		'May',
-		'June',
-		'July',
-		'August',
-		'September',
-		'October',
-		'November',
-		'December'
-	];
-
 	function isToday(d: Date): boolean {
 		return d.toDateString() === new Date().toDateString();
 	}
 
-	function isSelected(d: Date): boolean {
-		return d.toDateString() === currentDate.toDateString();
+	function navigateMini(delta: number) {
+		let m = miniMonth + delta;
+		let y = miniYear;
+		if (m > 11) {
+			m = 0;
+			y++;
+		} else if (m < 0) {
+			m = 11;
+			y--;
+		}
+		miniMonth = m;
+		miniYear = y;
 	}
 
-	function navigateMini(delta: number) {
-		if (miniMonth + delta > 11) {
-			miniMonth = 0;
-			miniYear++;
-		} else if (miniMonth + delta < 0) {
-			miniMonth = 11;
-			miniYear--;
-		} else {
-			miniMonth += delta;
+	// 系统日历名称中文化
+	function displayName(cal: CalendarModel): string {
+		if (cal.id === '__scheduled_tasks__' || cal.is_system) {
+			return $i18n.t('Scheduled Tasks');
 		}
+		return cal.name;
 	}
 </script>
 
@@ -102,23 +93,26 @@
 	onConfirm={confirmDelete}
 />
 
-<div class="flex flex-col gap-4">
-	<!-- Mini Month Calendar -->
-	<div>
-		<div class="flex items-center justify-between px-1 mb-1.5 mt-1.5">
-			<div class="text-[11px] font-medium">{miniMonthNames[miniMonth]} {miniYear}</div>
+<div class="flex flex-col gap-5 pt-2">
+	<!-- 小日历 -->
+	<div class="relative rounded-2xl p-2.5 border border-gray-200 dark:border-gray-700/60 bg-gradient-to-br from-white via-blue-50/40 to-fuchsia-50/30 dark:from-gray-900/70 dark:via-blue-900/20 dark:to-fuchsia-900/15 shadow-[0_1px_4px_rgba(99,102,241,0.04)] backdrop-blur-sm">
+		<div class="flex items-center justify-between px-1 mb-2">
+			<div class="text-xs font-semibold text-gray-800 dark:text-gray-100">
+				{$i18n.t('{{year}}年{{month}}月', { year: miniYear, month: miniMonth + 1 })}
+			</div>
 			<div class="flex items-center gap-0.5">
 				<button
-					class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+					class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500 dark:text-gray-400"
 					on:click={() => navigateMini(-1)}
+					aria-label={$i18n.t('Previous')}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						fill="none"
 						viewBox="0 0 24 24"
-						stroke-width="2"
+						stroke-width="2.5"
 						stroke="currentColor"
-						class="size-3"
+						class="size-2.5"
 						><path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -127,16 +121,17 @@
 					>
 				</button>
 				<button
-					class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+					class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500 dark:text-gray-400"
 					on:click={() => navigateMini(1)}
+					aria-label={$i18n.t('Next')}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						fill="none"
 						viewBox="0 0 24 24"
-						stroke-width="2"
+						stroke-width="2.5"
 						stroke="currentColor"
-						class="size-3"
+						class="size-2.5"
 						><path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -147,24 +142,23 @@
 			</div>
 		</div>
 
-		<div class="grid grid-cols-7 text-center text-[9px] text-gray-400 dark:text-gray-500 mb-0.5">
-			{#each ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as d}
-				<div class="py-0.5">{d}</div>
+		<div class="grid grid-cols-7 text-center text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
+			{#each ['日', '一', '二', '三', '四', '五', '六'] as d, i}
+				<div class="py-0.5 {i === 0 || i === 6 ? 'text-rose-400/70 dark:text-rose-300/60' : ''}">{d}</div>
 			{/each}
 		</div>
 
-		<div class="grid grid-cols-7 text-center text-[10px]">
+		<div class="grid grid-cols-7 text-center text-[11px]">
 			{#each miniDays as day}
+				{@const today = isToday(day)}
+				{@const selected = day.toDateString() === currentDate.toDateString()}
+				{@const inMonth = day.getMonth() === miniMonth}
 				<button
-					class="w-6 h-6 flex items-center justify-center rounded-full transition
-						{day.getMonth() !== miniMonth ? 'text-gray-300 dark:text-gray-600' : ''}
-						{isToday(day) ? 'bg-blue-500 text-white' : ''}
-						{day.toDateString() === currentDate.toDateString() && !isToday(day)
-						? 'bg-gray-200 dark:bg-gray-700'
-						: ''}
-						{!isToday(day) && day.toDateString() !== currentDate.toDateString()
-						? 'hover:bg-gray-100 dark:hover:bg-gray-800'
-						: ''}"
+					class="w-7 h-7 flex items-center justify-center rounded-full transition mx-auto
+						{!inMonth ? 'text-gray-300 dark:text-gray-700' : ''}
+						{today ? 'bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-sm font-semibold' : ''}
+						{selected && !today ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold' : ''}
+						{!today && !selected ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300' : ''}"
 					on:click={() => onDateSelect(day)}
 				>
 					{day.getDate()}
@@ -173,14 +167,14 @@
 		</div>
 	</div>
 
-	<!-- Calendar List -->
+	<!-- 日历列表 -->
 	<div>
-		<div class="flex items-center justify-between mb-1 px-1">
-			<div class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-				{$i18n.t('Calendars')}
+		<div class="flex items-center justify-between mb-1.5 px-1">
+			<div class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-semibold">
+				{$i18n.t('My Calendars')}
 			</div>
 			<button
-				class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+				class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500 dark:text-gray-400"
 				title={$i18n.t('New calendar')}
 				on:click={onCreateCalendar}
 			>
@@ -188,61 +182,79 @@
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
 					viewBox="0 0 24 24"
-					stroke-width="2"
+					stroke-width="2.5"
 					stroke="currentColor"
-					class="size-3 text-gray-400 dark:text-gray-500"
+					class="size-3"
 					><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg
 				>
 			</button>
 		</div>
 
-		{#each calendars as cal (cal.id)}
-			<div class="group flex items-center w-full">
-				<button
-					class="flex items-center gap-2 px-2 py-1 rounded-lg text-xs transition
-						hover:bg-gray-50 dark:hover:bg-gray-800/50 flex-1 text-left min-w-0"
-					on:click={() => onToggle(cal.id)}
-				>
-					<span
-						class="shrink-0 size-2.5 rounded-full transition-opacity"
-						style="background-color: {cal.color || '#3b82f6'}; opacity: {visibleCalendarIds.has(
-							cal.id
-						)
-							? '1'
-							: '0.25'};"
-					></span>
-					<span
-						class="truncate flex-1 {visibleCalendarIds.has(cal.id)
-							? ''
-							: 'text-gray-400 dark:text-gray-500'}"
+		<div class="flex flex-col gap-0.5">
+			{#each calendars as cal (cal.id)}
+				{@const visible = visibleCalendarIds.has(cal.id)}
+				<div class="group flex items-center w-full">
+					<button
+						class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition
+							hover:bg-gray-100/70 dark:hover:bg-gray-800/50 flex-1 text-left min-w-0"
+						on:click={() => onToggle(cal.id)}
 					>
-						{cal.name}
-					</span>
-
-					{#if isDeletable(cal)}
-						<!-- svelte-ignore a11y-click-events-have-key-events -->
 						<span
-							class="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100
-								transition-all duration-150"
-							role="button"
-							tabindex="-1"
-							title={$i18n.t('Delete calendar')}
-							on:click|stopPropagation={(e) => handleDeleteClick(e, cal)}
+							class="shrink-0 size-3 rounded-md transition-all flex items-center justify-center"
+							style="background-color: {visible ? cal.color || '#3b82f6' : 'transparent'}; border: 1.5px solid {cal.color || '#3b82f6'};"
 						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								fill="none"
-								viewBox="0 0 24 24"
-								stroke-width="2"
-								stroke="currentColor"
-								class="size-3"
-							>
-								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-							</svg>
+							{#if visible}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="white"
+									stroke-width="3.5"
+									class="size-2"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+								</svg>
+							{/if}
 						</span>
-					{/if}
-				</button>
-			</div>
-		{/each}
+						<span
+							class="truncate flex-1 {visible
+								? 'text-gray-800 dark:text-gray-200'
+								: 'text-gray-400 dark:text-gray-500'}"
+						>
+							{displayName(cal)}
+						</span>
+
+						{#if cal.is_default}
+							<span class="text-[9px] text-gray-400 dark:text-gray-500 shrink-0 px-1 rounded bg-gray-100 dark:bg-gray-800">
+								{$i18n.t('Default')}
+							</span>
+						{/if}
+
+						{#if isDeletable(cal)}
+							<!-- svelte-ignore a11y-click-events-have-key-events -->
+							<span
+								class="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100
+									transition-all duration-150 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500"
+								role="button"
+								tabindex="-1"
+								title={$i18n.t('Delete calendar')}
+								on:click|stopPropagation={(e) => handleDeleteClick(e, cal)}
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+									stroke="currentColor"
+									class="size-3"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+								</svg>
+							</span>
+						{/if}
+					</button>
+				</div>
+			{/each}
+		</div>
 	</div>
 </div>

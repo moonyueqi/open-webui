@@ -65,7 +65,12 @@ class AutomationData(BaseModel):
     prompt: str
     model_id: str
     rrule: str
+    tool_ids: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     terminal: Optional[AutomationTerminalConfig] = None
+    # When False (default), mirrors the chat input's "Deep Thinking off" behavior
+    # by injecting params.reasoning_effort='none' and params.think=False.
+    deep_thinking: Optional[bool] = False
 
 
 class AutomationModel(BaseModel):
@@ -267,10 +272,26 @@ class AutomationTable:
             rows = db.execute(stmt).scalars().all()
 
             from open_webui.utils.automations import next_run_ns
+            from open_webui.models.users import User
+
+            # Recompute next_run_at in the owner's timezone so RRULEs with
+            # multiple BYHOUR/BYMINUTE values (e.g. 9am + 2pm same day)
+            # advance to the next same-day occurrence rather than rolling
+            # to tomorrow due to a server-local-time mismatch.
+            user_ids = {row.user_id for row in rows}
+            tz_by_user: dict[str, Optional[str]] = {}
+            if user_ids:
+                tz_rows = (
+                    db.query(User.id, User.timezone).filter(User.id.in_(user_ids)).all()
+                )
+                tz_by_user = {uid: tz for uid, tz in tz_rows}
 
             for row in rows:
                 row.last_run_at = now_ns
-                row.next_run_at = next_run_ns(row.data.get('rrule', ''))
+                row.next_run_at = next_run_ns(
+                    row.data.get('rrule', ''),
+                    tz=tz_by_user.get(row.user_id),
+                )
 
             db.commit()
 

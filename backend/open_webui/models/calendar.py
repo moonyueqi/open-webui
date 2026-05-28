@@ -234,7 +234,7 @@ class CalendarEventListResponse(BaseModel):
 
 class CalendarTable:
     async def _get_access_grants(self, calendar_id: str, db: Optional[AsyncSession] = None) -> list[AccessGrantModel]:
-        return await AccessGrants.get_grants_by_resource('calendar', calendar_id, db=db)
+        return AccessGrants.get_grants_by_resource('calendar', calendar_id)
 
     async def _to_calendar_model(
         self,
@@ -263,7 +263,7 @@ class CalendarTable:
             cal = Calendar(
                 id=str(uuid4()),
                 user_id=user_id,
-                name='Personal',
+                name='个人事项',
                 color='#3b82f6',
                 is_default=True,
                 created_at=now,
@@ -276,7 +276,7 @@ class CalendarTable:
     async def get_calendars_by_user(self, user_id: str, db: Optional[AsyncSession] = None) -> list[CalendarModel]:
         """Owned + shared calendars."""
         async with get_async_db_context(db) as db:
-            user_groups = await Groups.get_groups_by_member_id(user_id, db=db)
+            user_groups = Groups.get_groups_by_member_id(user_id)
             user_group_ids = [g.id for g in user_groups]
 
             stmt = select(Calendar)
@@ -297,7 +297,7 @@ class CalendarTable:
                 return await self.get_or_create_defaults(user_id, db=db)
 
             cal_ids = [c.id for c in calendars]
-            grants_map = await AccessGrants.get_grants_by_resources('calendar', cal_ids, db=db)
+            grants_map = AccessGrants.get_grants_by_resources('calendar', cal_ids)
 
             return [await self._to_calendar_model(c, access_grants=grants_map.get(c.id, []), db=db) for c in calendars]
 
@@ -326,7 +326,7 @@ class CalendarTable:
             db.add(cal)
             await db.commit()
             if form_data.access_grants is not None:
-                await AccessGrants.set_access_grants('calendar', cal.id, form_data.access_grants, db=db)
+                AccessGrants.set_access_grants('calendar', cal.id, form_data.access_grants)
             return await self._to_calendar_model(cal, db=db)
 
     async def update_calendar_by_id(
@@ -348,7 +348,7 @@ class CalendarTable:
             if 'meta' in update_data:
                 cal.meta = {**(cal.meta or {}), **update_data['meta']}
             if 'access_grants' in update_data:
-                await AccessGrants.set_access_grants('calendar', id, update_data['access_grants'], db=db)
+                AccessGrants.set_access_grants('calendar', id, update_data['access_grants'])
 
             cal.updated_at = int(time.time_ns())
             await db.commit()
@@ -401,7 +401,7 @@ class CalendarTable:
 
             # Revoke access grants in a separate transaction to avoid
             # write-lock contention on SQLite when session sharing is off.
-            await AccessGrants.revoke_all_access('calendar', id)
+            AccessGrants.revoke_all_access('calendar', id)
             return True
         except Exception as e:
             log.exception(f'Failed to delete calendar {id}: {e}')
@@ -481,7 +481,7 @@ class CalendarEventTable:
         Recurring events are fetched if they have any rrule (expansion in Python).
         """
         async with get_async_db_context(db) as db:
-            user_groups = await Groups.get_groups_by_member_id(user_id, db=db)
+            user_groups = Groups.get_groups_by_member_id(user_id)
             user_group_ids = [g.id for g in user_groups]
 
             # Get calendar IDs accessible to user
@@ -579,7 +579,7 @@ class CalendarEventTable:
         db: Optional[AsyncSession] = None,
     ) -> CalendarEventListResponse:
         async with get_async_db_context(db) as db:
-            user_groups = await Groups.get_groups_by_member_id(user_id, db=db)
+            user_groups = Groups.get_groups_by_member_id(user_id)
             user_group_ids = [g.id for g in user_groups]
 
             # Get accessible calendar IDs
@@ -710,13 +710,19 @@ class CalendarEventTable:
         max_lookahead_ns = max(default_lookahead_ns, 60 * 60 * 1_000_000_000)
         upper = now_ns + max_lookahead_ns
 
+        # Include a small grace window so events whose start_at is slightly
+        # in the past (e.g. alert_minutes=0 fired on the next poll tick) are
+        # still picked up. mark_alerted ensures we never fire twice.
+        grace_ns = 5 * 60 * 1_000_000_000  # 5 minutes
+        lower = now_ns - grace_ns
+
         async with get_async_db_context(db) as db:
             result = await db.execute(
                 select(CalendarEvent, UserRow.timezone)
                 .outerjoin(UserRow, UserRow.id == CalendarEvent.user_id)
                 .filter(
                     CalendarEvent.is_cancelled == False,
-                    CalendarEvent.start_at >= now_ns,
+                    CalendarEvent.start_at >= lower,
                     CalendarEvent.start_at <= upper,
                 )
             )
@@ -738,10 +744,41 @@ class CalendarEventTable:
             else:
                 event_lookahead_ns = default_lookahead_ns
 
-            if model.start_at <= now_ns + event_lookahead_ns:
+            # Fire when we are inside the alert window: from
+            # (start_at - alert_minutes) up to start_at + grace.
+            alert_open_at = model.start_at - event_lookahead_ns
+            alert_close_at = model.start_at + grace_ns
+            if alert_open_at <= now_ns <= alert_close_at:
                 events.append((model, tz))
 
         return events
+
+    async def mark_alerted(
+        self,
+        event_id: str,
+        alerted_at_ns: int,
+        db: Optional[AsyncSession] = None,
+    ) -> bool:
+        """Stamp meta.last_alerted_at so the alert worker won't fire twice.
+
+        Returns True only when the row was updated AND meta.last_alerted_at
+        was not already set — callers can use the return value as an atomic
+        "claim" to avoid duplicate emits across multiple worker instances.
+        """
+        async with get_async_db_context(db) as db:
+            result = await db.execute(select(CalendarEvent).filter(CalendarEvent.id == event_id))
+            event = result.scalars().first()
+            if not event:
+                return False
+
+            current_meta = event.meta or {}
+            if current_meta.get('last_alerted_at'):
+                return False
+
+            event.meta = {**current_meta, 'last_alerted_at': alerted_at_ns}
+            event.updated_at = int(time.time_ns())
+            await db.commit()
+            return True
 
     async def delete_event_by_id(self, id: str, db: Optional[AsyncSession] = None) -> bool:
         try:

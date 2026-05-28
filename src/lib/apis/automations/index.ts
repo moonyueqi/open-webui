@@ -9,7 +9,10 @@ export type AutomationData = {
 	prompt: string;
 	model_id: string;
 	rrule: string;
+	tool_ids?: string[];
+	skill_ids?: string[];
 	terminal?: AutomationTerminalConfig;
+	deep_thinking?: boolean;
 };
 
 export type AutomationForm = {

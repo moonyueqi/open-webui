@@ -79,6 +79,14 @@
 	let selectedChatId = null;
 	let showCreateChannel = false;
 
+	// When the active chat changes via navigation (e.g. clicking a run's
+	// chat link in the automation editor) without going through the sidebar
+	// click handler, clear `selectedChatId` so we don't end up highlighting
+	// two rows at once (`$chatId === id` + `selectedChatId === id`).
+	$: if ($chatId && selectedChatId && selectedChatId !== $chatId) {
+		selectedChatId = null;
+	}
+
 	// Pagination variables
 	let chatListLoading = false;
 	let allChatsLoaded = false;

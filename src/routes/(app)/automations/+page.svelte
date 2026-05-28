@@ -3,18 +3,17 @@
 
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
-	import { WEBUI_NAME, mobile, showSidebar, user, config } from '$lib/stores';
+	import { WEBUI_NAME, mobile, showSidebar, user, config, socket } from '$lib/stores';
 
 	import {
 		getAutomationItems,
+		getAutomationById,
 		toggleAutomationById,
-		runAutomationById,
 		deleteAutomationById,
 		type AutomationResponse
 	} from '$lib/apis/automations';
 
 	import AutomationModal from '$lib/components/AutomationModal.svelte';
-	import AutomationMenu from '$lib/components/automations/AutomationMenu.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -24,7 +23,7 @@
 	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
-	import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
+	import GarbageBin from '$lib/components/icons/GarbageBin.svelte';
 	import Select from '$lib/components/automations/_Select.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
@@ -47,7 +46,6 @@
 
 	let page = 1;
 
-	// Debounce only query changes (gate behind loaded to prevent double-fetch on mount)
 	$: if (loaded && query !== undefined) {
 		loading = true;
 		clearTimeout(searchDebounceTimer);
@@ -57,7 +55,6 @@
 		}, 300);
 	}
 
-	// Immediate response to page/filter changes (gate behind loaded)
 	$: if (loaded && page && statusFilter !== undefined) {
 		getAutomationList();
 	}
@@ -95,16 +92,6 @@
 		}
 	};
 
-	const runNowHandler = async (automation: AutomationResponse) => {
-		const res = await runAutomationById(localStorage.token, automation.id).catch((err) => {
-			toast.error(`${err}`);
-			return null;
-		});
-		if (res) {
-			toast.success($i18n.t('Automation triggered'));
-		}
-	};
-
 	const deleteHandler = async (automation: AutomationResponse) => {
 		const res = await deleteAutomationById(localStorage.token, automation.id).catch((err) => {
 			toast.error(`${err}`);
@@ -118,50 +105,145 @@
 		getAutomationList();
 	};
 
-	const formatRRule = (rrule: string): string => {
-		// Detect one-time schedule (ONCE)
-		if (rrule.includes('COUNT=1')) {
-			const match = rrule.match(/DTSTART:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
-			if (match) {
-				const d = new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`);
-				return `Once · ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
-			}
-			return 'Once';
-		}
+	const formatTime = (hour: number, minute: number): string => {
+		return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+	};
+
+	const parseRRuleParts = (line: string): Record<string, string> => {
 		const parts: Record<string, string> = {};
-		rrule
-			.replace('RRULE:', '')
+		line.replace('RRULE:', '')
 			.split(';')
 			.forEach((p) => {
 				const [k, v] = p.split('=');
 				if (k && v) parts[k] = v;
 			});
-		const freq = parts.FREQ || '';
-		const hour = parseInt(parts.BYHOUR || '0');
-		const min = (parts.BYMINUTE || '0').padStart(2, '0');
-		const iv = parseInt(parts.INTERVAL || '1');
-		const ampm = hour >= 12 ? 'PM' : 'AM';
-		const h12 = hour % 12 || 12;
-		const time = `${h12}:${min} ${ampm}`;
+		return parts;
+	};
 
-		if (freq === 'MINUTELY') return iv === 1 ? 'Every minute' : `Every ${iv} minutes`;
-		if (freq === 'HOURLY') return iv === 1 ? 'Hourly' : `Every ${iv} hours`;
-		if (freq === 'DAILY') return `Daily at ${time}`;
+	const DAY_KEYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const;
+	const DAY_ORDER: Record<string, number> = {
+		MO: 0,
+		TU: 1,
+		WE: 2,
+		TH: 3,
+		FR: 4,
+		SA: 5,
+		SU: 6
+	};
+
+	const localizeDays = (raw: string): string => {
+		const days = raw
+			.split(',')
+			.map((d) => d.trim().toUpperCase())
+			.filter((d) => DAY_KEYS.includes(d as (typeof DAY_KEYS)[number]));
+		if (!days.length) return '';
+		days.sort((a, b) => (DAY_ORDER[a] ?? 99) - (DAY_ORDER[b] ?? 99));
+		// Translation keys are title-cased ("Mo", "Tu", ...), not the RRULE upper-case codes.
+		return days
+			.map((d) => $i18n.t(d.charAt(0) + d.charAt(1).toLowerCase(), { context: 'day_of_week' }))
+			.join(', ');
+	};
+
+	const formatRRule = (rrule: string): string => {
+		if (rrule.includes('COUNT=1')) {
+			const match = rrule.match(/DTSTART:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
+			if (match) {
+				const d = new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`);
+				return `${$i18n.t('Once')} · ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${formatTime(d.getHours(), d.getMinutes())}`;
+			}
+			return $i18n.t('Once');
+		}
+
+		// Collect all RRULE lines (DAILY multi-times are emitted as one RRULE per time).
+		const rruleLines = rrule
+			.split(/\r?\n/)
+			.map((l) => l.trim())
+			.filter((l) => l.startsWith('RRULE:'));
+
+		if (rruleLines.length > 1) {
+			const allDaily = rruleLines.every((l) => {
+				const p = parseRRuleParts(l);
+				return p.FREQ === 'DAILY' && !p.BYDAY && !p.BYMONTHDAY;
+			});
+			if (allDaily) {
+				const times = rruleLines.map((l) => {
+					const p = parseRRuleParts(l);
+					const h = parseInt((p.BYHOUR || '0').split(',')[0]);
+					const m = parseInt((p.BYMINUTE || '0').split(',')[0]);
+					return { h, m, key: h * 60 + m };
+				});
+				const seen = new Set<number>();
+				const sorted = times
+					.filter((t) => {
+						if (seen.has(t.key)) return false;
+						seen.add(t.key);
+						return true;
+					})
+					.sort((a, b) => a.key - b.key);
+				const timeStr = sorted.map((t) => formatTime(t.h, t.m)).join(', ');
+				return $i18n.t('Daily at {{time}}', { time: timeStr });
+			}
+		}
+
+		const line = rruleLines[0] || rrule;
+		const parts = parseRRuleParts(line);
+		const freq = parts.FREQ || '';
+		// BYHOUR / BYMINUTE may carry multiple values on a single line.
+		const byHours = (parts.BYHOUR || '0').split(',').map((v) => parseInt(v));
+		const byMinutes = (parts.BYMINUTE || '0').split(',').map((v) => parseInt(v));
+		const hour = byHours[0];
+		const minute = byMinutes[0];
+		const iv = parseInt(parts.INTERVAL || '1');
+		const time = formatTime(hour, minute);
+
+		if (freq === 'MINUTELY')
+			return iv === 1 ? $i18n.t('Every minute') : $i18n.t('Every {{count}} minutes', { count: iv });
+		if (freq === 'HOURLY')
+			return iv === 1 ? $i18n.t('Hourly') : $i18n.t('Every {{count}} hours', { count: iv });
+		if (freq === 'DAILY') {
+			// Legacy single-line multi-times: BYHOUR=9,18 etc.
+			if (byHours.length > 1 || byMinutes.length > 1) {
+				const slots = new Set<number>();
+				const list: { h: number; m: number; key: number }[] = [];
+				for (const h of byHours) {
+					for (const m of byMinutes) {
+						const key = h * 60 + m;
+						if (slots.has(key)) continue;
+						slots.add(key);
+						list.push({ h, m, key });
+					}
+				}
+				list.sort((a, b) => a.key - b.key);
+				const timeStr = list.map((t) => formatTime(t.h, t.m)).join(', ');
+				return $i18n.t('Daily at {{time}}', { time: timeStr });
+			}
+			return $i18n.t('Daily at {{time}}', { time });
+		}
 		if (freq === 'WEEKLY') {
-			const days = parts.BYDAY || '';
-			return days ? `${days} at ${time}` : `Weekly at ${time}`;
+			const days = localizeDays(parts.BYDAY || '');
+			return days ? `${days} · ${time}` : $i18n.t('Weekly at {{time}}', { time });
 		}
 		if (freq === 'MONTHLY')
-			return `Monthly on the ${parts.BYMONTHDAY || '1'}${ordinal(parts.BYMONTHDAY || '1')} at ${time}`;
+			return $i18n.t('Monthly on day {{day}} at {{time}}', {
+				day: parts.BYMONTHDAY || '1',
+				time
+			});
 		return rrule;
 	};
 
-	const ordinal = (n: string): string => {
-		const num = parseInt(n);
-		if (num % 10 === 1 && num !== 11) return 'st';
-		if (num % 10 === 2 && num !== 12) return 'nd';
-		if (num % 10 === 3 && num !== 13) return 'rd';
-		return 'th';
+	// Real-time refresh: backend emits `automation:result` after every run.
+	// Refresh just the affected row so we keep pagination/scroll intact and
+	// avoid the flicker of a full list reload.
+	const onAutomationResult = async (data: { automation_id?: string }) => {
+		if (!data?.automation_id || !automations) return;
+		if (!automations.some((a) => a.id === data.automation_id)) return;
+
+		const fresh = await getAutomationById(localStorage.token, data.automation_id).catch(
+			() => null
+		);
+		if (!fresh) return;
+
+		automations = automations.map((a) => (a.id === fresh.id ? fresh : a));
 	};
 
 	onMount(async () => {
@@ -174,8 +256,9 @@
 		}
 
 		loaded = true;
-		// Explicit initial fetch — reactive blocks will handle subsequent changes
 		await getAutomationList();
+
+		$socket?.on('automation:result', onAutomationResult);
 
 		return () => {
 			clearTimeout(searchDebounceTimer);
@@ -184,6 +267,7 @@
 
 	onDestroy(() => {
 		clearTimeout(searchDebounceTimer);
+		$socket?.off('automation:result', onAutomationResult);
 	});
 </script>
 
@@ -214,17 +298,14 @@
 	}}
 />
 
-<div
-	class="flex flex-col w-full h-screen max-h-[100dvh] transition-width duration-200 ease-in-out {$showSidebar
-		? 'md:max-w-[calc(100%-var(--sidebar-width))]'
-		: ''} max-w-full"
->
-	<div class="flex-1 max-h-full overflow-y-auto">
+<div class="flex flex-col w-full h-full max-h-full max-w-full">
+	<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
 		{#if loaded}
-			<div class="pb-1 px-3 md:px-[18px] pt-2">
-				<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
+			<div class="flex-1 min-h-0 flex flex-col pb-3 px-3 md:px-[18px] pt-2">
+				<!-- Header -->
+				<div class="flex flex-col gap-2 px-1 mt-1.5 mb-4 shrink-0">
 					<div class="flex justify-between items-center">
-						<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
+						<div class="flex items-center gap-3 shrink-0">
 							{#if $mobile}
 								<Tooltip
 									content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
@@ -242,21 +323,43 @@
 									</button>
 								</Tooltip>
 							{/if}
-							<div>{$i18n.t('Automations')}</div>
-							<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-								{total ?? ''}
+							<div
+								class="flex items-center justify-center w-9 h-9 rounded-xl bg-sky-500/10 dark:bg-sky-500/15"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+									stroke="currentColor"
+									class="size-5 text-sky-600 dark:text-sky-400"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+									/>
+								</svg>
+							</div>
+							<div>
+								<div class="text-xl font-semibold">{$i18n.t('Automations')}</div>
+								{#if total !== null}
+									<div class="text-xs text-gray-500 dark:text-gray-400">
+										{total} {$i18n.t('items')}
+									</div>
+								{/if}
 							</div>
 						</div>
 
 						<div class="flex w-full justify-end gap-1.5">
 							<button
-								class="px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
+								class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
 								on:click={() => {
 									showCreateModal = true;
 								}}
 							>
-								<Plus className="size-3" strokeWidth="2.5" />
-								<div class="hidden md:block md:ml-1 text-xs">
+								<Plus className="size-3.5" strokeWidth="2.5" />
+								<div class="hidden md:block text-xs">
 									{$i18n.t('New Automation')}
 								</div>
 							</button>
@@ -264,47 +367,47 @@
 					</div>
 				</div>
 
+				<!-- Card -->
 				<div
-					class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
+					class="py-2.5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden"
 				>
-					<div class="px-3.5 flex flex-1 items-center w-full space-x-2 py-0.5 pb-2">
-						<div class="flex flex-1 items-center">
-							<div class="self-center ml-1 mr-3">
-								<Search className="size-3.5" />
-							</div>
+					<!-- Search -->
+					<div class="flex w-full space-x-2 py-0.5 px-4 pb-2.5 shrink-0">
+						<div
+							class="flex flex-1 items-center bg-gray-50 dark:bg-gray-850 rounded-xl px-3 py-1.5 transition focus-within:ring-2 focus-within:ring-gray-300/50 dark:focus-within:ring-gray-600/50 focus-within:bg-white dark:focus-within:bg-gray-900"
+						>
+							<Search className="size-3.5 text-gray-400 shrink-0" />
 							<input
-								class="w-full text-sm py-1 rounded-r-xl outline-hidden bg-transparent"
+								class="w-full text-sm py-0.5 pl-2 outline-hidden bg-transparent placeholder:text-gray-400"
 								bind:value={query}
 								aria-label={$i18n.t('Search Automations')}
 								placeholder={$i18n.t('Search Automations')}
 								maxlength="500"
 							/>
-
 							{#if query}
-								<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
-									<button
-										class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
-										aria-label={$i18n.t('Clear search')}
-										on:click={() => {
-											query = '';
-										}}
-									>
-										<XMark className="size-3" strokeWidth="2" />
-									</button>
-								</div>
+								<button
+									class="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition ml-1"
+									aria-label={$i18n.t('Clear search')}
+									on:click={() => {
+										query = '';
+									}}
+								>
+									<XMark className="size-3" strokeWidth="2" />
+								</button>
 							{/if}
 						</div>
 					</div>
 
-					<div class="px-3 flex w-full bg-transparent overflow-x-auto scrollbar-none -mx-1">
+					<!-- Filter -->
+					<div class="px-3.5 flex w-full bg-transparent overflow-x-auto scrollbar-none shrink-0">
 						<div
-							class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1.5 whitespace-nowrap"
+							class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1 whitespace-nowrap"
 						>
 							<Select
 								bind:value={statusFilter}
 								items={[
 									{ value: 'all', label: $i18n.t('All') },
-									{ value: 'active', label: $i18n.t('Active') },
+									{ value: 'active', label: $i18n.t('Enabled') },
 									{ value: 'paused', label: $i18n.t('Paused') }
 								]}
 								onChange={() => {
@@ -331,68 +434,118 @@
 						</div>
 					</div>
 
+					<!-- List -->
 					{#if automations === null || loading}
-						<div class="w-full h-full flex justify-center items-center my-16 mb-24">
+						<div class="flex-1 min-h-0 w-full flex justify-center items-center py-16">
 							<Spinner className="size-5" />
 						</div>
 					{:else if (automations ?? []).length === 0}
-						<div class="w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-							<div class="max-w-md text-center">
-								<div class="text-3xl mb-3">⚡</div>
-								<div class="text-lg font-medium mb-1">
-									{query ? $i18n.t('No results found') : $i18n.t('No automations found')}
+						<div class="flex-1 min-h-0 w-full flex flex-col justify-center items-center py-20">
+							<div class="max-w-sm text-center">
+								<div
+									class="flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 mx-auto mb-4"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+										stroke="currentColor"
+										class="size-8 text-gray-400"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+										/>
+									</svg>
 								</div>
-								<div class="text-gray-500 text-center text-xs">
-									{query
-										? $i18n.t(
-												'Try adjusting your search or filter to find what you are looking for.'
-											)
-										: $i18n.t(
-												'Create scheduled prompts that run automatically on a recurring basis.'
-											)}
+							<div class="text-base font-semibold {query ? 'mb-1.5' : ''}">
+								{query ? $i18n.t('No results found') : $i18n.t('No automations found')}
+							</div>
+							{#if query}
+								<div class="text-gray-500 text-xs">
+									{$i18n.t(
+										'Try adjusting your search or filter to find what you are looking for.'
+									)}
 								</div>
+							{/if}
 							</div>
 						</div>
 					{:else}
-						<div class="gap-2 grid my-2 px-3">
+						<div class="flex-1 min-h-0 overflow-y-auto">
+							<div class="gap-2.5 grid mt-2 px-3 pb-2">
 							{#each automations as automation (automation.id)}
 								<a
-									class="flex space-x-4 text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
+									class="group flex text-left w-full px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm"
 									href={`/automations/${automation.id}`}
 								>
-									<div class="flex-1">
-										<div class="line-clamp-1 text-sm">{automation.name}</div>
-										<div class="text-xs text-gray-500 line-clamp-1">
-											{formatRRule(automation.data.rrule)}
+									<div class="flex items-start gap-3 flex-1 min-w-0">
+										<div
+											class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0 mt-0.5 transition-colors {automation.is_active
+												? 'bg-sky-50 dark:bg-sky-500/10 group-hover:bg-sky-100 dark:group-hover:bg-sky-500/20'
+												: 'bg-gray-100 dark:bg-gray-800 group-hover:bg-gray-200 dark:group-hover:bg-gray-700'}"
+										>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke-width="1.5"
+												stroke="currentColor"
+												class="size-5 {automation.is_active
+													? 'text-sky-600 dark:text-sky-400'
+													: 'text-gray-400 dark:text-gray-500'}"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+												/>
+											</svg>
+										</div>
+										<div class="flex-1 min-w-0">
+											<div class="flex items-center gap-2 mb-1 min-w-0">
+												<div class="font-semibold text-sm line-clamp-1">{automation.name}</div>
+											</div>
+											<div
+												class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+											>
+												<span class="shrink-0">{formatRRule(automation.data.rrule)}</span>
+												<span class="text-gray-300 dark:text-gray-600">·</span>
+												<span
+													class="inline-flex items-center gap-1 shrink-0 {automation.is_active
+														? 'text-emerald-600 dark:text-emerald-400'
+														: 'text-gray-500 dark:text-gray-400'}"
+												>
+												<span
+													class="inline-block size-1.5 rounded-full {automation.is_active
+														? 'bg-emerald-500'
+														: 'bg-gray-400'}"
+												></span>
+												{automation.is_active ? $i18n.t('Enabled') : $i18n.t('Paused')}
+												</span>
+											</div>
 										</div>
 									</div>
 
-									<div class="flex flex-row gap-0.5 self-center">
-										<AutomationMenu
-											editHandler={() => {
-												goto(`/automations/${automation.id}`);
-											}}
-											runHandler={() => {
-												runNowHandler(automation);
-											}}
-											deleteHandler={() => {
-												deleteTarget = automation;
-												showDeleteConfirm = true;
-											}}
-										>
+									<div class="flex flex-row gap-0.5 self-center shrink-0">
+										<Tooltip content={$i18n.t('Delete')}>
 											<button
-												class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+												class="self-center w-fit text-sm p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-300 dark:hover:text-red-400 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
 												type="button"
+												aria-label={$i18n.t('Delete')}
+												on:click|preventDefault|stopPropagation={() => {
+													deleteTarget = automation;
+													showDeleteConfirm = true;
+												}}
 											>
-												<EllipsisHorizontal className="size-5" />
+												<GarbageBin className="size-4" strokeWidth="2" />
 											</button>
-										</AutomationMenu>
+										</Tooltip>
 
 										<button
-											on:click={(e) => {
-												e.stopPropagation();
-												e.preventDefault();
-											}}
+											on:click|preventDefault|stopPropagation
+											class="self-center px-1"
 										>
 											<Tooltip
 												content={automation.is_active ? $i18n.t('Enabled') : $i18n.t('Disabled')}
@@ -408,13 +561,14 @@
 									</div>
 								</a>
 							{/each}
-						</div>
-
-						{#if total > 30}
-							<div class="flex justify-center mt-4 mb-2">
-								<Pagination bind:page count={total} perPage={30} />
 							</div>
-						{/if}
+
+							{#if total > 30}
+								<div class="flex justify-center mt-4 mb-2">
+									<Pagination bind:page count={total} perPage={30} />
+								</div>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</div>

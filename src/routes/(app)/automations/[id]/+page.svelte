@@ -4,7 +4,7 @@
 	import { onMount, getContext } from 'svelte';
 
 	import { page } from '$app/stores';
-	import { user, showSidebar, config } from '$lib/stores';
+	import { user, config } from '$lib/stores';
 	import { getAutomationById } from '$lib/apis/automations';
 
 	import AutomationEditor from '$lib/components/automations/AutomationEditor.svelte';
@@ -47,11 +47,7 @@
 {#if loaded && automation}
 	<AutomationEditor {automation} />
 {:else}
-	<div
-		class="w-full h-screen max-h-[100dvh] flex justify-center items-center transition-width duration-200 ease-in-out {$showSidebar
-			? 'md:max-w-[calc(100%-var(--sidebar-width))]'
-			: ''}"
-	>
+	<div class="w-full h-screen max-h-[100dvh] max-w-full flex justify-center items-center">
 		<Spinner className="size-5" />
 	</div>
 {/if}

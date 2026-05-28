@@ -68,13 +68,13 @@
 
 	<div
 		slot="content"
-		class="rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-850 w-72 p-1"
+		class="rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-850 w-72 p-1.5"
 	>
-		<div class="flex items-center gap-2 px-2.5 py-1.5">
-			<Search className="size-3.5" strokeWidth="2.5" />
+		<div class="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 dark:border-gray-800/70 mb-1">
+			<Search className="size-3.5 text-gray-400" strokeWidth="2.5" />
 			<input
 				bind:value={modelSearch}
-				class="w-full text-sm bg-transparent outline-hidden"
+				class="w-full text-xs bg-transparent outline-hidden placeholder:text-gray-400 dark:placeholder:text-gray-600"
 				placeholder={$i18n.t('Search a model')}
 				autocomplete="off"
 				on:click={(e) => e.stopPropagation()}
@@ -82,14 +82,14 @@
 		</div>
 
 		<div class="overflow-y-auto scrollbar-thin max-h-60">
-			<div class="px-2 text-xs text-gray-500 py-1">
+			<div class="px-1.5 pt-0.5 pb-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
 				{$i18n.t('Models')}
 			</div>
 
 			{#each filteredModels as model (model.id)}
 				<button
-					class="px-2.5 py-1.5 rounded-xl w-full text-left text-sm {model_id === model.id
-						? 'bg-gray-50 dark:bg-gray-800'
+					class="px-2 py-1.5 rounded-xl w-full text-left text-xs transition hover:bg-gray-50 dark:hover:bg-gray-800/50 {model_id === model.id
+						? 'bg-gray-100 dark:bg-gray-800 font-medium'
 						: ''}"
 					type="button"
 					on:click={() => {
@@ -99,11 +99,11 @@
 						onChange();
 					}}
 				>
-					<div class="flex text-black dark:text-gray-100 line-clamp-1">
+					<div class="flex items-center text-black dark:text-gray-100 line-clamp-1">
 						<img
 							src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${encodeURIComponent(model.id)}`}
 							alt={model?.name ?? model.id}
-							class="rounded-full size-5 items-center mr-2"
+							class="rounded-full size-5 items-center mr-2 shrink-0"
 							loading="lazy"
 							on:error={(e) => {
 								e.currentTarget.src = '/favicon.png';
@@ -115,7 +115,7 @@
 					</div>
 				</button>
 			{:else}
-				<div class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-100">
+				<div class="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">
 					{$i18n.t('No results found')}
 				</div>
 			{/each}

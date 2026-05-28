@@ -641,8 +641,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(periodic_session_pool_cleanup())
 
     from open_webui.utils.automations import automation_worker_loop
+    from open_webui.utils.calendar import calendar_alert_worker_loop
 
     asyncio.create_task(automation_worker_loop(app))
+    asyncio.create_task(calendar_alert_worker_loop(app))
 
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         try:
@@ -1966,6 +1968,11 @@ async def chat_completion(
 # Alias for chat_completion (Legacy)
 generate_chat_completions = chat_completion
 generate_chat_completion = chat_completion
+
+# Expose the chat completion handler on app.state so background workers
+# (e.g. the automations worker) can invoke the full pipeline without
+# importing main.py and triggering a circular import.
+app.state.CHAT_COMPLETION_HANDLER = chat_completion
 
 
 ##################################

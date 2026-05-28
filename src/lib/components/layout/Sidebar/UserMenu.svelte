@@ -285,7 +285,7 @@
 							/>
 						</svg>
 					</div>
-					<div class=" self-center truncate">{$i18n.t('Calendar')}</div>
+					<div class=" self-center truncate">{$i18n.t('Task Calendar')}</div>
 				</DropdownMenu.Item>
 			{/if}
 

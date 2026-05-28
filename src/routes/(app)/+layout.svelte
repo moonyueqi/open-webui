@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { onMount, tick, getContext } from 'svelte';
+	import { onMount, onDestroy, tick, getContext } from 'svelte';
 	import { openDB, deleteDB } from 'idb';
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
@@ -37,7 +37,8 @@
 		showSearch,
 		showSidebar,
 		showControls,
-		mobile
+		mobile,
+		socket
 	} from '$lib/stores';
 
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
@@ -189,6 +190,73 @@
 	const setTools = async () => {
 		const toolsData = await getTools(localStorage.token);
 		tools.set(toolsData);
+	};
+
+	type CalendarReminderPayload = {
+		event_id: string;
+		calendar_id: string;
+		title: string;
+		description?: string | null;
+		location?: string | null;
+		start_at: number;
+		end_at?: number | null;
+		all_day?: boolean;
+		color?: string | null;
+	};
+
+	const formatReminderTime = (startNs: number, allDay: boolean) => {
+		try {
+			const date = new Date(Math.floor(startNs / 1_000_000));
+			if (allDay) {
+				return date.toLocaleDateString();
+			}
+			return date.toLocaleString(undefined, {
+				hour: '2-digit',
+				minute: '2-digit',
+				month: 'short',
+				day: 'numeric'
+			});
+		} catch {
+			return '';
+		}
+	};
+
+	const onCalendarReminder = (payload: CalendarReminderPayload) => {
+		if (!payload?.event_id) return;
+
+		const when = formatReminderTime(payload.start_at, !!payload.all_day);
+		const lines = [when, payload.location].filter(Boolean);
+		const description = lines.join(' · ');
+
+		toast.info(payload.title || $i18n.t('Upcoming event'), {
+			description: description || $i18n.t('Calendar reminder'),
+			duration: 15000,
+			action: {
+				label: $i18n.t('View'),
+				onClick: () => goto('/calendar')
+			}
+		});
+
+		if (typeof window !== 'undefined' && 'Notification' in window) {
+			const fire = () => {
+				try {
+					new Notification(payload.title || $i18n.t('Upcoming event'), {
+						body: description || $i18n.t('Calendar reminder'),
+						tag: `calendar-reminder-${payload.event_id}`
+					});
+				} catch (e) {
+					console.warn('Failed to show calendar notification', e);
+				}
+			};
+
+			if (Notification.permission === 'granted') {
+				fire();
+			} else if (Notification.permission === 'default') {
+				Notification.requestPermission().then((perm) => {
+					if (perm === 'granted') fire();
+				});
+			}
+		}
 	};
 
 	onMount(async () => {
@@ -351,7 +419,13 @@
 
 		await tick();
 
+		$socket?.on('calendar:reminder', onCalendarReminder);
+
 		loaded = true;
+	});
+
+	onDestroy(() => {
+		$socket?.off('calendar:reminder', onCalendarReminder);
 	});
 
 	const checkForVersionUpdates = async () => {

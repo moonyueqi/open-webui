@@ -65,7 +65,15 @@ def validate_rrule(s: str) -> None:
 
 
 def next_run_ns(s: str, tz: str = None) -> Optional[int]:
-    """Next occurrence as epoch nanoseconds, respecting user timezone."""
+    """Next occurrence as epoch nanoseconds, respecting user timezone.
+
+    The anchor is "now" in the user's timezone (or server-local time
+    when no tz is given). It is critical that callers pass ``tz`` —
+    omitting it causes the RRULE wall-clock match to run against the
+    server's local clock, which silently breaks rules with multiple
+    same-day occurrences (e.g. BYHOUR=9,14) whenever the server tz
+    differs from the user's.
+    """
     now = datetime.now(ZoneInfo(tz)) if tz else datetime.now()
     dt = _parse_rule(s).after(now.replace(tzinfo=None))
     if dt is None:
@@ -224,6 +232,18 @@ def _resolve_model_filter_ids(app, model_id: str) -> list[str]:
     return list(filter_ids) if filter_ids else []
 
 
+def _resolve_model_skill_ids(app, model_id: str) -> list[str]:
+    """Read model-attached skillIds from model config.
+
+    Mirrors the chat path in middleware where model.info.meta.skillIds
+    is merged with the request-provided skill_ids.
+    """
+    models = getattr(app.state, 'MODELS', {})
+    model = models.get(model_id, {})
+    skill_ids = model.get('info', {}).get('meta', {}).get('skillIds', [])
+    return list(skill_ids) if skill_ids else []
+
+
 async def _set_terminal_cwd(app, server_id: str, user, cwd: str, chat_id: str) -> None:
     """Set the working directory on a terminal server via the proxy.
 
@@ -353,7 +373,28 @@ async def execute_automation(app, automation: AutomationModel) -> None:
         )
 
         # Resolve model defaults (frontend does this, backend doesn't)
-        tool_ids = _resolve_model_tool_ids(app, model_id)
+        # Then merge with user-selected tool_ids / skill_ids from the
+        # automation form so a task can use tools/skills regardless of
+        # the model's defaults.
+        def _merge(*lists):
+            seen = set()
+            out = []
+            for lst in lists:
+                for v in lst or []:
+                    if v and v not in seen:
+                        seen.add(v)
+                        out.append(v)
+            return out
+
+        tool_ids = _merge(
+            _resolve_model_tool_ids(app, model_id),
+            automation.data.get('tool_ids') or [],
+        )
+        skill_ids = _merge(
+            _resolve_model_skill_ids(app, model_id),
+            automation.data.get('skill_ids') or [],
+        )
+
         features = _resolve_model_features(app, model_id)
         filter_ids = _resolve_model_filter_ids(app, model_id)
 
@@ -376,8 +417,25 @@ async def execute_automation(app, automation: AutomationModel) -> None:
             'session_id': f'automation:{automation.id}',
             'background_tasks': {},
         }
+
+        # Mirror the chat input behavior: when "Deep Thinking" is off (the
+        # default for automations), explicitly disable reasoning so models
+        # that think by default (e.g. Qwen3) don't burn the response budget
+        # on hidden thoughts and produce no visible reply.
+        # See src/lib/components/chat/Chat.svelte (params merge with
+        # `reasoning_effort: 'none', think: false`).
+        deep_thinking = bool(automation.data.get('deep_thinking', False))
+        if not deep_thinking:
+            form_data['params'] = {
+                **(form_data.get('params') or {}),
+                'reasoning_effort': 'none',
+                'think': False,
+            }
+
         if tool_ids:
             form_data['tool_ids'] = tool_ids
+        if skill_ids:
+            form_data['skill_ids'] = skill_ids
         if features:
             form_data['features'] = features
         if filter_ids:
