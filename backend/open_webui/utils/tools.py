@@ -83,6 +83,10 @@ from open_webui.tools.builtin import (
     view_file,
     view_knowledge_file,
     view_skill,
+    search_calendar_events,
+    create_calendar_event,
+    update_calendar_event,
+    delete_calendar_event,
 )
 
 import copy
@@ -527,6 +531,19 @@ def get_builtin_tools(
                 search_channel_messages,
                 view_channel_thread,
                 view_channel_message,
+            ]
+        )
+
+    # Calendar tools - search/create/update/delete events
+    if is_builtin_tool_enabled("calendar") and getattr(
+        request.app.state.config, "ENABLE_CALENDAR", False
+    ):
+        builtin_functions.extend(
+            [
+                search_calendar_events,
+                create_calendar_event,
+                update_calendar_event,
+                delete_calendar_event,
             ]
         )
 

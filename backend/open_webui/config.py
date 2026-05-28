@@ -1581,6 +1581,14 @@ USER_PERMISSIONS_FEATURES_MEMORIES = (
     os.environ.get("USER_PERMISSIONS_FEATURES_MEMORIES", "True").lower() == "true"
 )
 
+USER_PERMISSIONS_FEATURES_AUTOMATIONS = (
+    os.environ.get("USER_PERMISSIONS_FEATURES_AUTOMATIONS", "False").lower() == "true"
+)
+
+USER_PERMISSIONS_FEATURES_CALENDAR = (
+    os.environ.get("USER_PERMISSIONS_FEATURES_CALENDAR", "True").lower() == "true"
+)
+
 
 DEFAULT_USER_PERMISSIONS = {
     "workspace": {
@@ -1641,6 +1649,8 @@ DEFAULT_USER_PERMISSIONS = {
         "image_generation": USER_PERMISSIONS_FEATURES_IMAGE_GENERATION,
         "code_interpreter": USER_PERMISSIONS_FEATURES_CODE_INTERPRETER,
         "memories": USER_PERMISSIONS_FEATURES_MEMORIES,
+        "automations": USER_PERMISSIONS_FEATURES_AUTOMATIONS,
+        "calendar": USER_PERMISSIONS_FEATURES_CALENDAR,
     },
 }
 
@@ -1666,6 +1676,30 @@ ENABLE_CHANNELS = PersistentConfig(
     "ENABLE_CHANNELS",
     "channels.enable",
     os.environ.get("ENABLE_CHANNELS", "False").lower() == "true",
+)
+
+ENABLE_AUTOMATIONS = PersistentConfig(
+    "ENABLE_AUTOMATIONS",
+    "automations.enable",
+    os.environ.get("ENABLE_AUTOMATIONS", "True").lower() == "true",
+)
+
+ENABLE_CALENDAR = PersistentConfig(
+    "ENABLE_CALENDAR",
+    "calendar.enable",
+    os.environ.get("ENABLE_CALENDAR", "True").lower() == "true",
+)
+
+AUTOMATION_MAX_COUNT = PersistentConfig(
+    "AUTOMATION_MAX_COUNT",
+    "automations.max_count",
+    os.environ.get("AUTOMATION_MAX_COUNT", ""),
+)
+
+AUTOMATION_MIN_INTERVAL = PersistentConfig(
+    "AUTOMATION_MIN_INTERVAL",
+    "automations.min_interval",
+    os.environ.get("AUTOMATION_MIN_INTERVAL", ""),
 )
 
 ENABLE_NOTES = PersistentConfig(

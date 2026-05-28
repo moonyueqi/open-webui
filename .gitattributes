@@ -47,3 +47,7 @@
 # Misc
 *.env text eol=lf
 *.lock text eol=lf
+
+# Binary data (tokenizer / NLP resources)
+*.tiktoken binary
+*.zip binary
