@@ -533,7 +533,7 @@
 		};
 	});
 
-	// Handler for chat:active events (defined outside onMount for proper cleanup)
+	// Handler for chat events (defined outside onMount for proper cleanup)
 	const chatActiveEventHandler = (event: {
 		chat_id: string;
 		message_id: string;
@@ -550,6 +550,8 @@
 				}
 				return newSet;
 			});
+		} else if (event.data?.type === 'chat:list') {
+			initChatList();
 		}
 	};
 

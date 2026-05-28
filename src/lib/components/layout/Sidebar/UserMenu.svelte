@@ -221,6 +221,74 @@
 				<div class=" self-center truncate">{$i18n.t('Settings')}</div>
 			</DropdownMenu.Item>
 
+			{#if $config?.features?.enable_automations && (role === 'admin' || ($user?.permissions?.features?.automations ?? false))}
+				<DropdownMenu.Item
+					as="a"
+					href="/automations"
+					draggable="false"
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					on:click={async () => {
+						show = false;
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="size-5"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+							/>
+						</svg>
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Automations')}</div>
+				</DropdownMenu.Item>
+			{/if}
+
+			{#if $config?.features?.enable_calendar && (role === 'admin' || ($user?.permissions?.features?.calendar ?? false))}
+				<DropdownMenu.Item
+					as="a"
+					href="/calendar"
+					draggable="false"
+					class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+					on:click={async () => {
+						show = false;
+						if ($mobile) {
+							await tick();
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class=" self-center mr-3">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="size-5"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
+							/>
+						</svg>
+					</div>
+					<div class=" self-center truncate">{$i18n.t('Calendar')}</div>
+				</DropdownMenu.Item>
+			{/if}
+
 		<!-- 已隐藏：已归档对话按钮 -->
 		<!-- <DropdownMenu.Item
 			class="flex rounded-xl py-1.5 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"

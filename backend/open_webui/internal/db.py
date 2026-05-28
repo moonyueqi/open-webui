@@ -1,7 +1,8 @@
 import os
 import json
 import logging
-from contextlib import contextmanager
+import sys
+from contextlib import contextmanager, asynccontextmanager
 from typing import Any, Optional
 
 from open_webui.internal.wrappers import register_connection
@@ -19,6 +20,11 @@ from open_webui.env import (
 )
 from peewee_migrate import Router
 from sqlalchemy import Dialect, create_engine, MetaData, event, types
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker, Session
 from sqlalchemy.pool import QueuePool, NullPool
@@ -169,4 +175,113 @@ def get_db_context(db: Optional[Session] = None):
         yield db
     else:
         with get_db() as session:
+            yield session
+
+
+# ---------------------------------------------------------------------------
+# Async SQLAlchemy engine (parallel to the sync engine above).
+#
+# Introduced to support upstream features that were authored against async DB
+# (e.g. Calendar). The sync engine and ORM helpers above remain the primary
+# path used by the rest of common-branch code. The two engines share nothing
+# but the underlying database; pool / connection management is independent.
+# ---------------------------------------------------------------------------
+
+
+def _to_async_url(url: str) -> str:
+    """Translate a sync SQLAlchemy URL into its async-driver equivalent."""
+    if url.startswith("sqlite:///") or url.startswith("sqlite://"):
+        return url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("mysql://"):
+        return url.replace("mysql://", "mysql+asyncmy://", 1)
+    return url
+
+
+ASYNC_SQLALCHEMY_DATABASE_URL = _to_async_url(SQLALCHEMY_DATABASE_URL)
+
+# Avoid Proactor loop issues on Windows when using asyncpg
+if sys.platform == "win32" and ASYNC_SQLALCHEMY_DATABASE_URL.startswith(
+    "postgresql+asyncpg://"
+):
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+if "sqlite" in ASYNC_SQLALCHEMY_DATABASE_URL:
+    _sqlite_pool_size = (
+        DATABASE_POOL_SIZE
+        if isinstance(DATABASE_POOL_SIZE, int) and DATABASE_POOL_SIZE > 0
+        else 512
+    )
+    async_engine = create_async_engine(
+        ASYNC_SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        pool_size=_sqlite_pool_size,
+        pool_timeout=DATABASE_POOL_TIMEOUT,
+        pool_recycle=DATABASE_POOL_RECYCLE,
+        pool_pre_ping=True,
+    )
+else:
+    if isinstance(DATABASE_POOL_SIZE, int):
+        if DATABASE_POOL_SIZE > 0:
+            async_engine = create_async_engine(
+                ASYNC_SQLALCHEMY_DATABASE_URL,
+                pool_size=DATABASE_POOL_SIZE,
+                max_overflow=DATABASE_POOL_MAX_OVERFLOW,
+                pool_timeout=DATABASE_POOL_TIMEOUT,
+                pool_recycle=DATABASE_POOL_RECYCLE,
+                pool_pre_ping=True,
+            )
+        else:
+            async_engine = create_async_engine(
+                ASYNC_SQLALCHEMY_DATABASE_URL,
+                pool_pre_ping=True,
+                poolclass=NullPool,
+            )
+    else:
+        async_engine = create_async_engine(
+            ASYNC_SQLALCHEMY_DATABASE_URL,
+            pool_pre_ping=True,
+        )
+
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=async_engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
+
+
+async def get_async_session():
+    """Async session generator for FastAPI Depends()."""
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
+
+
+@asynccontextmanager
+async def get_async_db():
+    """Async context manager for use outside of FastAPI dependency injection."""
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
+
+
+@asynccontextmanager
+async def get_async_db_context(db: Optional[AsyncSession] = None):
+    """Async context manager that reuses an existing session if provided and session sharing is enabled."""
+    if isinstance(db, AsyncSession) and DATABASE_ENABLE_SESSION_SHARING:
+        yield db
+    else:
+        async with get_async_db() as session:
             yield session
