@@ -1280,9 +1280,9 @@
 
 						<div
 						id="message-input-container"
-						class="flex-1 flex flex-col relative w-full rounded-3xl border {$temporaryChatEnabled
-							? 'border-dashed border-gray-100 dark:border-gray-800 hover:border-gray-200 focus-within:border-gray-200 hover:dark:border-gray-700 focus-within:dark:border-gray-700'
-							: ' border-gray-200/50 dark:border-gray-850/30 hover:border-gray-300 focus-within:border-gray-300 hover:dark:border-gray-800 focus-within:dark:border-gray-800'}  transition px-1 bg-white/80 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
+						class="message-input-shadow flex-1 flex flex-col relative w-full rounded-3xl border {$temporaryChatEnabled
+							? 'border-dashed border-gray-100 dark:border-gray-800'
+							: ' border-gray-200/50 dark:border-gray-850/30'}  transition px-1 bg-white/80 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
 							dir={$settings?.chatDirection ?? 'auto'}
 						>
 							{#if atSelectedModel !== undefined}
@@ -2135,3 +2135,24 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.message-input-shadow {
+		box-shadow: none !important;
+	}
+	.message-input-shadow:hover,
+	.message-input-shadow:focus-within {
+		box-shadow:
+			0 10px 26px -12px rgba(0, 0, 0, 0.12),
+			0 3px 8px -3px rgba(0, 0, 0, 0.05) !important;
+	}
+	:global(.dark) .message-input-shadow {
+		box-shadow: none !important;
+	}
+	:global(.dark) .message-input-shadow:hover,
+	:global(.dark) .message-input-shadow:focus-within {
+		box-shadow:
+			0 12px 30px -10px rgba(0, 0, 0, 0.45),
+			0 3px 10px -3px rgba(0, 0, 0, 0.3) !important;
+	}
+</style>
