@@ -507,11 +507,31 @@
 		doc.descendants((node, pos) => {
 			if (node.isText && node.text) {
 				const text = node.text;
-				const replacedText = text.replace(/{{\s*([^|}]+)(?:\|[^}]*)?\s*}}/g, (match, varName) => {
-					const trimmedVarName = varName.trim();
-					return variables.hasOwnProperty(trimmedVarName)
-						? String(variables[trimmedVarName])
-						: match;
+				const replacedText = text.replace(/{{\s*([^}]+?)\s*}}/g, (match, body) => {
+					const trimmedBody = body.trim();
+
+					// 1) Pipe-syntax: "name | type=...". Variable name is before "|".
+					const pipeIdx = trimmedBody.indexOf('|');
+					if (pipeIdx !== -1) {
+						const varName = trimmedBody.slice(0, pipeIdx).trim();
+						return variables.hasOwnProperty(varName) ? String(variables[varName]) : match;
+					}
+
+					// 2) Direct match (e.g. "{{name}}")
+					if (variables.hasOwnProperty(trimmedBody)) {
+						return String(variables[trimmedBody]);
+					}
+
+					// 3) Shorthand select: "name：opt1、opt2、opt3" - extract name part.
+					const colonMatch = trimmedBody.match(/^([^:：]+)[:：][\s\S]+$/);
+					if (colonMatch) {
+						const varName = colonMatch[1].trim();
+						if (variables.hasOwnProperty(varName)) {
+							return String(variables[varName]);
+						}
+					}
+
+					return match;
 				});
 
 				if (replacedText !== text) {
