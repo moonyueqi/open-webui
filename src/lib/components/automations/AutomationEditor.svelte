@@ -35,7 +35,7 @@
 	import SkillsDropdown from '$lib/components/automations/SkillsDropdown.svelte';
 	import PromptsDropdown from '$lib/components/automations/PromptsDropdown.svelte';
 
-	import { extractInputVariables } from '$lib/utils';
+	import { extractInputVariables, validateInputVariables } from '$lib/utils';
 
 	dayjs.extend(relativeTime);
 	dayjs.extend(localizedFormat);
@@ -89,15 +89,36 @@
 	let inputVariablesCallback: (values: Record<string, any>) => void = () => {};
 
 	const replacePromptVariables = (text: string, values: Record<string, any>): string => {
-		text = text.replace(/{{\s*([^|}\s]+)\s*\|\s*[^}]+\s*}}/g, (full, varName) => {
-			const key = varName.trim();
-			return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key] ?? '') : full;
+		// Match any "{{ ... }}" body, then derive the variable name based on the
+		// supported syntaxes:
+		//   1. Pipe syntax:        {{name | type=...}}
+		//   2. Shorthand select:   {{name：opt1、opt2、opt3}}  (Chinese colon or ':')
+		//   3. Plain:              {{name}}
+		return text.replace(/{{\s*([^}]+?)\s*}}/g, (full, body) => {
+			const trimmed = body.trim();
+
+			const pipeIdx = trimmed.indexOf('|');
+			if (pipeIdx !== -1) {
+				const key = trimmed.slice(0, pipeIdx).trim();
+				return Object.prototype.hasOwnProperty.call(values, key)
+					? String(values[key] ?? '')
+					: full;
+			}
+
+			if (Object.prototype.hasOwnProperty.call(values, trimmed)) {
+				return String(values[trimmed] ?? '');
+			}
+
+			const colonMatch = trimmed.match(/^([^:：]+)[:：][\s\S]+$/);
+			if (colonMatch) {
+				const key = colonMatch[1].trim();
+				if (Object.prototype.hasOwnProperty.call(values, key)) {
+					return String(values[key] ?? '');
+				}
+			}
+
+			return full;
 		});
-		text = text.replace(/{{\s*([^|}\s]+)\s*}}/g, (full, varName) => {
-			const key = varName.trim();
-			return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key] ?? '') : full;
-		});
-		return text;
 	};
 
 	const formatRunTime = (ts: number): string => {
@@ -131,6 +152,22 @@
 			toast.error($i18n.t('Name, prompt, and model are required'));
 			return;
 		}
+
+		// Validate input-variable templates inside the prompt. Errors block
+		// submission, warnings are shown but do not block.
+		const issues = validateInputVariables(prompt);
+		let hasError = false;
+		for (const issue of issues) {
+			const message = $i18n.t(issue.key, issue.params ?? {});
+			if (issue.severity === 'error') {
+				toast.error(message);
+				hasError = true;
+			} else {
+				toast.warning(message);
+			}
+		}
+		if (hasError) return;
+
 		saving = true;
 		try {
 			const form: AutomationForm = {
@@ -251,6 +288,16 @@
 
 	const insertPrompt = (content: string) => {
 		if (!content) return;
+
+		const issues = validateInputVariables(content);
+		for (const issue of issues) {
+			const message = $i18n.t(issue.key, issue.params ?? {});
+			if (issue.severity === 'error') {
+				toast.error(message);
+			} else {
+				toast.warning(message);
+			}
+		}
 
 		const allVariables = extractInputVariables(content);
 		const userVariables: Record<string, any> = {};

@@ -1339,9 +1339,216 @@ export const slugify = (str: string): string => {
 	);
 };
 
+/**
+ * Built-in variables that should NOT be treated as user-input variables,
+ * even if they accidentally match a shorthand-select pattern.
+ */
+const BUILTIN_VARIABLE_PATTERNS: RegExp[] = [
+	/^prompt(:.*)?$/i,
+	/^char$/i,
+	/^user$/i,
+	/^clipboard$/i,
+	/^user_name$/i,
+	/^user_email$/i,
+	/^user_bio$/i,
+	/^user_location$/i,
+	/^user_language$/i,
+	/^current_datetime$/i,
+	/^current_date$/i,
+	/^current_time$/i,
+	/^current_weekday$/i,
+	/^current_timezone$/i,
+	/^localized_date$/i,
+	/^localized_time$/i,
+	/^video_file_id_[a-f0-9-]+$/i,
+	/^html_file_id_[a-f0-9-]+$/i
+];
+
+const isBuiltinVariable = (name: string): boolean => {
+	const trimmed = name.trim();
+	return BUILTIN_VARIABLE_PATTERNS.some((pattern) => pattern.test(trimmed));
+};
+
+/**
+ * Try to parse a "shorthand select" body, e.g.:
+ *   "区域：海淀、昌平、朝阳"   -> { name: "区域", options: ["海淀","昌平","朝阳"] }
+ *   "优先级:high,medium,low"   -> { name: "优先级", options: ["high","medium","low"] }
+ *   "颜色：红色,蓝色、绿色"     -> { name: "颜色",  options: ["红色","蓝色","绿色"] }
+ *
+ * Rules:
+ * - The name and the option list are separated by ':' or '：' (Chinese colon).
+ * - Options are separated by ',' or '、' (Chinese enumeration comma).
+ * - There must be at least one option separator (、, ，) in the options part,
+ *   so we don't accidentally hijack `{{prompt:start:10}}`.
+ * - Empty options (caused by consecutive separators) are filtered out, and
+ *   duplicate options are de-duplicated. (validateInputVariables will warn
+ *   about both cases separately.)
+ * - Returns null if the body does not look like a shorthand select.
+ */
+const parseShorthandSelect = (
+	body: string
+): { name: string; options: string[] } | null => {
+	const colonMatch = body.match(/^([^:：]+)[:：]([\s\S]+)$/);
+	if (!colonMatch) return null;
+
+	const name = colonMatch[1].trim();
+	const optionsPart = colonMatch[2].trim();
+	if (!name || !optionsPart) return null;
+
+	// Require at least one option separator. This is what distinguishes
+	// "{{颜色：红色、蓝色}}" (a select) from "{{prompt:start:10}}" (a built-in).
+	if (!/[,，、]/.test(optionsPart)) return null;
+
+	const seen = new Set<string>();
+	const options = optionsPart
+		.split(/[,，、]/)
+		.map((opt) => opt.trim())
+		.filter((opt) => {
+			if (opt.length === 0) return false;
+			if (seen.has(opt)) return false;
+			seen.add(opt);
+			return true;
+		});
+
+	if (options.length === 0) return null;
+
+	return { name, options };
+};
+
+/**
+ * Validate the input-variable templates in `text` and return a list of
+ * human-readable warning keys (i18n keys) describing problems we detected.
+ *
+ * The strings returned are i18n keys WITH placeholders (e.g. {{name}}); the
+ * caller is expected to feed each one through `$i18n.t(key, params)`.
+ */
+export type InputVariableWarning = {
+	/** i18n key for the warning text */
+	key: string;
+	/** Optional parameters passed to i18n.t */
+	params?: Record<string, any>;
+	/** Severity level — 'warning' is non-blocking, 'error' is blocking */
+	severity: 'warning' | 'error';
+};
+
+export const validateInputVariables = (text: string): InputVariableWarning[] => {
+	const warnings: InputVariableWarning[] = [];
+
+	// Fast-path: no braces at all → nothing to validate.
+	if (!text.includes('{{') && !text.includes('}}')) {
+		return warnings;
+	}
+
+	// De-duplicate identical warnings (same key + same params) so we don't
+	// spam the user when the same malformed variable appears multiple times.
+	const seenWarnings = new Set<string>();
+	const pushWarning = (w: InputVariableWarning) => {
+		const fingerprint = `${w.key}::${JSON.stringify(w.params ?? {})}`;
+		if (seenWarnings.has(fingerprint)) return;
+		seenWarnings.add(fingerprint);
+		warnings.push(w);
+	};
+
+	// 1) Detect unbalanced {{ ... }}
+	const openCount = (text.match(/{{/g) || []).length;
+	const closeCount = (text.match(/}}/g) || []).length;
+	if (openCount !== closeCount) {
+		pushWarning({
+			key: 'Unclosed variable braces detected. Please make sure every {{ has a matching }}.',
+			severity: 'error'
+		});
+	}
+
+	// 2) Walk every {{...}} body and check shorthand-select problems
+	const bodyRegex = /{{\s*([^}]+?)\s*}}/g;
+	let match: RegExpExecArray | null;
+	while ((match = bodyRegex.exec(text)) !== null) {
+		const body = match[1].trim();
+
+		// Skip pipe-syntax / built-ins / plain-name variables — those have
+		// their own validation pathway via parseVariableDefinition.
+		if (body.includes('|')) continue;
+		if (isBuiltinVariable(body)) continue;
+
+		// Does it look like the user intended a shorthand-select? We treat it
+		// as "intended shorthand" if the body contains a colon (中/英) AND
+		// either an option-separator (、,，) OR a non-builtin name.
+		const hasColon = /[:：]/.test(body);
+		if (!hasColon) continue;
+
+		const nameAndOptions = body.match(/^([^:：]+)[:：]([\s\S]*)$/);
+		if (!nameAndOptions) continue;
+
+		const name = nameAndOptions[1].trim();
+		const optionsPart = nameAndOptions[2];
+
+		// Skip "{{prompt:start:N}}" style — name is a built-in
+		if (isBuiltinVariable(name)) continue;
+		// Skip "{{prompt}}"-only style (no options at all and name is built-in
+		// is already handled above; here we have a colon, so options exist).
+
+		// Empty options part: "{{区域：}}"
+		if (optionsPart.trim().length === 0) {
+			pushWarning({
+				key: 'Variable "{{name}}" has a colon but no options.',
+				params: { name },
+				severity: 'warning'
+			});
+			continue;
+		}
+
+		const hasSeparator = /[,，、]/.test(optionsPart);
+		const rawOptions = optionsPart.split(/[,，、]/);
+		const trimmedOptions = rawOptions.map((o) => o.trim());
+		const nonEmptyOptions = trimmedOptions.filter((o) => o.length > 0);
+
+		// No separator and only one "option" → user probably wrote
+		// "{{颜色：红色}}" expecting it to be a select but forgot to add
+		// more options.
+		if (!hasSeparator) {
+			pushWarning({
+				key: 'Variable "{{name}}" looks like a select but only has one option. Use 、 or , to separate options.',
+				params: { name },
+				severity: 'warning'
+			});
+			continue;
+		}
+
+		// Empty options between separators: "{{区域：海淀、、昌平}}"
+		if (rawOptions.length !== nonEmptyOptions.length) {
+			pushWarning({
+				key: 'Variable "{{name}}" has empty options (consecutive separators). Empty entries will be ignored.',
+				params: { name },
+				severity: 'warning'
+			});
+		}
+
+		// Duplicate options
+		const seen = new Set<string>();
+		const duplicates: string[] = [];
+		for (const opt of nonEmptyOptions) {
+			if (seen.has(opt)) {
+				if (!duplicates.includes(opt)) duplicates.push(opt);
+			} else {
+				seen.add(opt);
+			}
+		}
+		if (duplicates.length > 0) {
+			pushWarning({
+				key: 'Variable "{{name}}" has duplicate options: {{duplicates}}. Duplicates will be removed.',
+				params: { name, duplicates: duplicates.join(', ') },
+				severity: 'warning'
+			});
+		}
+	}
+
+	return warnings;
+};
+
 export const extractInputVariables = (text: string): Record<string, any> => {
 	const regex = /{{\s*([^|}\s]+)\s*\|\s*([^}]+)\s*}}/g;
-	const regularRegex = /{{\s*([^|}\s]+)\s*}}/g;
+	// Allow spaces inside the variable body so "{{区域：海淀 区、昌平}}" works.
+	const regularRegex = /{{\s*([^}]+?)\s*}}/g;
 	const variables: Record<string, any> = {};
 	let match;
 	// Use exec() loop instead of matchAll() for better compatibility
@@ -1352,10 +1559,33 @@ export const extractInputVariables = (text: string): Record<string, any> => {
 	}
 	// Then, extract regular variables (without pipe) - only if not already processed
 	while ((match = regularRegex.exec(text)) !== null) {
-		const varName = match[1].trim();
-		// Only add if not already processed as custom variable
-		if (!variables.hasOwnProperty(varName)) {
-			variables[varName] = { type: 'text' }; // Default type for regular variables
+		const body = match[1].trim();
+
+		// Try shorthand-select first: "name：opt1、opt2、opt3"
+		const shorthand = parseShorthandSelect(body);
+		if (shorthand && !isBuiltinVariable(shorthand.name)) {
+			if (!variables.hasOwnProperty(shorthand.name)) {
+				variables[shorthand.name] = {
+					type: 'select',
+					options: shorthand.options,
+					// Default to the first option so the user can submit immediately
+					// without an extra click.
+					default: shorthand.options[0]
+				};
+			}
+			continue;
+		}
+
+		// Otherwise, treat it as a plain variable. Skip:
+		// - bodies with whitespace (almost certainly not real variables),
+		// - bodies with a pipe (already handled above by the typed regex),
+		// - built-in variables (e.g. CURRENT_DATETIME, USER_NAME, prompt:start:N).
+		if (/\s/.test(body)) continue;
+		if (body.includes('|')) continue;
+		if (isBuiltinVariable(body)) continue;
+
+		if (!variables.hasOwnProperty(body)) {
+			variables[body] = { type: 'text' }; // Default type for regular variables
 		}
 	}
 	return variables;
