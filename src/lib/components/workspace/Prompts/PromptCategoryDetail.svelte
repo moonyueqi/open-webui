@@ -17,7 +17,7 @@
 		updatePromptCategoryAccessGrants
 	} from '$lib/apis/prompt-categories';
 	import { createNewPrompt, deletePromptById, togglePromptById, updatePromptById, getPromptById } from '$lib/apis/prompts';
-	import { capitalizeFirstLetter, copyToClipboard } from '$lib/utils';
+	import { capitalizeFirstLetter, copyToClipboard, validateInputVariables } from '$lib/utils';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -31,6 +31,7 @@
 	import GarbageBin from '../../icons/GarbageBin.svelte';
 	import Clipboard from '../../icons/Clipboard.svelte';
 	import Check from '../../icons/Check.svelte';
+	import InfoCircle from '../../icons/InfoCircle.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -122,7 +123,24 @@
 		}
 	};
 
+	const showVariableIssues = (text: string): boolean => {
+		const issues = validateInputVariables(text);
+		let hasError = false;
+		for (const issue of issues) {
+			const message = $i18n.t(issue.key, issue.params ?? {});
+			if (issue.severity === 'error') {
+				toast.error(message);
+				hasError = true;
+			} else {
+				toast.warning(message);
+			}
+		}
+		return !hasError;
+	};
+
 	const createPromptHandler = async () => {
+		if (!showVariableIssues(createPromptContent)) return;
+
 		createPromptLoading = true;
 		const res = await createNewPrompt(localStorage.token, {
 			content: createPromptContent,
@@ -164,6 +182,9 @@
 			toast.error($i18n.t('You do not have permission to edit this prompt.'));
 			return;
 		}
+
+		if (!showVariableIssues(editPromptContent)) return;
+
 		editPromptLoading = true;
 
 		const res = await updatePromptById(localStorage.token, {
@@ -300,6 +321,17 @@
 					style="max-height: 300px;"
 					required
 				></textarea>
+
+					<div
+						class="mt-1 flex items-start gap-1 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500"
+					>
+						<InfoCircle className="size-3 shrink-0 mt-0.5" />
+						<span>
+							{@html $i18n.t(
+								'Tip: use <code>&#123;&#123;name&#125;&#125;</code> for a text input, or <code>&#123;&#123;name：option1、option2、option3&#125;&#125;</code> for a dropdown single-select.'
+							)}
+						</span>
+					</div>
 				</div>
 
 				<div class="flex justify-end">
@@ -368,6 +400,19 @@
 						disabled={!category?.write_access}
 						readonly={!category?.write_access}
 					></textarea>
+
+					{#if category?.write_access}
+						<div
+							class="mt-1 flex items-start gap-1 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500"
+						>
+							<InfoCircle className="size-3 shrink-0 mt-0.5" />
+							<span>
+								{@html $i18n.t(
+									'Tip: use <code>&#123;&#123;name&#125;&#125;</code> for a text input, or <code>&#123;&#123;name：option1、option2、option3&#125;&#125;</code> for a dropdown single-select.'
+								)}
+							</span>
+						</div>
+					{/if}
 				</div>
 
 				<div class="flex justify-end">

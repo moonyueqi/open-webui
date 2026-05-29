@@ -10,10 +10,11 @@
 	import Check from '$lib/components/icons/Check.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import { user } from '$lib/stores';
-	import { slugify, formatDate, copyToClipboard } from '$lib/utils';
+	import { slugify, formatDate, copyToClipboard, validateInputVariables } from '$lib/utils';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
+	import InfoCircle from '$lib/components/icons/InfoCircle.svelte';
 	import {
 		getPromptHistory,
 		setProductionPromptVersion,
@@ -77,11 +78,32 @@
 		hasManualEdit = true;
 	}
 
+	const showVariableIssues = (): boolean => {
+		const issues = validateInputVariables(content);
+		let hasError = false;
+		for (const issue of issues) {
+			const message = $i18n.t(issue.key, issue.params ?? {});
+			if (issue.severity === 'error') {
+				toast.error(message);
+				hasError = true;
+			} else {
+				toast.warning(message);
+			}
+		}
+		// Errors block submission; warnings are informational only.
+		return !hasError;
+	};
+
 	const submitHandler = async () => {
 		if (disabled) {
 			toast.error($i18n.t('You do not have permission to edit this prompt.'));
 			return;
 		}
+
+		if (!showVariableIssues()) {
+			return;
+		}
+
 		loading = true;
 
 		if (edit) {
@@ -343,6 +365,17 @@
 					rows={6}
 					required
 				/>
+				</div>
+
+				<div
+					class="mt-1 flex items-start gap-1 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500"
+				>
+					<InfoCircle className="size-3 shrink-0 mt-0.5" />
+					<span>
+						{@html $i18n.t(
+							'Tip: use <code>&#123;&#123;name&#125;&#125;</code> for a text input, or <code>&#123;&#123;name：option1、option2、option3&#125;&#125;</code> for a dropdown single-select.'
+						)}
+					</span>
 				</div>
 			</div>
 
@@ -606,6 +639,17 @@
 					style="max-height: 300px;"
 					required
 				></textarea>
+
+						<div
+							class="mt-1 flex items-start gap-1 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500"
+						>
+							<InfoCircle className="size-3 shrink-0 mt-0.5" />
+							<span>
+								{@html $i18n.t(
+									'Tip: use <code>&#123;&#123;name&#125;&#125;</code> for a text input, or <code>&#123;&#123;name：option1、option2、option3&#125;&#125;</code> for a dropdown single-select.'
+								)}
+							</span>
+						</div>
 					</div>
 				</div>
 			</div>

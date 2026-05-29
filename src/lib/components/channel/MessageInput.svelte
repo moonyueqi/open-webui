@@ -11,6 +11,7 @@
 		convertHeicToJpeg,
 		compressImage,
 		extractInputVariables,
+		validateInputVariables,
 		getAge,
 		getCurrentDateTime,
 		getFormattedDate,
@@ -88,6 +89,16 @@
 	let inputVariableValues = {};
 
 	const inputVariableHandler = async (text: string): Promise<string> => {
+		const issues = validateInputVariables(text);
+		for (const issue of issues) {
+			const message = $i18n.t(issue.key, issue.params ?? {});
+			if (issue.severity === 'error') {
+				toast.error(message);
+			} else {
+				toast.warning(message);
+			}
+		}
+
 		inputVariables = extractInputVariables(text);
 
 		// No variables? return the original text immediately.
