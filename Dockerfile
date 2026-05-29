@@ -247,6 +247,13 @@ COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 # copy backend files
 COPY --chown=$UID:$GID ./backend .
 
+# === 烘焙业务资产 ===
+# weather_templates：天气报告 docx 模板（4 个业务工具引用，更新频率极低，进镜像最稳）
+# tools：工具源码副本（仅供运维查阅与排错；运行期实际加载来自数据库，
+#        在 Open-WebUI 后台 "工作空间 → 工具" 处用 tools/*.py 内容创建即可）
+COPY --chown=$UID:$GID ./weather_templates /app/weather_templates
+COPY --chown=$UID:$GID ./tools /app/tools
+
 EXPOSE 8080
 
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1

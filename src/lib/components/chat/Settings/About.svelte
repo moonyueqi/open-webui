@@ -27,7 +27,7 @@
 				<div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{$i18n.t('Version')}</div>
 			</div>
 			<div class="px-3 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200/60 dark:border-gray-600/40 text-xs font-mono font-medium text-gray-600 dark:text-gray-300 shadow-sm">
-				v0.2.1
+				v2.1.0
 			</div>
 		</div>
 
