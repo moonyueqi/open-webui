@@ -2182,6 +2182,8 @@
 	"Example: https://api.example.com/v1": "",
 	"Paste your API key": "",
 	"Optional. Leave empty if the endpoint does not require authentication.": "",
+	"e.g. qwen36, gpt-4o (comma-separated)": "",
+	"Optional. Whitelist of model IDs to expose from this connection. Leave empty to show all models.": "",
 	"Cannot reach the server, please check the URL or your network": "",
 	"API key is invalid or has no permission": "",
 	"Endpoint not found, please check the URL": "",
