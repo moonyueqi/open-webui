@@ -2216,6 +2216,8 @@
 	"Example: https://api.example.com/v1": "示例：https://api.example.com/v1",
 	"Paste your API key": "粘贴您的 API 密钥",
 	"Optional. Leave empty if the endpoint does not require authentication.": "可选，如果接口无需鉴权可留空",
+	"e.g. qwen36, gpt-4o (comma-separated)": "例如：qwen36, gpt-4o（多个用英文逗号分隔）",
+	"Optional. Whitelist of model IDs to expose from this connection. Leave empty to show all models.": "可选。仅显示此连接下指定的模型 ID，多个用英文逗号分隔。留空则显示全部模型。",
 	"Missing bearer authentication in header": "请输入 API 密钥",
 	"Network Problem": "网络连接失败",
 	"Incorrect API key provided": "API 密钥错误",

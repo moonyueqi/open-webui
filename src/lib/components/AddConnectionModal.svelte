@@ -343,6 +343,44 @@
 					</p>
 				</div>
 
+				{#if !ollama}
+					<!-- Model IDs (whitelist) field -->
+					<div class="flex flex-col w-full">
+						<label
+							for="model-ids-input"
+							class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+						>
+							{$i18n.t('Model IDs')}
+						</label>
+
+						<div
+							class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:ring-1 focus-within:ring-gray-400/20 transition-all"
+						>
+							<input
+								id="model-ids-input"
+								class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-600"
+								type="text"
+								value={modelIds.join(', ')}
+								on:input={(e) => {
+									const raw = (e.currentTarget as HTMLInputElement).value;
+									modelIds = raw
+										.split(',')
+										.map((s) => s.trim())
+										.filter((s) => s.length > 0);
+								}}
+								placeholder={$i18n.t('e.g. qwen36, gpt-4o (comma-separated)')}
+								autocomplete="off"
+							/>
+						</div>
+
+						<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+							{$i18n.t(
+								'Optional. Whitelist of model IDs to expose from this connection. Leave empty to show all models.'
+							)}
+						</p>
+					</div>
+				{/if}
+
 				<!-- Footer actions -->
 				<div
 					class="flex items-center justify-between gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800"
