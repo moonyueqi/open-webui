@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Initialize device type args
 # use build args in the docker build command with --build-arg="BUILDARG=true"
 ARG USE_CUDA=false
@@ -150,13 +149,23 @@ RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.o
     pip config set install.trusted-host pypi.tuna.tsinghua.edu.cn
 
 # Install common system dependencies
+# 注：tzdata 是定时任务（automations）和日历提醒（calendar）正确工作的必要依赖。
+# 代码使用 stdlib 的 zoneinfo，需要从 /usr/share/zoneinfo 读时区文件；
+# slim 镜像里该目录为空，缺失会让 ZoneInfo('Asia/Shanghai') 抛 ZoneInfoNotFoundError，
+# 直接导致 RRULE 的下次执行时间与日历提醒时间偏离 8 小时。
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     git build-essential pandoc gcc netcat-openbsd curl jq \
     python3-dev \
     ffmpeg libsm6 libxext6 zstd \
+    tzdata \
     libreoffice-core libreoffice-writer libreoffice-impress libreoffice-calc \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
+
+# 默认容器时区设为东八区；docker-compose 里可用 TZ 环境变量覆盖
+ENV TZ=Asia/Shanghai
 
 # install python dependencies
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
@@ -172,44 +181,55 @@ ENV HF_ENDPOINT="https://hf-mirror.com"
 # 同样放在 /opt/cache 而不是 /app/backend/data 下，避免被卷挂载覆盖
 ENV NLTK_DATA="/opt/cache/nltk_data"
 
-RUN pip3 install --no-cache-dir uv && \
+# set -eux: 任何命令失败立即中止整条 RUN，避免之前嵌套 if/fi 把退出码吞掉
+# （历史教训：uv pip install 失败但构建继续，导致 nltk/tiktoken 这类纯 Python 包都没装上）
+RUN set -eux; \
+    pip3 install --no-cache-dir uv; \
     if [ "$USE_CUDA" = "true" ]; then \
-    # If you use CUDA the whisper and embedding model will be downloaded on first use
-    # fix: pin torch<=2.9.1 - torch 2.10.0 aarch64 wheels cause SIGILL on ARM devices (RPi 4 Cortex-A72) #21349
-    # PyTorch CUDA 走阿里云镜像（清华 mirrors.tuna.tsinghua.edu.cn 没有 pytorch-wheels 子站）
-    # 阿里云用 HTML 索引格式，需要用 --find-links + 清华 PyPI 作为基础 index
-    pip3 install 'torch<=2.9.1' torchvision torchaudio --find-links https://mirrors.aliyun.com/pytorch-wheels/$USE_CUDA_DOCKER_VER/ --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
+        # CUDA：torch 走阿里云 pytorch-wheels 镜像；其他依赖走清华 PyPI
+        pip3 install 'torch<=2.9.1' torchvision torchaudio \
+            --find-links https://mirrors.aliyun.com/pytorch-wheels/$USE_CUDA_DOCKER_VER/ \
+            --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir; \
+        uv pip install --system -r requirements.txt --no-cache-dir \
+            --index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
+        python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')"; \
+        python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')"; \
+        python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
     else \
-    # PyTorch CPU 走阿里云镜像（清华没有 pytorch-wheels 子站，原配置 404）
-    # --find-links 指向阿里云 HTML 索引，--index-url 用清华 PyPI 解析其他依赖
-    pip3 install 'torch<=2.9.1' torchvision torchaudio --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    if [ "$USE_SLIM" != "true" ]; then \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
+        # CPU：torch 走阿里云 pytorch-wheels CPU 子站；其他依赖走清华 PyPI
+        pip3 install 'torch<=2.9.1' torchvision torchaudio \
+            --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
+            --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir; \
+        uv pip install --system -r requirements.txt --no-cache-dir \
+            --index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
+        if [ "$USE_SLIM" != "true" ]; then \
+            python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')"; \
+            python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')"; \
+            python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
+        fi; \
     fi; \
-    fi; \
-    mkdir -p /app/backend/data && chown -R $UID:$GID /app/backend/data/ && \
-    rm -rf /var/lib/apt/lists/*;
+    # 强制验证关键依赖是否真的装上（uv 偶发静默吞错的最后一道防线）
+    python -c "import nltk, tiktoken, fastapi, uvicorn" && echo "core deps OK"; \
+    mkdir -p /app/backend/data && chown -R $UID:$GID /app/backend/data/; \
+    rm -rf /var/lib/apt/lists/*
 
-# === 离线注入 NLTK punkt_tab（RAG 文档分块必需） ===
-# 需要在项目根目录预先放置 punkt_tab.zip：
-#   下载：https://gh-proxy.com/https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip
-#   位置：<repo_root>/punkt_tab.zip
+# === 离线注入 NLTK 数据（RAG 文档分块 + unstructured pptx/docx 解析必需） ===
+# 需要在项目根目录预先放置以下 zip：
+#   1) punkt_tab.zip                      —— langchain RAG 分块用
+#      下载：https://gh-proxy.com/https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip
+#   2) averaged_perceptron_tagger_eng.zip —— unstructured 解析 pptx/docx 时 pos_tag 用
+#      下载：https://gh-proxy.com/https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/taggers/averaged_perceptron_tagger_eng.zip
 # 这样构建期完全不联网，避免 raw.githubusercontent.com 被墙的问题
 # 用 Python 内置 zipfile 解压，避免引入 unzip 包，省一层镜像
 COPY --chown=$UID:$GID punkt_tab.zip /tmp/punkt_tab.zip
+COPY --chown=$UID:$GID averaged_perceptron_tagger_eng.zip /tmp/averaged_perceptron_tagger_eng.zip
 RUN set -eux; \
-    mkdir -p "$NLTK_DATA/tokenizers"; \
+    mkdir -p "$NLTK_DATA/tokenizers" "$NLTK_DATA/taggers"; \
     python -c "import zipfile, os; zipfile.ZipFile('/tmp/punkt_tab.zip').extractall(os.environ['NLTK_DATA'] + '/tokenizers/')"; \
-    rm /tmp/punkt_tab.zip; \
+    python -c "import zipfile, os; zipfile.ZipFile('/tmp/averaged_perceptron_tagger_eng.zip').extractall(os.environ['NLTK_DATA'] + '/taggers/')"; \
+    rm /tmp/punkt_tab.zip /tmp/averaged_perceptron_tagger_eng.zip; \
     chown -R $UID:$GID "$NLTK_DATA"; \
-    python -c "import nltk; nltk.data.find('tokenizers/punkt_tab')" && echo "punkt_tab OK"
+    python -c "import nltk; nltk.data.find('tokenizers/punkt_tab'); nltk.data.find('taggers/averaged_perceptron_tagger_eng')" && echo "nltk data OK"
 
 # === 离线注入 tiktoken cl100k_base（GPT-3.5/GPT-4 的 BPE 编码字典）===
 # 需要在项目根目录预先放置 cl100k_base.tiktoken：
@@ -249,10 +269,11 @@ COPY --chown=$UID:$GID ./backend .
 
 # === 烘焙业务资产 ===
 # weather_templates：天气报告 docx 模板（4 个业务工具引用，更新频率极低，进镜像最稳）
-# tools：工具源码副本（仅供运维查阅与排错；运行期实际加载来自数据库，
-#        在 Open-WebUI 后台 "工作空间 → 工具" 处用 tools/*.py 内容创建即可）
+# 注：tools/*.py 不再烘焙进镜像。
+#     运行期工具从数据库加载，调试好后到 "工作空间 → 工具" 处粘贴源码即可。
+#     镜像里留副本只会和数据库版本不一致，反而成为排错时的混淆源。
+#     （.dockerignore 也已经排除 tools/，即使误加 COPY 也复制不到东西）
 COPY --chown=$UID:$GID ./weather_templates /app/weather_templates
-COPY --chown=$UID:$GID ./tools /app/tools
 
 EXPOSE 8080
 

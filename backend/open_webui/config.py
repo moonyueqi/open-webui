@@ -1812,8 +1812,11 @@ def validate_cors_origin(origin):
 # To test CORS_ALLOW_ORIGIN locally, you can set something like
 # CORS_ALLOW_ORIGIN=http://localhost:5173;http://localhost:8080
 # in your .env file depending on your frontend port, 5173 in this case.
-# CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*").split(";")
-CORS_ALLOW_ORIGIN = ["http://localhost:5173", "http://localhost:8080"]
+#
+# 注意：之前为本地调试硬编码成 ["http://localhost:5173", "http://localhost:8080"]
+# 会导致部署到非 localhost 时 Socket.IO 报 "is not an accepted origin"。
+# 现已恢复为读取环境变量，.env 里 CORS_ALLOW_ORIGIN=* 即可放行内网任意来源。
+CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*").split(";")
 
 # Allows custom URL schemes (e.g., app://) to be used as origins for CORS.
 # Useful for local development or desktop clients with schemes like app:// or other custom protocols.
