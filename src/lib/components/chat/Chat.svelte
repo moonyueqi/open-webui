@@ -2223,7 +2223,23 @@
 				params: {
 					...$settings?.params,
 					...params,
-					...(!_deepThinking ? { reasoning_effort: 'none', think: false } : {}),
+					...(!_deepThinking
+						? {
+								reasoning_effort: 'none',
+								think: false,
+								chat_template_kwargs: {
+									...($settings?.params?.chat_template_kwargs ?? {}),
+									...(params?.chat_template_kwargs ?? {}),
+									enable_thinking: false
+								}
+							}
+						: {
+								chat_template_kwargs: {
+									...($settings?.params?.chat_template_kwargs ?? {}),
+									...(params?.chat_template_kwargs ?? {}),
+									enable_thinking: true
+								}
+							}),
 					stop:
 						(params?.stop ?? $settings?.params?.stop ?? undefined)
 							? (params?.stop.split(',').map((token) => token.trim()) ?? $settings.params.stop).map(
