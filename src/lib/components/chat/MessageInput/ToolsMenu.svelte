@@ -105,12 +105,14 @@
 		if (!tools) return [] as { id: string; name: string; description?: string; items: any[] }[];
 
 		const byCategory: Record<string, any[]> = {};
-		const mcp: any[] = [];
+		const serverTools: any[] = [];
 
 		for (const id of Object.keys(tools)) {
 			const t = tools[id];
-			if (t?.__is_mcp) {
-				mcp.push({ id, ...t });
+			// 工具服务器（管理员"扩展功能"配置的 OpenAPI/MCP 服务器，以及用户在
+			// 个人设置里直连的工具服务器）独立成组，不参与按分类的分组。
+			if (t?.__is_mcp || id.startsWith('server:') || id.startsWith('direct_server:')) {
+				serverTools.push({ id, ...t });
 				continue;
 			}
 			const cid = t?.category_id;
@@ -132,12 +134,12 @@
 			});
 		}
 
-		if (mcp.length > 0) {
+		if (serverTools.length > 0) {
 			groups.push({
 				id: MCP_GROUP_ID,
-				name: $i18n.t('MCP Servers'),
-				description: $i18n.t('Connected MCP servers'),
-				items: mcp
+				name: $i18n.t('Tool Servers'),
+				description: $i18n.t('Connected OpenAPI / MCP tool servers'),
+				items: serverTools
 			});
 		}
 
