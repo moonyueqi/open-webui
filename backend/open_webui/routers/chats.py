@@ -513,7 +513,7 @@ async def export_single_chat_stats(
         if not chat_stats:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to process chat stats",
+                detail="处理对话统计信息失败，请稍后重试。",
             )
 
         return chat_stats

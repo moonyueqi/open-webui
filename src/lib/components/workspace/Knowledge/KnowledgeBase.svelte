@@ -921,7 +921,7 @@
 				</div>
 
 				<div class="flex items-center gap-1.5">
-					{#if knowledge?.write_access}
+					{#if knowledge?.user_id === $user?.id || $user?.role === 'admin'}
 						<button
 							class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
 							type="button"
@@ -932,7 +932,7 @@
 							<LockClosed strokeWidth="2.5" className="size-3.5" />
 							<div class="hidden md:block text-xs">{$i18n.t('Access')}</div>
 						</button>
-					{:else}
+					{:else if !knowledge?.write_access}
 						<div class="px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 border border-gray-200/60 dark:border-gray-700/60">
 							{$i18n.t('Read Only')}
 						</div>

@@ -18,6 +18,7 @@ from open_webui.models.skills import (
     Skills,
 )
 from open_webui.models.access_grants import AccessGrants
+from open_webui.models.skill_categories import SkillCategories
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_access, require_permission, filter_allowed_access_grants
 
@@ -29,6 +30,35 @@ log = logging.getLogger(__name__)
 PAGE_ITEM_COUNT = 30
 
 router = APIRouter()
+
+
+def _user_has_skill_access(
+    user,
+    skill,
+    permission: str,
+    db: Session,
+    user_group_ids: Optional[set] = None,
+) -> bool:
+    """Check whether a user has the given permission on a skill.
+
+    Access is fully inherited from the parent skill category. A user is granted
+    access if they are the owner of the skill, an admin, or have the
+    corresponding access_grant on the skill's parent category.
+    """
+    if user.role == "admin":
+        return True
+    if skill.user_id == user.id:
+        return True
+    if getattr(skill, "category_id", None) and AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="skill_category",
+        resource_id=skill.category_id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    return False
 
 
 ############################
@@ -52,14 +82,8 @@ async def get_skills(
         skills = [
             skill
             for skill in all_skills
-            if skill.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="skill",
-                resource_id=skill.id,
-                permission="read",
-                user_group_ids=user_group_ids,
-                db=db,
+            if _user_has_skill_access(
+                user, skill, "read", db, user_group_ids=user_group_ids
             )
         ]
 
@@ -90,14 +114,36 @@ async def get_skill_list(
     if view_option:
         filter["view_option"] = view_option
 
+    # Skill list is now category-first; the legacy "all skills" listing
+    # delegates write_access to the parent category access grants.
+    groups = Groups.get_groups_by_member_id(user.id, db=db)
+    user_group_ids = {group.id for group in groups}
+
     if not (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL):
-        groups = Groups.get_groups_by_member_id(user.id, db=db)
         if groups:
             filter["group_ids"] = [group.id for group in groups]
 
         filter["user_id"] = user.id
 
     result = Skills.search_skills(user.id, filter=filter, skip=skip, limit=limit, db=db)
+
+    # Batch-fetch writable categories so write access inherited from the
+    # parent category is respected in the list view.
+    category_ids = list(
+        {skill.category_id for skill in result.items if skill.category_id}
+    )
+    writable_category_ids = (
+        AccessGrants.get_accessible_resource_ids(
+            user_id=user.id,
+            resource_type="skill_category",
+            resource_ids=category_ids,
+            permission="write",
+            user_group_ids=user_group_ids,
+            db=db,
+        )
+        if category_ids
+        else set()
+    )
 
     return SkillAccessListResponse(
         items=[
@@ -106,12 +152,9 @@ async def get_skill_list(
                 write_access=(
                     (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
                     or user.id == skill.user_id
-                    or AccessGrants.has_access(
-                        user_id=user.id,
-                        resource_type="skill",
-                        resource_id=skill.id,
-                        permission="write",
-                        db=db,
+                    or (
+                        skill.category_id
+                        and skill.category_id in writable_category_ids
                     )
                 ),
             )
@@ -154,7 +197,41 @@ async def create_new_skill(
 ):
     require_permission(user, "workspace.skills", request, db=db)
 
+    # A category is required: skills inherit access from their category.
+    if not form_data.category_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先选择一个分类。",
+        )
+
+    category = SkillCategories.get_category_by_id(form_data.category_id, db=db)
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    if (
+        user.role != "admin"
+        and category.user_id != user.id
+        and not AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="skill_category",
+            resource_id=category.id,
+            permission="write",
+            db=db,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
+
     form_data.id = form_data.id.lower().replace(" ", "-")
+
+    # Skills no longer carry their own access grants — access is inherited
+    # from the parent category. Always clear any payload to be safe.
+    form_data.access_grants = []
 
     existing = Skills.get_skill_by_id(form_data.id, db=db)
     if existing is not None:
@@ -199,29 +276,12 @@ async def get_skill_by_id(
     skill = Skills.get_skill_by_id(id, db=db)
 
     if skill:
-        if (
-            user.role == "admin"
-            or skill.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="skill",
-                resource_id=skill.id,
-                permission="read",
-                db=db,
-            )
-        ):
+        if _user_has_skill_access(user, skill, "read", db):
             return SkillAccessResponse(
                 **skill.model_dump(),
                 write_access=(
                     (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                    or user.id == skill.user_id
-                    or AccessGrants.has_access(
-                        user_id=user.id,
-                        resource_type="skill",
-                        resource_id=skill.id,
-                        permission="write",
-                        db=db,
-                    )
+                    or _user_has_skill_access(user, skill, "write", db)
                 ),
             )
         else:
@@ -256,21 +316,37 @@ async def update_skill_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        skill.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="skill",
-            resource_id=skill.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_skill_access(user, skill, "write", db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
+
+    # If the caller wants to move the skill to another category, verify they
+    # also have write permission on the destination category.
+    new_category_id = form_data.category_id
+    if new_category_id and new_category_id != skill.category_id:
+        new_category = SkillCategories.get_category_by_id(new_category_id, db=db)
+        if not new_category:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.NOT_FOUND,
+            )
+        if (
+            user.role != "admin"
+            and new_category.user_id != user.id
+            and not AccessGrants.has_access(
+                user_id=user.id,
+                resource_type="skill_category",
+                resource_id=new_category.id,
+                permission="write",
+                db=db,
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+            )
 
     existing_by_name = Skills.get_skill_by_name(form_data.name, db=db)
     if existing_by_name is not None and existing_by_name.id != id:
@@ -280,12 +356,10 @@ async def update_skill_by_id(
         )
 
     try:
-        # Only the owner / admin can change access grants. Strip access_grants
-        # from the payload when the caller is just a `write` collaborator
-        # to prevent privilege escalation through the content-update endpoint.
-        exclude_fields = {"id"}
-        if skill.user_id != user.id and user.role != "admin":
-            exclude_fields.add("access_grants")
+        # Skills no longer carry independent access grants; always drop the
+        # field from the update payload so callers cannot bypass the
+        # category-inherited model.
+        exclude_fields = {"id", "access_grants"}
 
         updated = {
             **form_data.model_dump(exclude=exclude_fields),
@@ -308,51 +382,6 @@ async def update_skill_by_id(
 
 
 ############################
-# UpdateSkillAccessById
-############################
-
-
-class SkillAccessGrantsForm(BaseModel):
-    access_grants: list[dict]
-
-
-@router.post("/id/{id}/access/update", response_model=Optional[SkillModel])
-async def update_skill_access_by_id(
-    request: Request,
-    id: str,
-    form_data: SkillAccessGrantsForm,
-    user=Depends(get_verified_user),
-    db: Session = Depends(get_session),
-):
-    skill = Skills.get_skill_by_id(id, db=db)
-    if not skill:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ERROR_MESSAGES.NOT_FOUND,
-        )
-
-    # Only the resource owner or an admin may modify access grants.
-    # A user with `write` permission can edit content but cannot change who has access.
-    if skill.user_id != user.id and user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
-
-    form_data.access_grants = filter_allowed_access_grants(
-        request.app.state.config.USER_PERMISSIONS,
-        user.id,
-        user.role,
-        form_data.access_grants,
-        "sharing.public_skills",
-    )
-
-    AccessGrants.set_access_grants("skill", id, form_data.access_grants, db=db)
-
-    return Skills.get_skill_by_id(id, db=db)
-
-
-############################
 # ToggleSkillById
 ############################
 
@@ -363,17 +392,7 @@ async def toggle_skill_by_id(
 ):
     skill = Skills.get_skill_by_id(id, db=db)
     if skill:
-        if (
-            user.role == "admin"
-            or skill.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="skill",
-                resource_id=skill.id,
-                permission="write",
-                db=db,
-            )
-        ):
+        if _user_has_skill_access(user, skill, "write", db):
             skill = Skills.toggle_skill_by_id(id, db=db)
 
             if skill:
@@ -414,17 +433,7 @@ async def delete_skill_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        skill.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="skill",
-            resource_id=skill.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_skill_access(user, skill, "write", db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { skills } from '$lib/stores';
 	import { onMount, getContext } from 'svelte';
 
@@ -15,12 +16,19 @@
 		description: string;
 		content: string;
 		is_active: boolean;
-		access_grants: any[];
+		category_id?: string | null;
 	} | null = null;
 
 	let clone = false;
+	let categoryId: string | null = null;
+	let backHref = '/workspace/skills';
 
 	const onSubmit = async (_skill) => {
+		if (!_skill.category_id) {
+			toast.error($i18n.t('Please select a category first.'));
+			return;
+		}
+
 		const res = await createNewSkill(localStorage.token, _skill).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -29,11 +37,21 @@
 		if (res) {
 			toast.success($i18n.t('Skill created successfully'));
 			await skills.set(await getSkills(localStorage.token));
-			await goto('/workspace/skills');
+			await goto(backHref);
 		}
 	};
 
 	onMount(async () => {
+		categoryId = $page.url.searchParams.get('category_id');
+
+		if (!categoryId) {
+			toast.error($i18n.t('Please select a category first.'));
+			goto('/workspace/skills');
+			return;
+		}
+
+		backHref = `/workspace/skills/categories/${categoryId}`;
+
 		if (sessionStorage.skill) {
 			const _skill = JSON.parse(sessionStorage.skill);
 			sessionStorage.removeItem('skill');
@@ -45,12 +63,12 @@
 				description: _skill.description || '',
 				content: _skill.content || '',
 				is_active: _skill.is_active ?? true,
-				access_grants: _skill.access_grants !== undefined ? _skill.access_grants : []
+				category_id: categoryId
 			};
 		}
 	});
 </script>
 
 {#key skill}
-	<SkillEditor {skill} {onSubmit} {clone} />
+	<SkillEditor {skill} {onSubmit} {clone} {categoryId} {backHref} />
 {/key}

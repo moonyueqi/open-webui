@@ -1071,7 +1071,7 @@ async def add_files_to_knowledge_batch(
     if missing_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File {missing_ids[0]} not found",
+            detail=f"未找到文件 {missing_ids[0]}",
         )
 
     # Process files

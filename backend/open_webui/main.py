@@ -93,7 +93,9 @@ from open_webui.routers import (
     prompt_categories,
     evaluations,
     skills,
+    skill_categories,
     tools,
+    tool_categories,
     users,
     utils,
     scim,
@@ -1547,7 +1549,9 @@ app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledg
 app.include_router(prompts.router, prefix="/api/v1/prompts", tags=["prompts"])
 app.include_router(prompt_categories.router, prefix="/api/v1/prompt-categories", tags=["prompt-categories"])
 app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
+app.include_router(tool_categories.router, prefix="/api/v1/tool-categories", tags=["tool-categories"])
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
+app.include_router(skill_categories.router, prefix="/api/v1/skill-categories", tags=["skill-categories"])
 
 app.include_router(memories.router, prefix="/api/v1/memories", tags=["memories"])
 app.include_router(folders.router, prefix="/api/v1/folders", tags=["folders"])

@@ -4,7 +4,7 @@
 	import Settings from '$lib/components/admin/Settings.svelte';
 
 	onMount(() => {
-		goto('/admin/settings/connections');
+		goto('/admin/settings/general');
 	});
 </script>
 

@@ -28,6 +28,7 @@ class Skill(Base):
     content = Column(Text)
     meta = Column(JSON)
     is_active = Column(Boolean, default=True)
+    category_id = Column(Text, nullable=True)
 
     updated_at = Column(BigInteger)
     created_at = Column(BigInteger)
@@ -45,6 +46,7 @@ class SkillModel(BaseModel):
     content: str
     meta: SkillMeta
     is_active: bool = True
+    category_id: Optional[str] = None
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
 
     updated_at: int  # timestamp in epoch
@@ -69,6 +71,7 @@ class SkillResponse(BaseModel):
     description: Optional[str] = None
     meta: SkillMeta
     is_active: bool = True
+    category_id: Optional[str] = None
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
     updated_at: int  # timestamp in epoch
     created_at: int  # timestamp in epoch
@@ -91,6 +94,7 @@ class SkillForm(BaseModel):
     content: str
     meta: SkillMeta = SkillMeta()
     is_active: bool = True
+    category_id: Optional[str] = None
     access_grants: Optional[list[dict]] = None
 
 
@@ -248,21 +252,28 @@ class SkillsTable:
                             Skill.name.ilike(f"%{query_key}%")
                         )
 
+                    category_id = filter.get("category_id")
+                    if category_id:
+                        query = query.filter(Skill.category_id == category_id)
+
                     view_option = filter.get("view_option")
                     if view_option == "created":
                         query = query.filter(Skill.user_id == user_id)
                     elif view_option == "shared":
                         query = query.filter(Skill.user_id != user_id)
 
-                    # Apply access grant filtering
-                    query = AccessGrants.has_permission_filter(
-                        db=db,
-                        query=query,
-                        DocumentModel=Skill,
-                        filter=filter,
-                        resource_type="skill",
-                        permission="read",
-                    )
+                    # When scoping by category, skip per-skill access filtering
+                    # because access is fully inherited from the category and
+                    # the caller is expected to verify category access upstream.
+                    if not filter.get("skip_access_filter"):
+                        query = AccessGrants.has_permission_filter(
+                            db=db,
+                            query=query,
+                            DocumentModel=Skill,
+                            filter=filter,
+                            resource_type="skill",
+                            permission="read",
+                        )
 
                 query = query.order_by(Skill.updated_at.desc())
 

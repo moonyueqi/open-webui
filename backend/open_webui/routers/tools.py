@@ -22,6 +22,7 @@ from open_webui.models.tools import (
     Tools,
 )
 from open_webui.models.access_grants import AccessGrants
+from open_webui.models.tool_categories import ToolCategories
 from open_webui.utils.plugin import (
     load_tool_module_by_id,
     replace_imports,
@@ -40,6 +41,35 @@ log = logging.getLogger(__name__)
 
 
 router = APIRouter()
+
+
+def _user_has_tool_access(
+    user,
+    tool,
+    permission: str,
+    db: Session,
+    user_group_ids: Optional[set] = None,
+) -> bool:
+    """Check whether a user has the given permission on a tool.
+
+    Access is fully inherited from the parent tool category. A user is granted
+    access if they are the owner of the tool, an admin, or have the
+    corresponding access_grant on the tool's parent category.
+    """
+    if user.role == "admin":
+        return True
+    if tool.user_id == user.id:
+        return True
+    if getattr(tool, "category_id", None) and AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="tool_category",
+        resource_id=tool.category_id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    return False
 
 
 def get_tool_module(request, tool_id, load_from_db=True):
@@ -179,13 +209,8 @@ async def get_tools(
                     db=db,
                 )
                 if str(tool.id).startswith("server:")
-                else AccessGrants.has_access(
-                    user_id=user.id,
-                    resource_type="tool",
-                    resource_id=tool.id,
-                    permission="read",
-                    user_group_ids=user_group_ids,
-                    db=db,
+                else _user_has_tool_access(
+                    user, tool, "read", db, user_group_ids=user_group_ids
                 )
             )
         ]
@@ -210,23 +235,30 @@ async def get_tool_list(
         group.id for group in Groups.get_groups_by_member_id(user.id, db=db)
     }
 
+    # Batch-fetch writable categories so write access inherited from the
+    # parent category is respected in the list view.
+    category_ids = list({tool.category_id for tool in tools if tool.category_id})
+    writable_category_ids = (
+        AccessGrants.get_accessible_resource_ids(
+            user_id=user.id,
+            resource_type="tool_category",
+            resource_ids=category_ids,
+            permission="write",
+            user_group_ids=user_group_ids,
+            db=db,
+        )
+        if category_ids
+        else set()
+    )
+
     result = []
     for tool in tools:
         has_write = (
             (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
             or user.id == tool.user_id
-            or any(
-                g.permission == "write"
-                and (
-                    (
-                        g.principal_type == "user"
-                        and (g.principal_id == user.id or g.principal_id == "*")
-                    )
-                    or (
-                        g.principal_type == "group" and g.principal_id in user_group_ids
-                    )
-                )
-                for g in tool.access_grants
+            or (
+                bool(tool.category_id)
+                and tool.category_id in writable_category_ids
             )
         )
         result.append(
@@ -276,7 +308,7 @@ async def load_tool_from_url(
 
     url = str(form_data.url)
     if not url:
-        raise HTTPException(status_code=400, detail="Please enter a valid URL")
+        raise HTTPException(status_code=400, detail="请输入有效的 URL 地址。")
 
     url = github_url_to_raw_url(url)
     url_parts = url.rstrip("/").split("/")
@@ -300,12 +332,13 @@ async def load_tool_from_url(
             ) as resp:
                 if resp.status != 200:
                     raise HTTPException(
-                        status_code=resp.status, detail="Failed to fetch the tool"
+                        status_code=resp.status,
+                        detail="获取工具失败，请检查 URL 是否正确。",
                     )
                 data = await resp.text()
                 if not data:
                     raise HTTPException(
-                        status_code=400, detail="No data received from the URL"
+                        status_code=400, detail="未从该 URL 获取到任何数据。"
                     )
         return {
             "name": tool_name,
@@ -348,6 +381,36 @@ async def create_new_tools(
 ):
     require_permission(user, ["workspace.tools", "workspace.tools_import"], request, db=db)
 
+    # A category is required: tools inherit access from their category.
+    if not form_data.category_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先选择一个分类。",
+        )
+
+    category = ToolCategories.get_category_by_id(form_data.category_id, db=db)
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    if (
+        user.role != "admin"
+        and category.user_id != user.id
+        and not AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="tool_category",
+            resource_id=category.id,
+            permission="write",
+            db=db,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
+
     if not form_data.id.isidentifier():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -355,6 +418,10 @@ async def create_new_tools(
         )
 
     form_data.id = form_data.id.lower()
+
+    # Tools no longer carry their own access grants — access is inherited
+    # from the parent category. Always clear any payload to be safe.
+    form_data.access_grants = []
 
     existing_by_name = Tools.get_tool_by_name(form_data.name, db=db)
     if existing_by_name is not None:
@@ -413,29 +480,12 @@ async def get_tools_by_id(
     tools = Tools.get_tool_by_id(id, db=db)
 
     if tools:
-        if (
-            user.role == "admin"
-            or tools.user_id == user.id
-            or AccessGrants.has_access(
-                user_id=user.id,
-                resource_type="tool",
-                resource_id=tools.id,
-                permission="read",
-                db=db,
-            )
-        ):
+        if _user_has_tool_access(user, tools, "read", db):
             return ToolAccessResponse(
                 **tools.model_dump(),
                 write_access=(
                     (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                    or user.id == tools.user_id
-                    or AccessGrants.has_access(
-                        user_id=user.id,
-                        resource_type="tool",
-                        resource_id=tools.id,
-                        permission="write",
-                        db=db,
-                    )
+                    or _user_has_tool_access(user, tools, "write", db)
                 ),
             )
         else:
@@ -470,22 +520,37 @@ async def update_tools_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    # Is the user the original creator, in a group with write access, or an admin
-    if (
-        tools.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="tool",
-            resource_id=tools.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_tool_access(user, tools, "write", db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
+
+    # If the caller wants to move the tool to another category, verify they
+    # also have write permission on the destination category.
+    new_category_id = form_data.category_id
+    if new_category_id and new_category_id != tools.category_id:
+        new_category = ToolCategories.get_category_by_id(new_category_id, db=db)
+        if not new_category:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.NOT_FOUND,
+            )
+        if (
+            user.role != "admin"
+            and new_category.user_id != user.id
+            and not AccessGrants.has_access(
+                user_id=user.id,
+                resource_type="tool_category",
+                resource_id=new_category.id,
+                permission="write",
+                db=db,
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+            )
 
     existing_by_name = Tools.get_tool_by_name(form_data.name, db=db)
     if existing_by_name is not None and existing_by_name.id != id:
@@ -504,12 +569,10 @@ async def update_tools_by_id(
 
         specs = get_tool_specs(TOOLS[id])
 
-        # Only the owner / admin can change access grants. Strip access_grants
-        # from the payload when the caller is just a `write` collaborator
-        # to prevent privilege escalation through the content-update endpoint.
-        exclude_fields = {"id"}
-        if tools.user_id != user.id and user.role != "admin":
-            exclude_fields.add("access_grants")
+        # Tools no longer carry independent access grants; always drop the
+        # field from the update payload so callers cannot bypass the
+        # category-inherited model.
+        exclude_fields = {"id", "access_grants"}
 
         updated = {
             **form_data.model_dump(exclude=exclude_fields),
@@ -535,51 +598,6 @@ async def update_tools_by_id(
 
 
 ############################
-# UpdateToolAccessById
-############################
-
-
-class ToolAccessGrantsForm(BaseModel):
-    access_grants: list[dict]
-
-
-@router.post("/id/{id}/access/update", response_model=Optional[ToolModel])
-async def update_tool_access_by_id(
-    request: Request,
-    id: str,
-    form_data: ToolAccessGrantsForm,
-    user=Depends(get_verified_user),
-    db: Session = Depends(get_session),
-):
-    tools = Tools.get_tool_by_id(id, db=db)
-    if not tools:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ERROR_MESSAGES.NOT_FOUND,
-        )
-
-    # Only the resource owner or an admin may modify access grants.
-    # A user with `write` permission can edit content but cannot change who has access.
-    if tools.user_id != user.id and user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.UNAUTHORIZED,
-        )
-
-    form_data.access_grants = filter_allowed_access_grants(
-        request.app.state.config.USER_PERMISSIONS,
-        user.id,
-        user.role,
-        form_data.access_grants,
-        "sharing.public_tools",
-    )
-
-    AccessGrants.set_access_grants("tool", id, form_data.access_grants, db=db)
-
-    return Tools.get_tool_by_id(id, db=db)
-
-
-############################
 # DeleteToolsById
 ############################
 
@@ -598,17 +616,7 @@ async def delete_tools_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        tools.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="tool",
-            resource_id=tools.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_tool_access(user, tools, "write", db):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.UNAUTHORIZED,
@@ -703,17 +711,7 @@ async def update_tools_valves_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if (
-        tools.user_id != user.id
-        and not AccessGrants.has_access(
-            user_id=user.id,
-            resource_type="tool",
-            resource_id=tools.id,
-            permission="write",
-            db=db,
-        )
-        and user.role != "admin"
-    ):
+    if not _user_has_tool_access(user, tools, "write", db):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,

@@ -1147,7 +1147,9 @@ def split_audio(file_path, max_bytes, format="mp3", bitrate="32k"):
 
         if os.path.getsize(chunk_path) > max_bytes:
             os.remove(chunk_path)
-            raise Exception("Audio chunk cannot be reduced below max file size.")
+            raise Exception(
+                "音频分片仍超出大小限制，无法继续压缩，请尝试上传更短或更小的音频。"
+            )
 
         chunks.append(chunk_path)
         start = end

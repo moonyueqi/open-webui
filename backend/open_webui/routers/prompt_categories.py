@@ -115,7 +115,7 @@ async def create_prompt_category(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A category with this name already exists.",
+            detail="已存在同名的分类，请使用其他名称。",
         )
 
     form_data.access_grants = filter_allowed_access_grants(
@@ -235,7 +235,7 @@ async def update_prompt_category_by_id(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A category with this name already exists.",
+                detail="已存在同名的分类，请使用其他名称。",
             )
 
     # Only the owner / admin can change access grants. A `write` collaborator
@@ -312,6 +312,8 @@ async def update_prompt_category_access(
 async def get_prompts_by_category_id(
     id: str,
     page: Optional[int] = 1,
+    query: Optional[str] = None,
+    view_option: Optional[str] = None,
     user=Depends(get_verified_user),
     db: Session = Depends(get_session),
 ):
@@ -346,22 +348,32 @@ async def get_prompts_by_category_id(
     skip = (page - 1) * limit
 
     with get_db_context(db) as db:
-        query = (
+        prompt_query = (
             db.query(Prompt, User)
             .outerjoin(User, User.id == Prompt.user_id)
             .filter(Prompt.category_id == id)
             .filter(Prompt.is_active == True)
-            .order_by(Prompt.updated_at.desc())
         )
 
-        total = query.count()
+        if query:
+            prompt_query = prompt_query.filter(
+                Prompt.name.ilike(f"%{query}%")
+            )
+        if view_option == "created":
+            prompt_query = prompt_query.filter(Prompt.user_id == user.id)
+        elif view_option == "shared":
+            prompt_query = prompt_query.filter(Prompt.user_id != user.id)
+
+        prompt_query = prompt_query.order_by(Prompt.updated_at.desc())
+
+        total = prompt_query.count()
 
         if skip:
-            query = query.offset(skip)
+            prompt_query = prompt_query.offset(skip)
         if limit:
-            query = query.limit(limit)
+            prompt_query = prompt_query.limit(limit)
 
-        items = query.all()
+        items = prompt_query.all()
 
         prompt_ids = [p.id for p, _ in items]
         grants_map = AccessGrants.get_grants_by_resources("prompt", prompt_ids, db=db)
