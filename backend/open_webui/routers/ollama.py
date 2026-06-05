@@ -250,7 +250,7 @@ async def verify_connection(
         except aiohttp.ClientError as e:
             log.exception(f"Client error: {str(e)}")
             raise HTTPException(
-                status_code=500, detail="Open WebUI: Server Connection Error"
+                status_code=500, detail="服务器连接异常，请稍后重试或联系管理员。"
             )
         except Exception as e:
             log.exception(f"Unexpected error: {e}")
@@ -451,7 +451,7 @@ async def get_ollama_tags(
     request: Request, url_idx: Optional[int] = None, user=Depends(get_verified_user)
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     models = []
 
@@ -654,7 +654,7 @@ async def unload_model(
 
     if not model_name:
         raise HTTPException(
-            status_code=400, detail="Missing name of the model to unload."
+            status_code=400, detail="缺少要卸载的模型名称。"
         )
 
     # Refresh/load models if needed, get mapping from name to URLs
@@ -714,7 +714,7 @@ async def pull_model(
     user=Depends(get_admin_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     form_data = form_data.model_dump(exclude_none=True)
     form_data["model"] = form_data.get("model", form_data.get("name"))
@@ -748,7 +748,7 @@ async def push_model(
     user=Depends(get_admin_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     if url_idx is None:
         await get_all_models(request, user=user)
@@ -790,7 +790,7 @@ async def create_model(
     user=Depends(get_admin_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     log.debug(f"form_data: {form_data}")
     url = request.app.state.config.OLLAMA_BASE_URLS[url_idx]
@@ -817,7 +817,7 @@ async def copy_model(
     user=Depends(get_admin_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     if url_idx is None:
         await get_all_models(request, user=user)
@@ -880,7 +880,7 @@ async def delete_model(
     user=Depends(get_admin_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     form_data = form_data.model_dump(exclude_none=True)
     form_data["model"] = form_data.get("model", form_data.get("name"))
@@ -945,7 +945,7 @@ async def show_model_info(
     request: Request, form_data: ModelNameForm, user=Depends(get_verified_user)
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     form_data = form_data.model_dump(exclude_none=True)
     form_data["model"] = form_data.get("model", form_data.get("name"))
@@ -1020,7 +1020,7 @@ async def embed(
     user=Depends(get_verified_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     log.info(f"generate_ollama_batch_embeddings {form_data}")
 
@@ -1105,7 +1105,7 @@ async def embeddings(
     user=Depends(get_verified_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     log.info(f"generate_ollama_embeddings {form_data}")
 
@@ -1198,7 +1198,7 @@ async def generate_completion(
     user=Depends(get_verified_user),
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     if url_idx is None:
         await get_all_models(request, user=user)
@@ -1289,7 +1289,7 @@ async def generate_chat_completion(
     bypass_system_prompt: bool = False,
 ):
     if not request.app.state.config.ENABLE_OLLAMA_API:
-        raise HTTPException(status_code=503, detail="Ollama API is disabled")
+        raise HTTPException(status_code=503, detail="Ollama API 已被禁用，请联系管理员开启。")
 
     # NOTE: We intentionally do NOT use Depends(get_session) here.
     # Database operations (get_model_by_id, AccessGrants.has_access) manage their own short-lived sessions.
@@ -1352,13 +1352,13 @@ async def generate_chat_completion(
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail="Model not found",
+                    detail="未找到该模型，请检查模型 ID 是否正确。",
                 )
     elif not bypass_filter:
         if user.role != "admin":
             raise HTTPException(
                 status_code=403,
-                detail="Model not found",
+                detail="未找到该模型，请检查模型 ID 是否正确。",
             )
 
     url, url_idx = await get_ollama_url(request, payload["model"], url_idx)
@@ -1463,13 +1463,13 @@ async def generate_openai_completion(
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail="Model not found",
+                    detail="未找到该模型，请检查模型 ID 是否正确。",
                 )
     else:
         if user.role != "admin":
             raise HTTPException(
                 status_code=403,
-                detail="Model not found",
+                detail="未找到该模型，请检查模型 ID 是否正确。",
             )
 
     url, url_idx = await get_ollama_url(request, payload["model"], url_idx)
@@ -1551,13 +1551,13 @@ async def generate_openai_chat_completion(
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail="Model not found",
+                    detail="未找到该模型，请检查模型 ID 是否正确。",
                 )
     else:
         if user.role != "admin":
             raise HTTPException(
                 status_code=403,
-                detail="Model not found",
+                detail="未找到该模型，请检查模型 ID 是否正确。",
             )
 
     url, url_idx = await get_ollama_url(request, payload["model"], url_idx)
@@ -1764,7 +1764,7 @@ async def download_model(
     if not any(form_data.url.startswith(host) for host in allowed_hosts):
         raise HTTPException(
             status_code=400,
-            detail="Invalid file_url. Only URLs from allowed hosts are permitted.",
+            detail="文件 URL 无效，仅允许使用受信任域名下的链接。",
         )
 
     if url_idx is None:

@@ -79,7 +79,6 @@
 	import XMark from '../icons/XMark.svelte';
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
 	import Photo from '../icons/Photo.svelte';
-	import Wrench from '../icons/Wrench.svelte';
 	import Sparkles from '../icons/Sparkles.svelte';
 	import LightBulb from '../icons/LightBulb.svelte';
 
@@ -1773,33 +1772,6 @@
 									{/if}
 
 									<div class="ml-1 flex gap-1.5">
-										{#if (selectedToolIds ?? []).filter((id) => !id.startsWith('direct_server:terminal_')).length > 0}
-											<Tooltip
-												content={$i18n.t('{{COUNT}} Available Tools', {
-													COUNT: (selectedToolIds ?? []).filter(
-														(id) => !id.startsWith('direct_server:terminal_')
-													).length
-												})}
-											>
-												<button
-													class="translate-y-[0.5px] px-1 flex gap-1 items-center text-gray-600 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg self-center transition"
-													aria-label="Available Tools"
-													type="button"
-													on:click={() => {
-														showTools = !showTools;
-													}}
-												>
-													<Wrench className="size-4" strokeWidth="1.75" />
-
-													<span class="text-sm">
-														{(selectedToolIds ?? []).filter(
-															(id) => !id.startsWith('direct_server:terminal_')
-														).length}
-													</span>
-												</button>
-											</Tooltip>
-										{/if}
-
 										{#each selectedFilterIds as filterId}
 											{@const filter = toggleFilters.find((f) => f.id === filterId)}
 											{#if filter}

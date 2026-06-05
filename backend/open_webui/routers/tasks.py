@@ -197,7 +197,7 @@ async def generate_title(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -281,7 +281,7 @@ async def generate_follow_ups(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -354,7 +354,7 @@ async def generate_chat_tags(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -420,7 +420,7 @@ async def generate_image_prompt(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -505,7 +505,7 @@ async def generate_queries(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -590,7 +590,7 @@ async def generate_autocompletion(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -657,7 +657,7 @@ async def generate_emoji(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Check if the user has a custom task model
@@ -726,7 +726,7 @@ async def generate_moa_response(
     if model_id not in models:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     template = DEFAULT_MOA_GENERATION_PROMPT_TEMPLATE

@@ -6,21 +6,17 @@
 
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores';
-	import { updateToolAccessGrants } from '$lib/apis/tools';
 
 	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
-	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	let formElement = null;
 	let loading = false;
 
 	let showConfirm = false;
-	let showAccessControlModal = false;
 
 	export let edit = false;
 	export let clone = false;
@@ -33,14 +29,11 @@
 		description: ''
 	};
 	export let content = '';
-	export let accessGrants = [];
 	export let ownerId = '';
+	export let categoryId = null;
+	export let backHref = '/workspace/tools';
 
 	let _content = '';
-
-	// Only the resource owner or admin may modify access grants. A user with
-	// `write` permission can edit content but cannot change who has access.
-	$: canManageAccess = !edit || $user?.role === 'admin' || (ownerId && ownerId === $user?.id);
 
 	$: if (content) {
 		updateContent();
@@ -170,7 +163,7 @@ class Tools:
 				name,
 				meta,
 				content,
-				access_grants: accessGrants
+				category_id: categoryId
 			});
 		} finally {
 			loading = false;
@@ -197,25 +190,6 @@ class Tools:
 	};
 </script>
 
-<AccessControlModal
-	bind:show={showAccessControlModal}
-	bind:accessGrants
-	accessRoles={['read', 'write']}
-	share={$user?.permissions?.sharing?.tools || $user?.role === 'admin'}
-	sharePublic={$user?.permissions?.sharing?.public_tools || $user?.role === 'admin'}
-	shareUsers={($user?.permissions?.access_grants?.allow_users ?? true) || $user?.role === 'admin'}
-	onChange={async () => {
-		if (edit && id) {
-			try {
-				await updateToolAccessGrants(localStorage.token, id, accessGrants);
-				toast.success($i18n.t('Saved'));
-			} catch (error) {
-				toast.error(`${error}`);
-			}
-		}
-	}}
-/>
-
 <div class=" flex flex-col justify-between w-full overflow-y-auto h-full">
 	<div class="mx-auto w-full md:px-0 h-full">
 		<form
@@ -237,7 +211,7 @@ class Tools:
 								class="shrink-0 p-1.5 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-150"
 								aria-label={$i18n.t('Back')}
 								on:click={() => {
-									goto('/workspace/tools');
+									goto(backHref);
 								}}
 								type="button"
 							>
@@ -258,18 +232,6 @@ class Tools:
 							</Tooltip>
 						</div>
 
-						<div class="shrink-0 flex items-center gap-2">
-							{#if canManageAccess}
-								<button
-									class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150"
-									type="button"
-									on:click={() => (showAccessControlModal = true)}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5" />
-									{$i18n.t('Access')}
-								</button>
-							{/if}
-						</div>
 					</div>
 
 					<div class="flex items-center gap-2">

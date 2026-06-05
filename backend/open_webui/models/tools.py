@@ -28,6 +28,7 @@ class Tool(Base):
     specs = Column(JSONField)
     meta = Column(JSONField)
     valves = Column(JSONField)
+    category_id = Column(Text, nullable=True)
 
     updated_at = Column(BigInteger)
     created_at = Column(BigInteger)
@@ -45,6 +46,7 @@ class ToolModel(BaseModel):
     content: str
     specs: list[dict]
     meta: ToolMeta
+    category_id: Optional[str] = None
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
 
     updated_at: int  # timestamp in epoch
@@ -67,6 +69,7 @@ class ToolResponse(BaseModel):
     user_id: str
     name: str
     meta: ToolMeta
+    category_id: Optional[str] = None
     access_grants: list[AccessGrantModel] = Field(default_factory=list)
     updated_at: int  # timestamp in epoch
     created_at: int  # timestamp in epoch
@@ -87,6 +90,7 @@ class ToolForm(BaseModel):
     name: str
     content: str
     meta: ToolMeta
+    category_id: Optional[str] = None
     access_grants: Optional[list[dict]] = None
 
 
@@ -224,6 +228,78 @@ class ToolsTable:
                 db=db,
             )
         ]
+
+    def search_tools_by_category(
+        self,
+        user_id: str,
+        filter: dict,
+        skip: int = 0,
+        limit: int = 30,
+        db: Optional[Session] = None,
+    ):
+        """Search tools restricted to a specific category.
+
+        Access filtering is intentionally NOT applied here — callers must
+        verify the user has read permission on the parent category before
+        calling this method, because tool access is fully inherited from the
+        category.
+        """
+        from open_webui.models.users import User, UserModel
+
+        try:
+            with get_db_context(db) as db:
+                query = db.query(Tool, User).outerjoin(User, User.id == Tool.user_id)
+
+                category_id = filter.get("category_id")
+                if category_id:
+                    query = query.filter(Tool.category_id == category_id)
+
+                query_key = filter.get("query")
+                if query_key:
+                    query = query.filter(Tool.name.ilike(f"%{query_key}%"))
+
+                view_option = filter.get("view_option")
+                if view_option == "created":
+                    query = query.filter(Tool.user_id == user_id)
+                elif view_option == "shared":
+                    query = query.filter(Tool.user_id != user_id)
+
+                query = query.order_by(Tool.updated_at.desc())
+
+                total = query.count()
+                if skip:
+                    query = query.offset(skip)
+                if limit:
+                    query = query.limit(limit)
+
+                items = query.all()
+
+                tool_ids = [tool.id for tool, _ in items]
+                grants_map = AccessGrants.get_grants_by_resources("tool", tool_ids, db=db)
+
+                tools = []
+                for tool, user in items:
+                    tools.append(
+                        ToolUserResponse(
+                            **self._to_tool_model(
+                                tool,
+                                access_grants=grants_map.get(tool.id, []),
+                                db=db,
+                            ).model_dump(),
+                            user=(
+                                UserResponse(
+                                    **UserModel.model_validate(user).model_dump()
+                                )
+                                if user
+                                else None
+                            ),
+                        )
+                    )
+
+                return tools, total
+        except Exception as e:
+            log.exception(f"Error searching tools by category: {e}")
+            return [], 0
 
     def get_tool_valves_by_id(
         self, id: str, db: Optional[Session] = None

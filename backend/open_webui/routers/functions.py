@@ -105,7 +105,7 @@ async def load_function_from_url(
 
     url = str(form_data.url)
     if not url:
-        raise HTTPException(status_code=400, detail="Please enter a valid URL")
+        raise HTTPException(status_code=400, detail="请输入有效的 URL 地址。")
 
     url = github_url_to_raw_url(url)
     url_parts = url.rstrip("/").split("/")
@@ -129,12 +129,13 @@ async def load_function_from_url(
             ) as resp:
                 if resp.status != 200:
                     raise HTTPException(
-                        status_code=resp.status, detail="Failed to fetch the function"
+                        status_code=resp.status,
+                        detail="获取函数失败，请检查 URL 是否正确。",
                     )
                 data = await resp.text()
                 if not data:
                     raise HTTPException(
-                        status_code=400, detail="No data received from the URL"
+                        status_code=400, detail="未从该 URL 获取到任何数据。"
                     )
         return {
             "name": function_name,

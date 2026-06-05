@@ -13,6 +13,7 @@
 
 	let skill = null;
 	let disabled = false;
+	let backHref = '/workspace/skills';
 
 	$: skillId = $page.url.searchParams.get('id');
 
@@ -33,7 +34,7 @@
 				description: updatedSkill.description,
 				content: updatedSkill.content,
 				is_active: updatedSkill.is_active,
-				access_grants: updatedSkill?.access_grants === undefined ? [] : updatedSkill?.access_grants
+				category_id: updatedSkill.category_id ?? null
 			};
 		}
 	};
@@ -53,8 +54,11 @@
 					description: _skill.description,
 					content: _skill.content,
 					is_active: _skill.is_active,
-					access_grants: _skill?.access_grants === undefined ? [] : _skill?.access_grants
+					category_id: _skill.category_id ?? null
 				};
+				if (_skill.category_id) {
+					backHref = `/workspace/skills/categories/${_skill.category_id}`;
+				}
 			} else {
 				goto('/workspace/skills');
 			}
@@ -65,5 +69,5 @@
 </script>
 
 {#if skill}
-	<SkillEditor {skill} {onSubmit} {disabled} edit />
+	<SkillEditor {skill} {onSubmit} {disabled} {backHref} edit />
 {/if}

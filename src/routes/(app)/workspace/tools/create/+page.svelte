@@ -1,5 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { createNewTool, getTools } from '$lib/apis/tools';
 	import ToolkitEditor from '$lib/components/workspace/Tools/ToolkitEditor.svelte';
 	import { WEBUI_VERSION } from '$lib/constants';
@@ -13,13 +14,17 @@
 	let mounted = false;
 	let clone = false;
 	let tool = null;
+	let categoryId = null;
+	let backHref = '/workspace/tools';
 
 	const saveHandler = async (data) => {
-		console.log(data);
+		if (!data.category_id) {
+			toast.error($i18n.t('Please select a category first.'));
+			return;
+		}
 
 		const manifest = extractFrontmatter(data.content);
 		if (compareVersion(manifest?.required_open_webui_version ?? '0.0.0', WEBUI_VERSION)) {
-			console.log('Version is lower than required');
 			toast.error(
 				$i18n.t(
 					'Open WebUI version (v{{OPEN_WEBUI_VERSION}}) is lower than required version (v{{REQUIRED_VERSION}})',
@@ -37,7 +42,7 @@
 			name: data.name,
 			meta: data.meta,
 			content: data.content,
-			access_grants: data.access_grants
+			category_id: data.category_id
 		}).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -47,11 +52,21 @@
 			toast.success($i18n.t('Tool created successfully'));
 			tools.set(await getTools(localStorage.token));
 
-			await goto('/workspace/tools');
+			await goto(backHref);
 		}
 	};
 
 	onMount(() => {
+		categoryId = $page.url.searchParams.get('category_id');
+
+		if (!categoryId) {
+			toast.error($i18n.t('Please select a category first.'));
+			goto('/workspace/tools');
+			return;
+		}
+
+		backHref = `/workspace/tools/categories/${categoryId}`;
+
 		window.addEventListener('message', async (event) => {
 			if (
 				!['https://openwebui.com', 'https://www.openwebui.com', 'http://localhost:9999'].includes(
@@ -61,7 +76,6 @@
 				return;
 
 			tool = JSON.parse(event.data);
-			console.log(tool);
 		});
 
 		if (window.opener ?? false) {
@@ -71,8 +85,6 @@
 		if (sessionStorage.tool) {
 			tool = JSON.parse(sessionStorage.tool);
 			sessionStorage.removeItem('tool');
-
-			console.log(tool);
 			clone = true;
 		}
 
@@ -87,7 +99,8 @@
 			name={tool?.name ?? ''}
 			meta={tool?.meta ?? { description: '' }}
 			content={tool?.content ?? ''}
-			accessGrants={tool?.access_grants !== undefined ? tool.access_grants : []}
+			{categoryId}
+			{backHref}
 			{clone}
 			onSave={(value) => {
 				saveHandler(value);

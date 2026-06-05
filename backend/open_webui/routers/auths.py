@@ -323,7 +323,7 @@ async def ldap_auth(
 ):
     # Security checks FIRST - before loading any config
     if not request.app.state.config.ENABLE_LDAP:
-        raise HTTPException(400, detail="LDAP authentication is not enabled")
+        raise HTTPException(400, detail="LDAP 登录未启用，请联系管理员。")
 
     if not ENABLE_PASSWORD_AUTH:
         raise HTTPException(
@@ -361,7 +361,7 @@ async def ldap_auth(
         )
     except Exception as e:
         log.error(f"TLS configuration error: {str(e)}")
-        raise HTTPException(400, detail="Failed to configure TLS for LDAP connection.")
+        raise HTTPException(400, detail="LDAP 连接的 TLS 配置失败，请联系管理员检查证书设置。")
 
     try:
         server = Server(
@@ -379,7 +379,7 @@ async def ldap_auth(
             authentication="SIMPLE" if LDAP_APP_DN else "ANONYMOUS",
         )
         if not await asyncio.to_thread(connection_app.bind):
-            raise HTTPException(400, detail="Application account bind failed")
+            raise HTTPException(400, detail="LDAP 应用账号绑定失败，请联系管理员检查账号配置。")
 
         ENABLE_LDAP_GROUP_MANAGEMENT = (
             request.app.state.config.ENABLE_LDAP_GROUP_MANAGEMENT
@@ -406,7 +406,7 @@ async def ldap_auth(
             attributes=search_attributes,
         )
         if not search_success or not connection_app.entries:
-            raise HTTPException(400, detail="User not found in the LDAP server")
+            raise HTTPException(400, detail="LDAP 服务器中未找到该用户，请检查用户名是否正确。")
 
         entry = connection_app.entries[0]
         entry_username = entry[f"{LDAP_ATTRIBUTE_FOR_USERNAME}"].value
@@ -540,7 +540,7 @@ async def ldap_auth(
                 except Exception as err:
                     log.error(f"LDAP user creation error: {str(err)}")
                     raise HTTPException(
-                        500, detail="Internal error occurred during LDAP user creation."
+                        500, detail="创建 LDAP 用户时发生内部错误，请稍后重试。"
                     )
 
             user = Auths.authenticate_user_by_email(email, db=db)
@@ -570,7 +570,7 @@ async def ldap_auth(
             raise HTTPException(400, "User record mismatch.")
     except Exception as e:
         log.error(f"LDAP authentication error: {str(e)}")
-        raise HTTPException(400, detail="LDAP authentication failed.")
+        raise HTTPException(400, detail="LDAP 登录失败，请检查账号密码后重试。")
 
 
 ############################
@@ -794,7 +794,7 @@ async def signup(
         raise
     except Exception as err:
         log.error(f"Signup error: {str(err)}")
-        raise HTTPException(500, detail="An internal error occurred during signup.")
+        raise HTTPException(500, detail="注册过程中发生内部错误，请稍后重试。")
 
 
 @router.get("/signout")
@@ -859,7 +859,7 @@ async def signout(
                 log.error(f"OpenID signout error: {str(e)}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to sign out from the OpenID provider.",
+                    detail="从 OpenID 提供方退出登录失败，请稍后重试。",
                     headers=response.headers,
                 )
 
@@ -938,7 +938,7 @@ async def add_user(
     except Exception as err:
         log.error(f"Add user error: {str(err)}")
         raise HTTPException(
-            500, detail="An internal error occurred while adding the user."
+            500, detail="添加用户时发生内部错误，请稍后重试。"
         )
 
 
@@ -1291,7 +1291,7 @@ async def token_exchange(
     if not ENABLE_OAUTH_TOKEN_EXCHANGE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token exchange is disabled",
+            detail="令牌交换功能已被禁用，请联系管理员开启。",
         )
 
     provider = provider.lower()
@@ -1319,13 +1319,13 @@ async def token_exchange(
         if not user_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid token or unable to fetch user info",
+                detail="令牌无效或无法获取用户信息，请重新登录后重试。",
             )
     except Exception as e:
         log.warning(f"Token exchange failed for provider {provider}: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token or unable to validate with provider",
+            detail="令牌无效或无法通过提供方验证，请重新登录后重试。",
         )
 
     # Extract user information from the token claims
@@ -1341,7 +1341,7 @@ async def token_exchange(
         log.warning(f"Token exchange failed: sub claim missing from user data")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token missing required 'sub' claim",
+            detail="令牌缺少必要的 'sub' 字段，请联系管理员检查 OIDC 配置。",
         )
 
     email = user_data.get(email_claim, "")
@@ -1349,7 +1349,7 @@ async def token_exchange(
         log.warning(f"Token exchange failed: email claim missing from user data")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token missing required email claim",
+            detail="令牌缺少必要的邮箱字段，请联系管理员检查 OIDC 配置。",
         )
     email = email.lower()
 
@@ -1366,7 +1366,7 @@ async def token_exchange(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User not found. Please sign in via the web interface first.",
+            detail="未找到该用户，请先通过 Web 界面完成登录。",
         )
 
     return create_session_response(request, user, db)

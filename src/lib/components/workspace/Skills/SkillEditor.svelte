@@ -3,13 +3,10 @@
 
 	import { toast } from 'svelte-sonner';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
-	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import { user } from '$lib/stores';
 	import { slugify, parseFrontmatter, formatSkillName } from '$lib/utils';
 	import Spinner from '$lib/components/common/Spinner.svelte';
-	import { updateSkillAccessGrants } from '$lib/apis/skills';
 	import { goto } from '$app/navigation';
 
 	export let onSubmit: Function;
@@ -17,6 +14,8 @@
 	export let skill = null;
 	export let clone = false;
 	export let disabled = false;
+	export let categoryId: string | null = null;
+	export let backHref: string = '/workspace/skills';
 
 	const i18n = getContext('i18n');
 
@@ -27,19 +26,10 @@
 	let description = '';
 	let content = '';
 
-	let accessGrants = [];
-	let showAccessControlModal = false;
 	let hasManualEdit = false;
 	let hasManualName = false;
 	let hasManualDescription = false;
 	let isFrontmatterDetected = false;
-
-	// Only the resource owner or admin may modify access grants. A user with
-	// `write` permission can edit content but cannot change who has access.
-	$: canManageAccess =
-		!edit ||
-		$user?.role === 'admin' ||
-		(skill?.user_id && skill.user_id === $user?.id);
 
 	let contentLineCount = 1;
 	$: contentLineCount = content ? content.split('\n').length : 1;
@@ -95,7 +85,7 @@
 				content,
 				is_active: true,
 				meta: { tags: [] },
-				access_grants: accessGrants
+				category_id: categoryId ?? skill?.category_id ?? null
 			});
 		} finally {
 			loading = false;
@@ -109,7 +99,6 @@
 			id = skill.id || '';
 			description = skill.description || '';
 			content = skill.content || '';
-			accessGrants = skill?.access_grants === undefined ? [] : skill?.access_grants;
 
 			if (name) hasManualName = true;
 			if (description) hasManualDescription = true;
@@ -117,25 +106,6 @@
 		}
 	});
 </script>
-
-<AccessControlModal
-	bind:show={showAccessControlModal}
-	bind:accessGrants
-	accessRoles={['read', 'write']}
-	share={$user?.permissions?.sharing?.skills || $user?.role === 'admin'}
-	sharePublic={$user?.permissions?.sharing?.public_skills || $user?.role === 'admin'}
-	shareUsers={($user?.permissions?.access_grants?.allow_users ?? true) || $user?.role === 'admin'}
-	onChange={async () => {
-		if (edit && skill?.id) {
-			try {
-				await updateSkillAccessGrants(localStorage.token, skill.id, accessGrants);
-				toast.success($i18n.t('Saved'));
-			} catch (error) {
-				toast.error(`${error}`);
-			}
-		}
-	}}
-/>
 
 <div class="flex flex-col justify-between w-full overflow-y-auto h-full">
 	<div class="mx-auto w-full md:px-0 h-full">
@@ -149,7 +119,7 @@
 								class="shrink-0 p-1.5 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-150"
 								aria-label={$i18n.t('Back')}
 								on:click={() => {
-									goto('/workspace/skills');
+									goto(backHref);
 								}}
 								type="button"
 							>
@@ -173,18 +143,7 @@
 						</div>
 
 						<div class="shrink-0 flex items-center gap-2">
-							{#if !disabled}
-								{#if canManageAccess}
-									<button
-										class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150"
-										type="button"
-										on:click={() => (showAccessControlModal = true)}
-									>
-										<LockClosed strokeWidth="2.5" className="size-3.5" />
-										{$i18n.t('Access')}
-									</button>
-								{/if}
-							{:else}
+							{#if disabled}
 								<span
 									class="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 px-2.5 py-1 rounded-lg"
 								>

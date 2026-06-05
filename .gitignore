@@ -333,5 +333,6 @@ _tmp_template_inspect/
 render_*.docx
 
 # 本地报告生成脚本 & docx 模板（不属于 openwebui 主仓，仅本地使用）
-tools/
-weather_templates/
+# 注意：仅匹配仓库根目录下的 tools/，避免误伤前端 src/.../Tools 等业务源码目录
+/tools/
+/weather_templates/

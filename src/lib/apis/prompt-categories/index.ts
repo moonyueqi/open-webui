@@ -184,12 +184,16 @@ export const updatePromptCategoryAccessGrants = async (
 export const getPromptsByCategoryId = async (
 	token: string,
 	id: string,
-	page: number | null = null
+	page: number | null = null,
+	query: string = '',
+	viewOption: string = ''
 ) => {
 	let error = null;
 
 	const searchParams = new URLSearchParams();
 	if (page) searchParams.append('page', page.toString());
+	if (query) searchParams.append('query', query);
+	if (viewOption) searchParams.append('view_option', viewOption);
 
 	const res = await fetch(
 		`${WEBUI_API_BASE_URL}/prompt-categories/${id}/prompts?${searchParams.toString()}`,

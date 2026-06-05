@@ -258,37 +258,19 @@
 										}
 									}}
 								>
-									<div class="flex items-start gap-3 w-full">
+									<div class="flex items-start gap-3 flex-1 min-w-0">
 										<div class="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 shrink-0 mt-0.5 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/20 transition-colors">
 											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 text-emerald-600 dark:text-emerald-400">
 												<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
 											</svg>
 										</div>
 										<div class="flex-1 min-w-0">
-											<div class="flex items-center justify-between">
-												<div class="flex items-center gap-2 min-w-0">
-												<Tooltip content={item?.description ?? item.name}>
+											<div class="flex items-center justify-between gap-2 mb-1">
+												<Tooltip content={item?.description ?? item.name} placement="top-start">
 													<div class="text-sm font-semibold line-clamp-1 capitalize">{item.name}</div>
 												</Tooltip>
-													{#if !item?.write_access}
-														<Badge type="muted" content={$i18n.t('Read Only')} />
-													{/if}
-												</div>
-
-												{#if item?.write_access || $user?.role === 'admin'}
-													<div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-														<ItemMenu
-															onExport={$user.role === 'admin'
-																? () => {
-																		exportHandler(item);
-																	}
-																: null}
-															on:delete={() => {
-																selectedItem = item;
-																showDeleteConfirm = true;
-															}}
-														/>
-													</div>
+												{#if !item?.write_access}
+													<Badge type="muted" content={$i18n.t('Read Only')} />
 												{/if}
 											</div>
 
@@ -317,6 +299,21 @@
 											</div>
 										</div>
 									</div>
+									{#if item?.write_access || $user?.role === 'admin'}
+										<div class="flex flex-row gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity">
+											<ItemMenu
+												onExport={$user.role === 'admin'
+													? () => {
+															exportHandler(item);
+														}
+													: null}
+												on:delete={() => {
+													selectedItem = item;
+													showDeleteConfirm = true;
+												}}
+											/>
+										</div>
+									{/if}
 								</button>
 							{/each}
 						</div>
