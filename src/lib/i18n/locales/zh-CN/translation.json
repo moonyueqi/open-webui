@@ -1229,6 +1229,7 @@
 	"MCP Servers": "MCP 服务器",
 	"MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.": "MCP 支持仍处于实验阶段，因其规范变化频繁，可能会出现不兼容的情况。而 OpenAPI 规范由 Open WebUI 团队维护，在兼容性方面更加可靠。",
 	"Connected MCP servers": "已连接的 MCP 服务器",
+	"Connected OpenAPI / MCP tool servers": "已连接的工具服务器",
 	"Medium": "中",
 	"Member removed successfully": "成员移除成功",
 	"members": "成员",
