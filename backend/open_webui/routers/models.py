@@ -278,7 +278,7 @@ async def import_models(
                         )
             return True
         else:
-            raise HTTPException(status_code=400, detail="Invalid JSON format")
+            raise HTTPException(status_code=400, detail="JSON 格式无效，请检查输入内容。")
     except Exception as e:
         log.exception(e)
         raise HTTPException(status_code=500, detail=str(e))

@@ -13,13 +13,11 @@
 	const i18n = getContext('i18n');
 
 	let tool = null;
+	let backHref = '/workspace/tools';
 
 	const saveHandler = async (data) => {
-		console.log(data);
-
 		const manifest = extractFrontmatter(data.content);
 		if (compareVersion(manifest?.required_open_webui_version ?? '0.0.0', WEBUI_VERSION)) {
-			console.log('Version is lower than required');
 			toast.error(
 				$i18n.t(
 					'Open WebUI version (v{{OPEN_WEBUI_VERSION}}) is lower than required version (v{{REQUIRED_VERSION}})',
@@ -37,7 +35,7 @@
 			name: data.name,
 			meta: data.meta,
 			content: data.content,
-			access_grants: data.access_grants
+			category_id: data.category_id ?? tool.category_id ?? null
 		}).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -46,13 +44,10 @@
 		if (res) {
 			toast.success($i18n.t('Tool updated successfully'));
 			tools.set(await getTools(localStorage.token));
-
-			// await goto('/workspace/tools');
 		}
 	};
 
 	onMount(async () => {
-		console.log('mounted');
 		const id = $page.url.searchParams.get('id');
 
 		if (id) {
@@ -70,7 +65,9 @@
 
 			if (res) {
 				tool = res;
-				console.log(tool);
+				if (res.category_id) {
+					backHref = `/workspace/tools/categories/${res.category_id}`;
+				}
 			}
 		}
 	});
@@ -83,8 +80,9 @@
 		name={tool.name}
 		meta={tool.meta}
 		content={tool.content}
-		accessGrants={tool.access_grants ?? []}
 		ownerId={tool.user_id}
+		categoryId={tool.category_id ?? null}
+		{backHref}
 		onSave={(value) => {
 			saveHandler(value);
 		}}

@@ -625,7 +625,7 @@ async def delete_prompt_history_entry(
     if prompt.version_id == history_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete the active production version",
+            detail="无法删除当前正在使用的生产版本。",
         )
 
     success = PromptHistories.delete_history_entry(history_id, db=db)
@@ -665,7 +665,7 @@ async def get_prompt_diff(
     if not diff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="One or both history entries not found",
+            detail="未找到对应的历史记录。",
         )
 
     return diff

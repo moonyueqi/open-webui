@@ -116,11 +116,25 @@ class ERROR_MESSAGES(str, Enum):
     EMBEDDING_MODEL_UNAVAILABLE = (
         "嵌入模型暂时不可用，请联系管理员检查 API 配置。"
     )
+    EMBEDDING_NOT_CONFIGURED = (
+        "嵌入模型尚未配置或调用失败，请联系管理员检查嵌入模型设置和 API 连通性。"
+    )
+    EMBEDDING_COUNT_MISMATCH = (
+        lambda got=0, expected=0: f"嵌入向量数量不一致（实际 {got}，预期 {expected}），部分批次调用可能失败，请联系管理员查看日志。"
+    )
     RERANKING_MODEL_UNAVAILABLE = (
         "重排序模型暂时不可用，请联系管理员检查 API 配置。"
     )
     RAG_RETRIEVAL_FAILED = (
         "知识库检索失败，请联系管理员检查嵌入模型 API 配置。"
+    )
+    INVALID_TEXT_SPLITTER = "文本切分方式无效，请联系管理员检查知识库切分配置。"
+    VECTOR_DB_SAVE_FAILED = "保存到向量数据库失败，请稍后重试或联系管理员。"
+
+    # ===== 联网搜索 =====
+    WEB_SEARCH_NO_RESULTS = "未在网络搜索中找到相关结果，请尝试更换关键词后重试。"
+    WEB_SEARCH_KEY_MISSING = (
+        lambda engine="": f"未配置{(' ' + engine) if engine else ''}搜索引擎所需的密钥或地址，请联系管理员完善配置。"
     )
 
     # ===== 语音模型（STT / TTS）=====

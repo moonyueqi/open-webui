@@ -25,6 +25,7 @@
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
+	import ViewSelector from '../common/ViewSelector.svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
 	import Plus from '../../icons/Plus.svelte';
 	import XMark from '../../icons/XMark.svelte';
@@ -61,6 +62,8 @@
 	let editDescription = '';
 	let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
+	let viewOption = '';
+
 	const loadCategory = async () => {
 		const res = await getPromptCategoryById(localStorage.token, id).catch((e) => {
 			toast.error(`${e}`);
@@ -81,12 +84,16 @@
 
 	const loadPrompts = async () => {
 		loading = true;
-		const res = await getPromptsByCategoryId(localStorage.token, id, promptsPage).catch(
-			(error) => {
-				toast.error(`${error}`);
-				return null;
-			}
-		);
+		const res = await getPromptsByCategoryId(
+			localStorage.token,
+			id,
+			promptsPage,
+			'',
+			viewOption
+		).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
 
 		if (res) {
 			prompts = res.items;
@@ -94,6 +101,11 @@
 		}
 		loading = false;
 	};
+
+	$: if (id && viewOption !== undefined) {
+		promptsPage = 1;
+		loadPrompts();
+	}
 
 	$: if (promptsPage && id) {
 		loadPrompts();
@@ -497,7 +509,7 @@
 				</div>
 
 				<div class="flex items-center gap-2 shrink-0">
-					{#if category.write_access}
+					{#if category.user_id === $user?.id || $user?.role === 'admin'}
 						<button
 							class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2.5 py-1 rounded-full flex gap-1.5 items-center text-sm border border-gray-100 dark:border-gray-800"
 							on:click={() => (showAccessControlModal = true)}
@@ -536,6 +548,22 @@
 		<div
 			class="py-2.5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm min-h-0 flex flex-col overflow-hidden flex-1"
 		>
+			<div
+				class="px-3.5 pt-1.5 flex w-full bg-transparent overflow-x-auto scrollbar-none shrink-0"
+				on:wheel={(e) => {
+					if (e.deltaY !== 0) {
+						e.preventDefault();
+						e.currentTarget.scrollLeft += e.deltaY;
+					}
+				}}
+			>
+				<div
+					class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1 whitespace-nowrap"
+				>
+					<ViewSelector bind:value={viewOption} />
+				</div>
+			</div>
+
 			{#if prompts === null || loading}
 				<div class="w-full flex justify-center items-center py-16 flex-1">
 					<Spinner className="size-5" />
@@ -546,7 +574,7 @@
 						{#each prompts as prompt (prompt.id)}
 							<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 							<div
-								class="group flex text-left w-full px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm cursor-pointer"
+								class="group flex text-left w-full px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm cursor-pointer"
 								on:click={() => openEditPromptModal(prompt)}
 							>
 								<div class="flex items-start gap-3 flex-1 min-w-0">
@@ -569,18 +597,18 @@
 										</svg>
 									</div>
 									<div class="flex-1 min-w-0">
-										<div class="flex items-center justify-between w-full mb-1">
+										<div class="flex items-center justify-between w-full">
 											<div class="font-semibold text-sm line-clamp-1 capitalize">
 												{prompt.name}
 											</div>
 										</div>
 										{#if prompt.content}
-											<div class="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mb-1.5">
+											<div class="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
 												{prompt.content}
 											</div>
 										{/if}
 										<div
-											class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500"
+											class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5"
 										>
 										<Tooltip
 											content={prompt?.user?.email ?? $i18n.t('Deleted User')}

@@ -611,7 +611,7 @@ async def update_user_by_id(
         log.error(f"Error checking primary admin status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not verify primary admin status.",
+            detail="无法验证主管理员身份。",
         )
 
     user = Users.get_user_by_id(user_id, db=db)
@@ -681,7 +681,7 @@ async def delete_user_by_id(
         log.error(f"Error checking primary admin status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not verify primary admin status.",
+            detail="无法验证主管理员身份。",
         )
 
     if user.id != user_id:

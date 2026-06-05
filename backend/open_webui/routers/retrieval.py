@@ -1545,7 +1545,7 @@ def save_docs_to_vector_db(
             )
             docs = text_splitter.split_documents(docs)
         else:
-            raise ValueError(ERROR_MESSAGES.DEFAULT("Invalid text splitter"))
+            raise ValueError(ERROR_MESSAGES.INVALID_TEXT_SPLITTER)
 
     if len(docs) == 0:
         raise ValueError(ERROR_MESSAGES.EMPTY_CONTENT)
@@ -1625,15 +1625,13 @@ def save_docs_to_vector_db(
         log.info(f"embeddings generated {len(embeddings)} for {len(texts)} items")
 
         if not embeddings:
-            raise ValueError(
-                "Embedding generation failed: received empty embeddings from the embedding API. "
-                "Please check your embedding model configuration and API connectivity."
-            )
+            raise ValueError(ERROR_MESSAGES.EMBEDDING_NOT_CONFIGURED)
 
         if len(embeddings) != len(texts):
             raise ValueError(
-                f"Embedding count mismatch: got {len(embeddings)} embeddings for {len(texts)} texts. "
-                "Some embedding batches may have failed. Check your embedding API logs."
+                ERROR_MESSAGES.EMBEDDING_COUNT_MISMATCH(
+                    got=len(embeddings), expected=len(texts)
+                )
             )
 
         items = [
@@ -1884,7 +1882,7 @@ def process_file(
                                 "content": text_content,
                             }
                     else:
-                        raise Exception("Error saving document to vector database")
+                        raise Exception(ERROR_MESSAGES.VECTOR_DB_SAVE_FAILED)
                 except Exception as e:
                     raise e
 
@@ -2065,7 +2063,7 @@ def search_web(
                 user,
             )
         else:
-            raise Exception("No PERPLEXITY_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Perplexity"))
     elif engine == "searxng":
         if request.app.state.config.SEARXNG_QUERY_URL:
             searxng_kwargs = {"language": request.app.state.config.SEARXNG_LANGUAGE}
@@ -2077,7 +2075,7 @@ def search_web(
                 **searxng_kwargs,
             )
         else:
-            raise Exception("No SEARXNG_QUERY_URL found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("SearXNG"))
     elif engine == "yacy":
         if request.app.state.config.YACY_QUERY_URL:
             return search_yacy(
@@ -2089,7 +2087,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No YACY_QUERY_URL found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("YaCy"))
     elif engine == "google_pse":
         if (
             request.app.state.config.GOOGLE_PSE_API_KEY
@@ -2104,9 +2102,7 @@ def search_web(
                 referer=request.app.state.config.WEBUI_URL,
             )
         else:
-            raise Exception(
-                "No GOOGLE_PSE_API_KEY or GOOGLE_PSE_ENGINE_ID found in environment variables"
-            )
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Google PSE"))
     elif engine == "brave":
         if request.app.state.config.BRAVE_SEARCH_API_KEY:
             return search_brave(
@@ -2116,7 +2112,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No BRAVE_SEARCH_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Brave"))
     elif engine == "kagi":
         if request.app.state.config.KAGI_SEARCH_API_KEY:
             return search_kagi(
@@ -2126,7 +2122,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No KAGI_SEARCH_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Kagi"))
     elif engine == "mojeek":
         if request.app.state.config.MOJEEK_SEARCH_API_KEY:
             return search_mojeek(
@@ -2136,7 +2132,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No MOJEEK_SEARCH_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Mojeek"))
     elif engine == "bocha":
         if request.app.state.config.BOCHA_SEARCH_API_KEY:
             return search_bocha(
@@ -2146,7 +2142,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No BOCHA_SEARCH_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("博查"))
     elif engine == "serpstack":
         if request.app.state.config.SERPSTACK_API_KEY:
             return search_serpstack(
@@ -2157,7 +2153,7 @@ def search_web(
                 https_enabled=request.app.state.config.SERPSTACK_HTTPS,
             )
         else:
-            raise Exception("No SERPSTACK_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Serpstack"))
     elif engine == "serper":
         if request.app.state.config.SERPER_API_KEY:
             return search_serper(
@@ -2167,7 +2163,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SERPER_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Serper"))
     elif engine == "serply":
         if request.app.state.config.SERPLY_API_KEY:
             return search_serply(
@@ -2177,7 +2173,7 @@ def search_web(
                 filter_list=request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SERPLY_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Serply"))
     elif engine == "duckduckgo":
         return search_duckduckgo(
             query,
@@ -2195,7 +2191,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No TAVILY_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Tavily"))
     elif engine == "exa":
         if request.app.state.config.EXA_API_KEY:
             return search_exa(
@@ -2205,7 +2201,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No EXA_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Exa"))
     elif engine == "searchapi":
         if request.app.state.config.SEARCHAPI_API_KEY:
             return search_searchapi(
@@ -2216,7 +2212,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SEARCHAPI_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("SearchAPI"))
     elif engine == "serpapi":
         if request.app.state.config.SERPAPI_API_KEY:
             return search_serpapi(
@@ -2227,7 +2223,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SERPAPI_API_KEY found in environment variables")
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("SerpApi"))
     elif engine == "jina":
         return search_jina(
             request.app.state.config.JINA_API_KEY,
@@ -2259,9 +2255,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception(
-                "AZURE_AI_SEARCH_API_KEY, AZURE_AI_SEARCH_ENDPOINT, and AZURE_AI_SEARCH_INDEX_NAME are required for Azure AI Search"
-            )
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("Azure AI Search"))
     elif engine == "exa":
         return search_exa(
             request.app.state.config.EXA_API_KEY,
@@ -2291,9 +2285,7 @@ def search_web(
                 request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception(
-                "No SOUGOU_API_SID or SOUGOU_API_SK found in environment variables"
-            )
+            raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING("搜狗"))
     elif engine == "firecrawl":
         return search_firecrawl(
             request.app.state.config.FIRECRAWL_API_BASE_URL,
@@ -2331,7 +2323,7 @@ def search_web(
             request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
         )
     else:
-        raise Exception("No search engine API key found in environment variables")
+        raise Exception(ERROR_MESSAGES.WEB_SEARCH_KEY_MISSING())
 
 
 @router.post("/process/web/search")
@@ -2412,7 +2404,7 @@ async def process_web_search(
     if len(urls) == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=ERROR_MESSAGES.DEFAULT("No results found from web search"),
+            detail=ERROR_MESSAGES.WEB_SEARCH_NO_RESULTS,
         )
 
     try:

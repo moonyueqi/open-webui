@@ -385,7 +385,7 @@ async def search_files(
     if not files:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No files found matching the pattern.",
+            detail="未找到匹配该规则的文件。",
         )
 
     if not content:

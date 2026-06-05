@@ -142,7 +142,7 @@ def check_channels_access(request: Request, user: Optional[UserModel] = None):
     if not request.app.state.config.ENABLE_CHANNELS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Channels are not enabled",
+            detail="频道功能未启用，请联系管理员开启。",
         )
 
     if user:
@@ -2069,7 +2069,7 @@ async def post_webhook_message(
     if not webhook:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook URL",
+            detail="无效的 Webhook 地址。",
         )
 
     channel = Channels.get_channel_by_id(webhook.channel_id, db=db)
@@ -2089,7 +2089,7 @@ async def post_webhook_message(
     if not message:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to create message",
+            detail="消息创建失败，请稍后重试。",
         )
 
     # Update last_used_at

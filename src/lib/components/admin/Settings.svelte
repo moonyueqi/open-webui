@@ -21,6 +21,7 @@
 	import Evaluations from './Settings/Evaluations.svelte';
 	import CodeExecution from './Settings/CodeExecution.svelte';
 	import Integrations from './Settings/Integrations.svelte';
+	import Common from './Settings/Common.svelte';
 
 	import ChartBar from '../icons/ChartBar.svelte';
 	import DocumentChartBar from '../icons/DocumentChartBar.svelte';
@@ -34,7 +35,7 @@
 		const pathParts = $page.url.pathname.split('/');
 		const tabFromPath = pathParts[pathParts.length - 1];
 		selectedTab = [
-			// 'general',
+			'general',
 			'connections',
 			// 'models', // Models tab hidden — per-model access control is bypassed via BYPASS_MODEL_ACCESS_CONTROL
 			'evaluations',
@@ -49,7 +50,7 @@
 			// 'db' // Database tab hidden
 		].includes(tabFromPath)
 			? tabFromPath
-			: 'connections';
+			: 'general';
 	}
 
 	$: if (selectedTab) {
@@ -67,29 +68,12 @@
 	let filteredSettings = [];
 
 	const allSettings = [
-		// {
-		// 	id: 'general',
-		// 	title: 'General',
-		// 	route: '/admin/settings/general',
-		// 	keywords: [
-		// 		'general',
-		// 		'admin',
-		// 		'settings',
-		// 		'version',
-		// 		'update',
-		// 		'language',
-		// 		'theme',
-		// 		'data',
-		// 		'users',
-		// 		'roles',
-		// 		'ldap',
-		// 		'authentication',
-		// 		'reverse proxy',
-		// 		'webhook',
-		// 		'community',
-		// 		'channels'
-		// 	]
-		// },
+		{
+			id: 'general',
+			title: 'General',
+			route: '/admin/settings/general',
+			keywords: ['general', 'signup', 'sign up', 'registration']
+		},
 		{
 			id: 'connections',
 			title: 'API Connections',
@@ -489,9 +473,8 @@
 	<div
 		class="flex-1 mt-1 lg:mt-0 overflow-y-scroll scrollbar-hidden"
 	>
-		<!-- General tab hidden
 		{#if selectedTab === 'general'}
-			<General
+			<Common
 				saveHandler={async () => {
 					toast.success($i18n.t('Settings saved successfully!'));
 
@@ -499,8 +482,7 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'connections'} -->
-		{#if selectedTab === 'connections'}
+		{:else if selectedTab === 'connections'}
 			<Connections
 				on:save={() => {
 					toast.success($i18n.t('Settings saved successfully!'));

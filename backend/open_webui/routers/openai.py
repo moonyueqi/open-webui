@@ -559,7 +559,7 @@ async def get_models(
     request: Request, url_idx: Optional[int] = None, user=Depends(get_verified_user)
 ):
     if not request.app.state.config.ENABLE_OPENAI_API:
-        raise HTTPException(status_code=503, detail="OpenAI API is disabled")
+        raise HTTPException(status_code=503, detail="OpenAI API 已被禁用，请联系管理员开启。")
 
     models = {
         "data": [],
@@ -636,7 +636,7 @@ async def get_models(
                 # ClientError covers all aiohttp requests issues
                 log.exception(f"Client error: {str(e)}")
                 raise HTTPException(
-                    status_code=500, detail="Open WebUI: Server Connection Error"
+                    status_code=500, detail="服务器连接异常，请稍后重试或联系管理员。"
                 )
             except Exception as e:
                 log.exception(f"Unexpected error: {e}")
@@ -709,7 +709,7 @@ async def verify_connection(
                 result = await get_anthropic_models(url, key)
                 if result is None:
                     raise HTTPException(
-                        status_code=500, detail="Failed to connect to Anthropic API"
+                        status_code=500, detail="连接 Anthropic API 失败，请检查配置或网络。"
                     )
                 if "error" in result:
                     raise HTTPException(status_code=500, detail=result["error"])
@@ -750,7 +750,7 @@ async def verify_connection(
         except Exception as e:
             log.exception(f"Unexpected error: {e}")
             raise HTTPException(
-                status_code=500, detail="Open WebUI: Server Connection Error"
+                status_code=500, detail="服务器连接异常，请稍后重试或联系管理员。"
             )
 
 
@@ -996,13 +996,13 @@ async def generate_chat_completion(
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail="Model not found",
+                    detail="未找到该模型，请检查模型 ID 是否正确。",
                 )
     elif not bypass_filter:
         if user.role != "admin":
             raise HTTPException(
                 status_code=403,
-                detail="Model not found",
+                detail="未找到该模型，请检查模型 ID 是否正确。",
             )
 
     # Check if model is already in app state cache to avoid expensive get_all_models() call
@@ -1017,7 +1017,7 @@ async def generate_chat_completion(
     else:
         raise HTTPException(
             status_code=404,
-            detail="Model not found",
+            detail="未找到该模型，请检查模型 ID 是否正确。",
         )
 
     # Get the API config for the model
@@ -1144,7 +1144,7 @@ async def generate_chat_completion(
 
         raise HTTPException(
             status_code=r.status if r else 500,
-            detail="Open WebUI: Server Connection Error",
+            detail="服务器连接异常，请稍后重试或联系管理员。",
         )
     finally:
         if not streaming:
@@ -1229,7 +1229,7 @@ async def embeddings(request: Request, form_data: dict, user):
         log.exception(e)
         raise HTTPException(
             status_code=r.status if r else 500,
-            detail="Open WebUI: Server Connection Error",
+            detail="服务器连接异常，请稍后重试或联系管理员。",
         )
     finally:
         if not streaming:
@@ -1352,7 +1352,7 @@ async def responses(
         log.exception(e)
         raise HTTPException(
             status_code=r.status if r else 500,
-            detail="Open WebUI: Server Connection Error",
+            detail="服务器连接异常，请稍后重试或联系管理员。",
         )
     finally:
         if not streaming:
@@ -1462,7 +1462,7 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
         log.exception(e)
         raise HTTPException(
             status_code=r.status if r else 500,
-            detail="Open WebUI: Server Connection Error",
+            detail="服务器连接异常，请稍后重试或联系管理员。",
         )
     finally:
         if not streaming:

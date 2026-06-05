@@ -65,7 +65,7 @@ async def execute_code(
     else:
         raise HTTPException(
             status_code=400,
-            detail="Code execution engine not supported",
+            detail="不支持的代码执行引擎，请联系管理员检查配置。",
         )
 
 
