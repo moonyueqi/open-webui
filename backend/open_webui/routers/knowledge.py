@@ -33,6 +33,7 @@ from open_webui.storage.provider import Storage
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.auth import get_verified_user, get_admin_user
 from open_webui.utils.access_control import require_permission, filter_allowed_access_grants
+from open_webui.utils.access_control.files import has_access_to_file
 from open_webui.models.access_grants import AccessGrants
 
 
@@ -498,8 +499,12 @@ async def update_knowledge_by_id(
         )
 
     if form_data.name != knowledge.name:
+        # Check name collision in the operator's own namespace, not the
+        # original creator's. Otherwise a write collaborator renaming a
+        # shared knowledge base would be checked against the owner's
+        # knowledge bases instead of their own.
         existing = Knowledges.get_knowledge_by_user_id_and_name(
-            knowledge.user_id, form_data.name
+            user.id, form_data.name
         )
         if existing and existing.id != id:
             raise HTTPException(
@@ -701,6 +706,20 @@ def add_file_to_knowledge_by_id(
             detail=ERROR_MESSAGES.FILE_NOT_PROCESSED,
         )
 
+    # Verify the user can read this file before attaching it. Without this
+    # check, a write-collaborator on the knowledge base could attach any
+    # arbitrary file_id (e.g. someone else's private file) and indirectly
+    # leak its content through this knowledge base.
+    if (
+        user.role != "admin"
+        and file.user_id != user.id
+        and not has_access_to_file(file.id, "read", user, db=db)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
+
     # Add content to the vector database
     try:
         process_file(
@@ -777,6 +796,19 @@ def update_file_from_knowledge_by_id(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    # Verify the user can read this file. The file may have been attached
+    # by someone else; we should not let a knowledge-base collaborator
+    # re-process a file they have no rights to.
+    if (
+        user.role != "admin"
+        and file.user_id != user.id
+        and not has_access_to_file(file.id, "read", user, db=db)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
     # Remove content from the vector database

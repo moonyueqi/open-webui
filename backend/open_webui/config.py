@@ -1816,6 +1816,7 @@ def validate_cors_origin(origin):
 # 注意：之前为本地调试硬编码成 ["http://localhost:5173", "http://localhost:8080"]
 # 会导致部署到非 localhost 时 Socket.IO 报 "is not an accepted origin"。
 # 现已恢复为读取环境变量，.env 里 CORS_ALLOW_ORIGIN=* 即可放行内网任意来源。
+# CORS_ALLOW_ORIGIN = ["http://localhost:5173", "http://localhost:8080"]
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*").split(";")
 
 # Allows custom URL schemes (e.g., app://) to be used as origins for CORS.

@@ -20,7 +20,8 @@
 
 	const i18n = getContext('i18n');
 
-	const MCP_GROUP_ID = '__mcp_servers__';
+	// 工具服务器未分类时的兜底分组 ID（仅本组件内使用）
+	const UNCATEGORIZED_SERVERS_GROUP_ID = '__uncategorized_servers__';
 
 	export let selectedToolIds: string[] = [];
 
@@ -86,6 +87,7 @@
 						name: server?.info?.title ?? server.url,
 						description: server.info.description ?? '',
 						enabled: selectedToolIds.includes(id),
+						category_id: server?.category_id ?? null,
 						__is_mcp: true
 					};
 				}
@@ -105,27 +107,34 @@
 		if (!tools) return [] as { id: string; name: string; description?: string; items: any[] }[];
 
 		const byCategory: Record<string, any[]> = {};
-		const serverTools: any[] = [];
+		// 工具服务器（OpenAPI/MCP 或用户直连）如果没有设置分类，
+		// 统一放进兜底分组，避免在 UI 上消失。
+		const uncategorizedServers: any[] = [];
+
+		const isServerTool = (id: string, t: any) =>
+			t?.__is_mcp || id.startsWith('server:') || id.startsWith('direct_server:');
 
 		for (const id of Object.keys(tools)) {
 			const t = tools[id];
-			// 工具服务器（管理员"扩展功能"配置的 OpenAPI/MCP 服务器，以及用户在
-			// 个人设置里直连的工具服务器）独立成组，不参与按分类的分组。
-			if (t?.__is_mcp || id.startsWith('server:') || id.startsWith('direct_server:')) {
-				serverTools.push({ id, ...t });
+			const cid = t?.category_id;
+
+			if (cid) {
+				if (!byCategory[cid]) byCategory[cid] = [];
+				byCategory[cid].push({ id, ...t });
 				continue;
 			}
-			const cid = t?.category_id;
-			if (!cid) continue; // 未分类不显示
-			if (!byCategory[cid]) byCategory[cid] = [];
-			byCategory[cid].push({ id, ...t });
+
+			if (isServerTool(id, t)) {
+				uncategorizedServers.push({ id, ...t });
+			}
+			// 本地工具未分类时按既有逻辑不显示（强制工作空间侧选分类）。
 		}
 
 		const groups: { id: string; name: string; description?: string; items: any[] }[] = [];
 
 		for (const cat of categories) {
 			const items = byCategory[cat.id] ?? [];
-			if (items.length === 0) continue; // 空分类不显示
+			if (items.length === 0) continue;
 			groups.push({
 				id: cat.id,
 				name: cat.name,
@@ -134,12 +143,14 @@
 			});
 		}
 
-		if (serverTools.length > 0) {
+		if (uncategorizedServers.length > 0) {
 			groups.push({
-				id: MCP_GROUP_ID,
-				name: $i18n.t('Tool Servers'),
-				description: $i18n.t('Connected OpenAPI / MCP tool servers'),
-				items: serverTools
+				id: UNCATEGORIZED_SERVERS_GROUP_ID,
+				name: $i18n.t('Uncategorized tool servers'),
+				description: $i18n.t(
+					'Tool servers without a category. Configure a category in the connection settings to group them.'
+				),
+				items: uncategorizedServers
 			});
 		}
 

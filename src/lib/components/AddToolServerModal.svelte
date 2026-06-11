@@ -15,8 +15,7 @@
 	import Switch from '$lib/components/common/Switch.svelte';
 	import { getToolServerData } from '$lib/apis';
 	import { verifyToolServerConnection, registerOAuthClient } from '$lib/apis/configs';
-	import AccessControlModal from '$lib/components/workspace/common/AccessControlModal.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
+	import { getToolCategories } from '$lib/apis/tool-categories';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import Textarea from './common/Textarea.svelte';
@@ -45,7 +44,9 @@
 	let headers = '';
 
 	let functionNameFilterList = '';
-	let accessGrants = [];
+
+	let categoryId = '';
+	let categories: any[] = [];
 
 	let id = '';
 	let name = '';
@@ -57,7 +58,6 @@
 	let loading = false;
 	let verifying = false;
 	let showAdvanced = false;
-	let showAccessControlModal = false;
 
 	const registerOAuthClientHandler = async () => {
 		if (url === '') {
@@ -150,8 +150,7 @@
 					headers: headers ? JSON.parse(headers) : undefined,
 					key,
 					config: {
-						enable: enable,
-						access_grants: accessGrants
+						enable: enable
 					},
 					info: {
 						id,
@@ -210,7 +209,7 @@
 
 				if (data.config) {
 					enable = data.config.enable ?? true;
-					accessGrants = data.config.access_grants ?? [];
+					categoryId = data.config.category_id ?? '';
 				}
 
 				toast.success($i18n.t('Import successful'));
@@ -311,7 +310,7 @@
 			config: {
 				enable: enable,
 				function_name_filter_list: functionNameFilterList,
-				access_grants: accessGrants
+				category_id: categoryId || null
 			},
 			info: {
 				id: id,
@@ -345,7 +344,7 @@
 
 		enable = true;
 		functionNameFilterList = '';
-		accessGrants = [];
+		categoryId = '';
 	};
 
 	const init = () => {
@@ -369,16 +368,29 @@
 
 			enable = connection.config?.enable ?? true;
 			functionNameFilterList = connection.config?.function_name_filter_list ?? '';
-			accessGrants = connection.config?.access_grants ?? [];
+			categoryId = connection.config?.category_id ?? '';
+		}
+	};
+
+	const loadCategories = async () => {
+		try {
+			const res = await getToolCategories(localStorage.token).catch(() => null);
+			if (res?.items) {
+				categories = res.items;
+			}
+		} catch {
+			categories = [];
 		}
 	};
 
 	$: if (show) {
 		init();
+		loadCategories();
 	}
 
 	onMount(() => {
 		init();
+		loadCategories();
 	});
 </script>
 
@@ -544,6 +556,40 @@
 					</div>
 				</div>
 
+				<!-- Category -->
+				<div class="flex flex-col w-full">
+					<label
+						for="select-category"
+						class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1"
+					>
+						<span>{$i18n.t('Category')}</span>
+						<span class="opacity-60 normal-case tracking-normal text-[10px]"
+							>({$i18n.t('optional')})</span
+						>
+					</label>
+
+					<div
+						class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/40 transition-all"
+					>
+						<select
+							id="select-category"
+							class="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-200 bg-transparent outline-hidden dark:bg-gray-800/50"
+							bind:value={categoryId}
+						>
+							<option value="">{$i18n.t('Uncategorized')}</option>
+							{#each categories as cat (cat.id)}
+								<option value={cat.id}>{cat.name}</option>
+							{/each}
+						</select>
+					</div>
+
+					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t(
+							'Visibility is inherited from the selected category. Servers without a category are visible to all users.'
+						)}
+					</p>
+				</div>
+
 				<!-- URL -->
 				<div class="flex flex-col w-full">
 					<label
@@ -707,21 +753,6 @@
 						</svg>
 						{$i18n.t('Advanced')}
 					</button>
-
-					{#if !direct}
-						<button
-							class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-							type="button"
-							on:click={() => {
-								showAccessControlModal = true;
-							}}
-						>
-							<LockClosed strokeWidth="2.5" className="size-3.5 shrink-0" />
-							<div class="text-xs font-medium shrink-0">
-								{$i18n.t('Access')}
-							</div>
-						</button>
-					{/if}
 				</div>
 
 				{#if showAdvanced}
@@ -891,7 +922,6 @@
 	</div>
 </Modal>
 
-<AccessControlModal bind:show={showAccessControlModal} bind:accessGrants />
 
 <style>
 	.spec-type-select {
