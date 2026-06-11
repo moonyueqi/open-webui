@@ -287,7 +287,7 @@
 								bind:value={editName}
 								aria-label={$i18n.t('Category Name')}
 								placeholder={$i18n.t('Category Name')}
-								disabled={!category.write_access}
+								disabled={$user?.role !== 'admin'}
 								on:input={() => {
 									changeDebounceHandler();
 								}}
@@ -300,7 +300,7 @@
 								bind:value={editDescription}
 								aria-label={$i18n.t('Description')}
 								placeholder={$i18n.t('Add a description')}
-								disabled={!category.write_access}
+								disabled={$user?.role !== 'admin'}
 								on:input={() => {
 									changeDebounceHandler();
 								}}
@@ -310,7 +310,7 @@
 				</div>
 
 				<div class="flex items-center gap-2 shrink-0">
-					{#if category.user_id === $user?.id || $user?.role === 'admin'}
+					{#if $user?.role === 'admin'}
 						<button
 							class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2.5 py-1 rounded-full flex gap-1.5 items-center text-sm border border-gray-100 dark:border-gray-800"
 							on:click={() => (showAccessControlModal = true)}
@@ -398,10 +398,13 @@
 				<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hidden px-3 mt-2">
 					<div class="gap-2.5 grid lg:grid-cols-2">
 						{#each toolItems as tool (tool.id)}
+							{@const isServer = String(tool.id ?? '').startsWith('server:')}
+							{@const isMcp = String(tool.id ?? '').startsWith('server:mcp:')}
+							{@const canEdit = !!tool.write_access && !isServer}
 							<div
-								class="group flex text-left w-full px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm {category.write_access
+								class="group flex text-left w-full px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-all duration-200 rounded-xl border border-transparent hover:border-gray-200/60 dark:hover:border-gray-700/40 hover:shadow-sm {canEdit
 									? ''
-									: 'opacity-70'}"
+									: 'opacity-80'}"
 							>
 								<div class="flex items-start gap-3 flex-1 min-w-0">
 									<div
@@ -423,7 +426,7 @@
 										</svg>
 									</div>
 
-									{#if category.write_access}
+									{#if canEdit}
 										<a
 											class="flex-1 min-w-0"
 											href={`/workspace/tools/edit?id=${encodeURIComponent(tool.id)}`}
@@ -491,7 +494,14 @@
 														{/if}
 													</div>
 												</Tooltip>
-												<Badge type="muted" content={$i18n.t('Read Only')} />
+												{#if isServer}
+													<Badge
+														type="info"
+														content={isMcp ? $i18n.t('MCP') : $i18n.t('OpenAPI')}
+													/>
+												{:else}
+													<Badge type="muted" content={$i18n.t('Read Only')} />
+												{/if}
 											</div>
 											{#if tool?.meta?.description}
 												<div class="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
@@ -501,21 +511,27 @@
 											<div
 												class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mt-0.5"
 											>
-												<Tooltip
-													content={tool?.user?.email ?? $i18n.t('Deleted User')}
-													className="flex shrink-0"
-													placement="top-start"
-												>
+												{#if isServer}
 													<span class="shrink-0">
-														{$i18n.t('By {{name}}', {
-															name: capitalizeFirstLetter(
-																tool?.user?.name ??
-																	tool?.user?.email ??
-																	$i18n.t('Deleted User')
-															)
-														})}
+														{$i18n.t('Managed by administrator')}
 													</span>
-												</Tooltip>
+												{:else}
+													<Tooltip
+														content={tool?.user?.email ?? $i18n.t('Deleted User')}
+														className="flex shrink-0"
+														placement="top-start"
+													>
+														<span class="shrink-0">
+															{$i18n.t('By {{name}}', {
+																name: capitalizeFirstLetter(
+																	tool?.user?.name ??
+																		tool?.user?.email ??
+																		$i18n.t('Deleted User')
+																)
+															})}
+														</span>
+													</Tooltip>
+												{/if}
 												{#if tool?.updated_at}
 													<span class="text-gray-300 dark:text-gray-600">·</span>
 													<Tooltip content={dayjs(tool.updated_at * 1000).format('LLLL')}>
@@ -530,7 +546,7 @@
 									{/if}
 								</div>
 
-								{#if category.write_access}
+								{#if canEdit}
 									<div
 										class="flex flex-row gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity"
 									>

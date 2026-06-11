@@ -31,7 +31,7 @@ from open_webui.utils.plugin import (
 )
 from open_webui.utils.tools import get_tool_specs
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.access_control import has_access, require_permission, filter_allowed_access_grants
+from open_webui.utils.access_control import require_permission
 from open_webui.utils.tools import get_tool_servers
 
 from open_webui.config import CACHE_DIR, BYPASS_ADMIN_ACCESS_CONTROL
@@ -112,7 +112,11 @@ async def get_tools(
         )
 
     # OpenAPI Tool Servers
-    server_access_grants = {}
+    # 工具服务器的可见性统一通过其 config.category_id 关联的工具分类继承：
+    #   - 设置了 category_id → 继承分类的 read 授权
+    #   - 未设置 category_id → 默认对所有用户可读（向后兼容）
+    # 写操作（修改 URL/鉴权/类别等）始终仅管理员可执行，由 configs 路由层兜底。
+    server_category_map: dict[str, Optional[str]] = {}
     for server in await get_tool_servers(request):
         connection = request.app.state.config.TOOL_SERVER_CONNECTIONS[
             server.get("idx", 0)
@@ -120,7 +124,7 @@ async def get_tools(
         server_config = connection.get("config", {})
 
         server_id = f"server:{server.get('id')}"
-        server_access_grants[server_id] = server_config.get("access_grants", [])
+        server_category_map[server_id] = server_config.get("category_id")
 
         tools.append(
             ToolUserResponse(
@@ -135,6 +139,7 @@ async def get_tools(
                         .get("info", {})
                         .get("description", ""),
                     },
+                    "category_id": server_config.get("category_id"),
                     "updated_at": int(time.time()),
                     "created_at": int(time.time()),
                 }
@@ -163,7 +168,7 @@ async def get_tools(
             server_config = server.get("config", {})
 
             tool_id = f"server:mcp:{server.get('info', {}).get('id')}"
-            server_access_grants[tool_id] = server_config.get("access_grants", [])
+            server_category_map[tool_id] = server_config.get("category_id")
 
             tools.append(
                 ToolUserResponse(
@@ -176,6 +181,7 @@ async def get_tools(
                                 "description", ""
                             ),
                         },
+                        "category_id": server_config.get("category_id"),
                         "updated_at": int(time.time()),
                         "created_at": int(time.time()),
                         **(
@@ -190,31 +196,38 @@ async def get_tools(
             )
 
     if user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL:
-        # Admin can see all tools
         return tools
-    else:
-        user_group_ids = {
-            group.id for group in Groups.get_groups_by_member_id(user.id, db=db)
-        }
-        tools = [
-            tool
-            for tool in tools
-            if tool.user_id == user.id
-            or (
-                has_access(
-                    user.id,
-                    "read",
-                    server_access_grants.get(str(tool.id), []),
-                    user_group_ids,
-                    db=db,
-                )
-                if str(tool.id).startswith("server:")
-                else _user_has_tool_access(
-                    user, tool, "read", db, user_group_ids=user_group_ids
-                )
+
+    user_group_ids = {
+        group.id for group in Groups.get_groups_by_member_id(user.id, db=db)
+    }
+
+    def _server_visible(tool_id: str) -> bool:
+        cat_id = server_category_map.get(tool_id)
+        if not cat_id:
+            # 未挂分类的工具服务器，默认对所有人可见（兜底）
+            return True
+        return AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="tool_category",
+            resource_id=cat_id,
+            permission="read",
+            user_group_ids=user_group_ids,
+            db=db,
+        )
+
+    tools = [
+        tool
+        for tool in tools
+        if (
+            _server_visible(str(tool.id))
+            if str(tool.id).startswith("server:")
+            else _user_has_tool_access(
+                user, tool, "read", db, user_group_ids=user_group_ids
             )
-        ]
-        return tools
+        )
+    ]
+    return tools
 
 
 ############################

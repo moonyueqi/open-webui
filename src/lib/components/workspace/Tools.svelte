@@ -24,7 +24,6 @@
 	import GarbageBin from '../icons/GarbageBin.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import Pagination from '../common/Pagination.svelte';
-	import ViewSelector from './common/ViewSelector.svelte';
 
 	let shiftKey = false;
 	const i18n = getContext('i18n');
@@ -41,7 +40,6 @@
 	let deleteCategory: any = null;
 
 	let page = 1;
-	let viewOption = '';
 
 	$: if (loaded && query !== undefined) {
 		clearTimeout(searchDebounceTimer);
@@ -51,11 +49,6 @@
 		}, 300);
 	}
 
-	$: if (loaded && viewOption !== undefined) {
-		page = 1;
-		getCategoryList();
-	}
-
 	$: if (loaded && page) {
 		getCategoryList();
 	}
@@ -63,7 +56,7 @@
 	const getCategoryList = async () => {
 		loading = true;
 		try {
-			const res = await getToolCategories(localStorage.token, page, viewOption, query).catch(
+			const res = await getToolCategories(localStorage.token, page, '', query).catch(
 				(error) => {
 					toast.error(`${error}`);
 					return null;
@@ -189,7 +182,7 @@
 				</div>
 
 				<div class="flex w-full justify-end gap-1.5">
-					{#if $user?.role === 'admin' || $user?.permissions?.workspace?.tools}
+					{#if $user?.role === 'admin'}
 						<a
 							class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
 							href="/workspace/tools/categories/create"
@@ -228,22 +221,6 @@
 							<XMark className="size-3" strokeWidth="2" />
 						</button>
 					{/if}
-				</div>
-			</div>
-
-			<div
-				class="px-3.5 flex w-full bg-transparent overflow-x-auto scrollbar-none shrink-0"
-				on:wheel={(e) => {
-					if (e.deltaY !== 0) {
-						e.preventDefault();
-						e.currentTarget.scrollLeft += e.deltaY;
-					}
-				}}
-			>
-				<div
-					class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1 whitespace-nowrap"
-				>
-					<ViewSelector bind:value={viewOption} />
 				</div>
 			</div>
 
@@ -328,7 +305,7 @@
 										</div>
 									</div>
 								</div>
-								{#if category.write_access}
+								{#if $user?.role === 'admin'}
 									<div
 										class="flex flex-row gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity"
 									>

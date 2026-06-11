@@ -294,9 +294,13 @@
 			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{$i18n.t('Model Usage')}
 			</div>
-			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
+			<div
+				class="scrollbar-thin relative whitespace-nowrap overflow-x-auto overflow-y-auto max-w-full max-h-[420px]"
+			>
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
-					<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
+					<thead
+						class="text-xs text-gray-800 uppercase bg-white dark:bg-gray-900 dark:text-gray-200 sticky top-0 z-10"
+					>
 						<tr class="border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
 							<th scope="col" class="px-2.5 py-2 w-8">#</th>
 							<th
@@ -424,9 +428,13 @@
 			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{$i18n.t('User Activity')}
 			</div>
-			<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
+			<div
+				class="scrollbar-thin relative whitespace-nowrap overflow-x-auto overflow-y-auto max-w-full max-h-[420px]"
+			>
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
-					<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
+					<thead
+						class="text-xs text-gray-800 uppercase bg-white dark:bg-gray-900 dark:text-gray-200 sticky top-0 z-10"
+					>
 						<tr class="border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
 							<th scope="col" class="px-2.5 py-2 w-8">#</th>
 							<th
