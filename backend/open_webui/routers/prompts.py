@@ -11,6 +11,7 @@ from open_webui.models.prompts import (
 )
 from open_webui.models.access_grants import AccessGrants
 from open_webui.models.groups import Groups
+from open_webui.models.prompt_categories import PromptCategories
 from open_webui.models.prompt_history import (
     PromptHistories,
     PromptHistoryModel,
@@ -62,6 +63,17 @@ def _user_has_prompt_access(
     ):
         return True
     return False
+
+
+def _user_can_manage_prompt(user, prompt) -> bool:
+    """Check if the user can perform destructive actions on a prompt.
+
+    Destructive actions (delete prompt, delete version history, toggle active
+    state) are limited to the owner or an admin. A `write` collaborator can
+    edit content but must not be able to delete or disable a prompt that
+    other people depend on.
+    """
+    return user.role == "admin" or prompt.user_id == user.id
 
 
 class PromptVersionUpdateForm(BaseModel):
@@ -218,6 +230,40 @@ async def create_new_prompt(
         user, ["workspace.prompts", "workspace.prompts_import"], request, db=db
     )
 
+    # A category is required: prompts inherit access from their category, and
+    # without this check a user could attach a prompt to any category_id
+    # (including someone else's private category) and grant unintended
+    # collaborators read/write access to it.
+    if not form_data.category_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先选择一个分类。",
+        )
+
+    category = PromptCategories.get_category_by_id(form_data.category_id, db=db)
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    # The caller must have write permission on the destination category.
+    if (
+        user.role != "admin"
+        and category.user_id != user.id
+        and not AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="prompt_category",
+            resource_id=category.id,
+            permission="write",
+            db=db,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
+
     if form_data.command:
         existing = Prompts.get_prompt_by_command(form_data.command, db=db)
         if existing:
@@ -315,6 +361,32 @@ async def update_prompt_by_id(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
+
+    # If the caller wants to move the prompt to another category, verify
+    # they also have write permission on the destination category.
+    new_category_id = form_data.category_id
+    if new_category_id and new_category_id != prompt.category_id:
+        new_category = PromptCategories.get_category_by_id(new_category_id, db=db)
+        if not new_category:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.NOT_FOUND,
+            )
+        if (
+            user.role != "admin"
+            and new_category.user_id != user.id
+            and not AccessGrants.has_access(
+                user_id=user.id,
+                resource_type="prompt_category",
+                resource_id=new_category.id,
+                permission="write",
+                db=db,
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+            )
 
     # Check for command collision if command is being changed
     if form_data.command and form_data.command != prompt.command:
@@ -490,7 +562,7 @@ async def toggle_prompt_active(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not _user_has_prompt_access(user, prompt, "write", db=db):
+    if not _user_can_manage_prompt(user, prompt):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -522,7 +594,7 @@ async def delete_prompt_by_id(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not _user_has_prompt_access(user, prompt, "write", db=db):
+    if not _user_can_manage_prompt(user, prompt):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -615,7 +687,7 @@ async def delete_prompt_history_entry(
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if not _user_has_prompt_access(user, prompt, "write", db=db):
+    if not _user_can_manage_prompt(user, prompt):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,

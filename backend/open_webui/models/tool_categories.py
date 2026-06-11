@@ -285,6 +285,17 @@ class ToolCategoriesTable:
         except Exception:
             return None
 
+    def get_category_by_name(
+        self, name: str, db: Optional[Session] = None
+    ) -> Optional[ToolCategoryModel]:
+        """全局判重用：分类名在全平台唯一。"""
+        try:
+            with get_db_context(db) as db:
+                category = db.query(ToolCategory).filter_by(name=name).first()
+                return self._to_category_model(category, db=db) if category else None
+        except Exception:
+            return None
+
     def update_category_by_id(
         self,
         id: str,

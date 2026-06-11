@@ -396,7 +396,9 @@ export const getToolServersData = async (servers: object[]) => {
 							url: server?.url,
 							openapi: openapi,
 							info: info,
-							specs: specs
+							specs: specs,
+							// 透传分类信息，前端按分类聚合时使用
+							category_id: server?.config?.category_id ?? null
 						};
 					} else if (error) {
 						return {
