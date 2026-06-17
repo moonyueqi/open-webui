@@ -21,6 +21,12 @@
 	--color-sidebar-200: oklch(0.90 0.035 240);
 	--color-sidebar-300: oklch(0.85 0.04 240);
 	--color-sidebar-hover: oklch(0.92 0.03 240);
+
+	--font-sans: 'Geist', 'HarmonyOS Sans SC', 'Inter', -apple-system, BlinkMacSystemFont,
+		'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+		'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+	--font-mono: 'Geist Mono', 'HarmonyOS Sans SC', ui-monospace, SFMono-Regular, Menlo, Consolas,
+		'Liberation Mono', monospace;
 }
 
 /*
@@ -44,8 +50,8 @@
 @layer base {
 	html,
 	pre {
-		font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
-			'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+		font-family: 'Geist', 'HarmonyOS Sans SC', 'Inter', -apple-system, BlinkMacSystemFont,
+			'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
 			'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;

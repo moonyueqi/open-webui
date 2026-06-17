@@ -350,6 +350,7 @@
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
+		deepThinking.set(false);
 
 		if (selectedModelIds.filter((id) => id).length > 0) {
 			setDefaults();

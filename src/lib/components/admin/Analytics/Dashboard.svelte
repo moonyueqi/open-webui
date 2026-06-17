@@ -13,7 +13,6 @@
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import ChartLine from './ChartLine.svelte';
-	import AnalyticsModelModal from './AnalyticsModelModal.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { formatNumber } from '$lib/utils';
@@ -65,10 +64,6 @@
 	let totalTokens = { input: 0, output: 0, total: 0 };
 
 	let loading = true;
-
-	// Selected model for drill-down
-	let selectedModel: { id: string; name: string } | null = null;
-	let showModelModal = false;
 
 	// Sorting
 	let modelOrderBy = 'count';
@@ -192,7 +187,7 @@
 
 <!-- Header with title and period selector -->
 <div
-	class="pt-1 pb-3 gap-3 flex flex-row justify-between items-center sticky top-0 z-10 bg-white dark:bg-gray-900"
+	class="pt-1 pb-3 gap-3 flex flex-row justify-between items-center shrink-0 bg-white dark:bg-gray-900"
 >
 	<div class="flex items-center gap-3">
 		<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -222,17 +217,9 @@
 	</div>
 </div>
 
-<!-- Model Details Modal -->
-<AnalyticsModelModal
-	bind:show={showModelModal}
-	model={selectedModel}
-	startDate={getDateRange(selectedPeriod).start}
-	endDate={getDateRange(selectedPeriod).end}
-/>
-
 <!-- Summary stats -->
 {#if !loading}
-	<div class="flex flex-wrap gap-2 px-0.5 pb-3">
+	<div class="flex flex-wrap gap-2 px-0.5 pb-3 shrink-0">
 		<span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
 			<span class="font-semibold text-gray-900 dark:text-gray-100">{summary.total_messages.toLocaleString()}</span>
 			{$i18n.t('messages')}
@@ -268,7 +255,7 @@
 			'#84cc16'
 		]}
 		{@const periodMap = { '24h': 'hour', '7d': 'week', '30d': 'month', '90d': 'year', all: 'all' }}
-		<div class="mb-4">
+		<div class="mb-4 shrink-0">
 			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
 				{selectedPeriod === '24h' ? $i18n.t('Hourly Messages') : $i18n.t('Daily Messages')}
 			</div>
@@ -288,14 +275,14 @@
 		<Spinner className="size-5" />
 	</div>
 {:else}
-	<div class="grid md:grid-cols-2 gap-4">
+	<div class="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
 		<!-- Model Usage Table -->
-		<div>
-			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
+		<div class="flex flex-col min-h-0 flex-1 md:w-1/2">
+			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5 shrink-0">
 				{$i18n.t('Model Usage')}
 			</div>
 			<div
-				class="scrollbar-thin relative whitespace-nowrap overflow-x-auto overflow-y-auto max-w-full max-h-[420px]"
+				class="scrollbar-thin relative block whitespace-nowrap overflow-auto max-w-full flex-1 min-h-0 overscroll-contain"
 			>
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
 					<thead
@@ -379,13 +366,7 @@
 					</thead>
 					<tbody>
 						{#each sortedModels as model, idx (model.model_id)}
-							<tr
-								class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-								on:click={() => {
-									selectedModel = { id: model.model_id, name: model.name };
-									showModelModal = true;
-								}}
-							>
+							<tr class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs">
 								<td class="px-3 py-1 text-gray-400">{idx + 1}</td>
 								<td class="px-3 py-1 font-medium text-gray-900 dark:text-white">
 									<div class="flex items-center gap-2">
@@ -424,12 +405,12 @@
 		</div>
 
 		<!-- User Activity Table -->
-		<div>
-			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5">
+		<div class="flex flex-col min-h-0 flex-1 md:w-1/2">
+			<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 px-0.5 shrink-0">
 				{$i18n.t('User Activity')}
 			</div>
 			<div
-				class="scrollbar-thin relative whitespace-nowrap overflow-x-auto overflow-y-auto max-w-full max-h-[420px]"
+				class="scrollbar-thin relative block whitespace-nowrap overflow-auto max-w-full flex-1 min-h-0 overscroll-contain"
 			>
 				<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
 					<thead
@@ -529,7 +510,7 @@
 		</div>
 	</div>
 
-	<div class="text-gray-500 text-xs mt-1.5 text-right">
+	<div class="text-gray-500 text-xs mt-1.5 text-right shrink-0">
 		ⓘ {$i18n.t('Message counts are based on assistant responses.')}
 	</div>
 {/if}
