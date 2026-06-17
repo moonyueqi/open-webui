@@ -1,5 +1,43 @@
 @reference "./tailwind.css";
 
+/* Geist: 现代极简科技感西文/数字字体 (Vercel, OFL-1.1)。可变字体涵盖全部字重。 */
+@font-face {
+	font-family: 'Geist';
+	src: url('/assets/fonts/Geist-Variable.woff2') format('woff2');
+	font-weight: 100 900;
+	font-display: swap;
+}
+
+/* Geist Mono: 配套等宽字体，用于代码块 */
+@font-face {
+	font-family: 'Geist Mono';
+	src: url('/assets/fonts/GeistMono-Variable.woff2') format('woff2');
+	font-weight: 100 900;
+	font-display: swap;
+}
+
+/* HarmonyOS Sans SC: 华为开源中文 UI 字体，替代微软雅黑，简约现代 (免费商用) */
+@font-face {
+	font-family: 'HarmonyOS Sans SC';
+	src: url('/assets/fonts/HarmonyOS_Sans_SC_Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'HarmonyOS Sans SC';
+	src: url('/assets/fonts/HarmonyOS_Sans_SC_Medium.woff2') format('woff2');
+	font-weight: 500;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'HarmonyOS Sans SC';
+	src: url('/assets/fonts/HarmonyOS_Sans_SC_Bold.woff2') format('woff2');
+	font-weight: 600 900;
+	font-display: swap;
+}
+
 @font-face {
 	font-family: 'Inter';
 	src: url('/assets/fonts/Inter-Variable.ttf');
@@ -71,8 +109,8 @@ code {
 }
 
 .font-secondary {
-	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-		'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+	font-family: 'Geist', 'HarmonyOS Sans SC', 'Inter', -apple-system, BlinkMacSystemFont,
+		'SF Pro Display', 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
 		'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
@@ -192,8 +230,8 @@ textarea::placeholder {
 }
 
 .font-primary {
-	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
-		'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
+	font-family: 'Geist', 'HarmonyOS Sans SC', 'Inter', -apple-system, BlinkMacSystemFont,
+		'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial,
 		'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
@@ -332,6 +370,33 @@ select {
 .scrollbar-none {
 	-ms-overflow-style: none; /* IE and Edge */
 	scrollbar-width: none; /* Firefox */
+}
+
+/* Thin, always-visible scrollbar */
+.scrollbar-thin {
+	scrollbar-width: thin; /* Firefox */
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+	height: 0.45rem;
+	width: 0.45rem;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+	background-color: rgba(160, 160, 160, 0.5);
+	border-radius: 9999px;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+	background-color: rgba(110, 110, 110, 0.5);
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+	background-color: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-corner {
+	background-color: transparent;
 }
 
 input::-webkit-outer-spin-button,
@@ -634,7 +699,7 @@ input[type='number'] {
 
 .tiptap pre {
 	border-radius: 0.5rem;
-	font-family: 'JetBrainsMono', monospace;
+	font-family: 'Geist Mono', 'JetBrainsMono', monospace;
 	margin: 1.5rem 0;
 	padding: 0.75rem 1rem;
 
