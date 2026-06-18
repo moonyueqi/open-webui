@@ -199,7 +199,7 @@
 														<div
 															class="text-xs text-gray-700 dark:text-gray-300 truncate"
 														>
-															{promptItem.content}
+															{promptItem.name || promptItem.content}
 														</div>
 													</div>
 												</button>

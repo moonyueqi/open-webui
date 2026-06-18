@@ -210,6 +210,32 @@ class PromptsTable:
         except Exception:
             return None
 
+    def name_exists_in_category(
+        self,
+        category_id: Optional[str],
+        name: str,
+        exclude_prompt_id: Optional[str] = None,
+        db: Optional[Session] = None,
+    ) -> bool:
+        """Whether another prompt with the same name already exists in the category.
+
+        Names are compared case-insensitively after trimming surrounding
+        whitespace. ``exclude_prompt_id`` lets an update skip the prompt being
+        edited.
+        """
+        normalized = (name or "").strip().lower()
+        if not normalized or not category_id:
+            return False
+
+        with get_db_context(db) as db:
+            query = db.query(Prompt).filter(Prompt.category_id == category_id)
+            if exclude_prompt_id:
+                query = query.filter(Prompt.id != exclude_prompt_id)
+            for prompt in query.all():
+                if (prompt.name or "").strip().lower() == normalized:
+                    return True
+        return False
+
     def get_prompts(self, db: Optional[Session] = None) -> list[PromptUserResponse]:
         with get_db_context(db) as db:
             all_prompts = (
