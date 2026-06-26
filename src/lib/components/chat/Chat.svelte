@@ -2812,7 +2812,7 @@
 						}}
 					/>
 
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
+					<div id="chat-pane" class="relative flex flex-col flex-auto z-10 w-full @container overflow-auto">
 						{#if ($settings?.landingPageMode === 'chat') || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2917,12 +2917,18 @@
 								/>
 
 								<div
-									class="absolute bottom-1 text-xs text-gray-500 text-center line-clamp-1 right-0 left-0"
+									class="mt-0.5 text-[10px] leading-tight text-gray-400 dark:text-gray-500 text-center w-full"
 								>
-									<!-- {$i18n.t('LLMs can make mistakes. Verify important information.')} -->
+									© 北京市气象局人工智能模型研发团队
 								</div>
 							</div>
 						{:else}
+							<div
+								class="absolute bottom-6 left-0 right-0 flex flex-col items-center justify-center text-center gap-0 leading-tight text-[10px] text-gray-400 dark:text-gray-500 pointer-events-none z-10"
+							>
+								<div>© 北京市气象局人工智能模型研发团队</div>
+								<div>联系邮箱：yqliu@ium.cn</div>
+							</div>
 							<div class="flex items-center h-full">
 								<Placeholder
 									{history}

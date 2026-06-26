@@ -321,6 +321,11 @@ cypress/screenshots
 # 业务原始数据 / 抓取的天气文件
 BJ-240/
 weather_pics/
+/data/
+_inspect_tmp/
+
+# Docker 镜像导出包（体积巨大，绝不入库）
+*.tar
 
 # 调研、模板拆解、临时脚本产物
 _tmp_template_inspect/

@@ -180,11 +180,6 @@
 	{:else}
 		<div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
 			<div class="mx-5">
-				<div
-					class="flex w-full items-center justify-center text-center text-xs font-medium text-gray-600 dark:text-gray-400"
-				>
-					{APP_NAME} v{APP_VERSION_LOCAL}
-				</div>
 				<!-- 暂时禁用首页建议功能，后续重做为面向气象预报员的场景化建议
 				<Suggestions
 					suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??

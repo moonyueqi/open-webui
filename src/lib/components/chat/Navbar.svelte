@@ -256,6 +256,16 @@
 						</div>
 					</UserMenu>
 				{/if} -->
+
+					<!-- 右上角机构 logo -->
+					<div class="flex items-center self-center ml-1 mr-1 shrink-0">
+						<img
+							src="/static/logo.png"
+							alt="北京城市气象研究院"
+							class="h-7 md:h-8 w-auto object-contain select-none"
+							draggable="false"
+						/>
+					</div>
 				</div>
 			</div>
 		</div>

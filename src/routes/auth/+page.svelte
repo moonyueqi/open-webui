@@ -286,6 +286,15 @@
 				</div>
 			</div>
 
+			<div class="fixed top-6 right-8 z-50">
+				<img
+					src="/static/logo.png"
+					class="h-12 w-auto object-contain select-none"
+					alt="北京城市气象研究院"
+					draggable="false"
+				/>
+			</div>
+
 			<div class="w-full px-10 min-h-screen flex flex-col text-center justify-center items-center">
 				{#if ($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false}
 					<div class="pb-10 w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8">
