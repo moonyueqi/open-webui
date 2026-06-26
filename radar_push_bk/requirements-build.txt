@@ -1,0 +1,7 @@
+# 仅离线生成 geojson 用（scripts/build_geojson.py），运行时不需要。
+# 需要 GDAL 系统库；建议在本机/有 conda 的环境执行：
+#   python scripts/build_geojson.py
+geopandas>=0.14
+pyshp>=2.3
+pyproj>=3.5
+shapely>=2.0

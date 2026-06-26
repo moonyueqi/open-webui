@@ -24,25 +24,13 @@ services:
     container_name: leadsee-webui
     volumes:
       - leadsee-webui:/app/backend/data
-      # === 业务数据挂载（可选）===
-      # 1) 模板：镜像里已烘焙到 /app/weather_templates，正常无需挂载。
-      #    若运维想在不重建镜像的情况下临时改模板，把宿主机目录挂上来即可覆盖：
-      # - ./weather_templates:/app/weather_templates:ro
-      #
-      # 2) BJ-240 XML 本地后备目录：仅在 BJ240_SOURCE_MODE=local 时生效。
-      #    默认是 ftp 模式，不需要挂这个；保留示例方便联调。
-      # - ./BJ-240:/app/data/BJ-240:ro
-      #
-      # 3) 公报 .doc 本地后备目录：仅在 BULLETIN_SOURCE_MODE=local 时生效。
-      #    默认 ftp 模式不挂这个。
-      # - ./bulletin:/app/data/bulletin:ro
-      #
-      # 4) 业务数据根目录（generate_forecast_from_folder 工具使用）。
-      #    宿主机上的数据根（默认 /data）会挂到容器内的 /pic_data。
-      #    宿主机上典型结构示例：
-      #      /data/ecmwf/2026053112/h500w/*.png    （容器里看到的是 /pic_data/ecmwf/...）
-      #      /data/grapes/2026053112/r24/*.png
-      #    工具读取路径以容器内为准（/pic_data/...），Valves 默认值由 WEATHER_DATA_ROOT 控制。
+      # === 业务数据挂载 ===
+      # 业务数据根目录（generate_forecast_from_folder 等工具使用）。
+      # 宿主机上的数据根（默认 /data）会挂到容器内的 /pic_data。
+      # 宿主机上典型结构示例：
+      #   /data/ecmwf/2026053112/h500w/*.png    （容器里看到的是 /pic_data/ecmwf/...）
+      #   /data/grapes/2026053112/r24/*.png
+      # 工具读取路径以容器内为准（/pic_data/...），Valves 默认值由 WEATHER_DATA_ROOT 控制。
       - ${WEATHER_DATA_HOST_DIR:-/data}:/pic_data:ro
     ports:
       - ${OPEN_WEBUI_PORT:-3000}:8080
@@ -63,20 +51,6 @@ services:
       # 启动 .webui_secret_key 文件的兜底逻辑由 start.sh 处理；
       # 强烈建议在 .env 里显式设置 WEBUI_SECRET_KEY（openssl rand -hex 32）
       #
-      # === 天气工具默认配置（值从 .env 注入，这里只是声明给容器看见） ===
-      # BJ-240 XML 数据源：ftp（默认）/ local
-      - BJ240_SOURCE_MODE=${BJ240_SOURCE_MODE:-ftp}
-      - BJ240_FTP_HOST=${BJ240_FTP_HOST:-10.225.3.71}
-      - BJ240_FTP_PORT=${BJ240_FTP_PORT:-21}
-      - BJ240_FTP_USER=${BJ240_FTP_USER:-FtpFiles}
-      - BJ240_FTP_PASSWORD=${BJ240_FTP_PASSWORD:-}
-      - BJ240_FTP_DIR=${BJ240_FTP_DIR:-/cpzz/tqgb-12}
-      - BJ240_FTP_TIMEOUT=${BJ240_FTP_TIMEOUT:-30}
-      - BJ240_LOCAL_DIR=${BJ240_LOCAL_DIR:-/app/data/BJ-240}
-      # 公报 .doc 数据源（FTP 账号复用 BJ240_FTP_* 那一组）
-      - BULLETIN_SOURCE_MODE=${BULLETIN_SOURCE_MODE:-ftp}
-      - BULLETIN_FTP_DIR=${BULLETIN_FTP_DIR:-/cpzz/tqgb}
-      - BULLETIN_LOCAL_DIR=${BULLETIN_LOCAL_DIR:-/app/data/bulletin}
       # 业务数据根目录（容器内路径，工具代码读取）。
       # 与上面 volumes 段的挂载点一致；正常运维不需要改 .env 里的这一项。
       - WEATHER_DATA_ROOT=${WEATHER_DATA_ROOT:-/pic_data}

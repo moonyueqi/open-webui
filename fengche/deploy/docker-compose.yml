@@ -1,0 +1,51 @@
+# ===============================================================
+# 风掣相关服务的独立 compose stack（不影响已经在跑的 OpenWebUI）。
+#
+# 部署方法（在 fengche/deploy/ 目录内执行）：
+#   1. cp .env.example .env
+#      然后填好 FTP 账号
+#   2. docker compose --env-file .env up -d --build
+#
+# 构建上下文：`..`（即 fengche/ 目录），这样两个 Dockerfile 直接用
+# `tool_server/...` `warning_server/...` 相对路径 COPY。
+#
+# OpenWebUI 接入：
+#   两个服务都用 `ports:` 暴露到宿主机，通过宿主机 IP 访问，不需要进 OpenWebUI 的 docker network：
+#     - 预报查询 OpenAPI:  http://<宿主IP>:8765/openapi.json
+#     - 预警粗筛   OpenAPI:  http://<宿主IP>:8766/openapi.json
+# ===============================================================
+
+services:
+  fengche-forecast:
+    build:
+      context: ..
+      dockerfile: tool_server/Dockerfile
+    image: fengche-forecast:latest
+    container_name: fengche-forecast
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8765:8765"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  fengche-warning:
+    build:
+      context: ..
+      dockerfile: warning_server/Dockerfile
+    image: fengche-warning:latest
+    container_name: fengche-warning
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8766:8766"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -267,12 +267,9 @@ COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 # copy backend files
 COPY --chown=$UID:$GID ./backend .
 
-# === 烘焙业务资产 ===
-# weather_templates：天气报告 docx 模板（4 个业务工具引用，更新频率极低，进镜像最稳）
 # 注：tools/*.py 不再烘焙进镜像。
-#     运行期工具从数据库加载，调试好后到 "工作空间 → 工具" 处粘贴源码即可。
-#     镜像里留副本只会和数据库版本不一致，反而成为排错时的混淆源。
-COPY --chown=$UID:$GID ./weather_templates /app/weather_templates
+# 运行期工具从数据库加载，调试好后到 "工作空间 → 工具" 处粘贴源码即可。
+# 镜像里留副本只会和数据库版本不一致，反而成为排错时的混淆源。
 
 EXPOSE 8080
 
