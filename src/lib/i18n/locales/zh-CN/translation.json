@@ -1561,6 +1561,8 @@
 	"Prompt Content": "提示词内容",
 	"Prompt created successfully": "提示词创建成功",
 	"Prompt Name": "提示词名称",
+	"Prompt Title": "提示词标题",
+	"Give this prompt a title (optional)": "为此提示词设置一个标题（可选）",
 	"Prompt Suggestions": "推荐提示词",
 	"Prompt updated successfully": "提示词更新成功",
 	"Please enter a category name.": "请输入分组名称。",

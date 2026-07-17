@@ -272,6 +272,14 @@ async def create_new_prompt(
                 detail=ERROR_MESSAGES.COMMAND_TAKEN,
             )
 
+    if form_data.name and Prompts.name_exists_in_category(
+        form_data.category_id, form_data.name, db=db
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该分类下已存在相同标题的提示词。",
+        )
+
     prompt = Prompts.insert_new_prompt(user.id, form_data, db=db)
 
     if prompt:
@@ -402,6 +410,16 @@ async def update_prompt_by_id(
         form_data.command = prompt.command
     if not form_data.name:
         form_data.name = prompt.name
+
+    # Title must stay unique within its (destination) category.
+    target_category_id = new_category_id or prompt.category_id
+    if form_data.name and Prompts.name_exists_in_category(
+        target_category_id, form_data.name, exclude_prompt_id=prompt.id, db=db
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该分类下已存在相同标题的提示词。",
+        )
 
     # Only the owner / admin can change access grants. A `write` collaborator
     # may only edit content; ignore any access_grants pushed via the

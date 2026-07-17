@@ -50,11 +50,13 @@
 	let copiedId: string | null = null;
 
 	let showCreatePromptModal = false;
+	let createPromptName = '';
 	let createPromptContent = '';
 	let createPromptLoading = false;
 
 	let showEditPromptModal = false;
 	let editPromptItem: any = null;
+	let editPromptName = '';
 	let editPromptContent = '';
 	let editPromptLoading = false;
 
@@ -154,7 +156,9 @@
 		if (!showVariableIssues(createPromptContent)) return;
 
 		createPromptLoading = true;
+		const trimmedName = createPromptName.trim();
 		const res = await createNewPrompt(localStorage.token, {
+			...(trimmedName ? { name: trimmedName } : {}),
 			content: createPromptContent,
 			category_id: id
 		}).catch((error) => {
@@ -165,6 +169,7 @@
 		if (res) {
 			toast.success($i18n.t('Prompt created successfully'));
 			showCreatePromptModal = false;
+			createPromptName = '';
 			createPromptContent = '';
 			promptsPage = 1;
 			await loadPrompts();
@@ -175,6 +180,7 @@
 
 	const openEditPromptModal = async (prompt: any) => {
 		editPromptItem = prompt;
+		editPromptName = prompt.name || '';
 		editPromptContent = prompt.content || '';
 		showEditPromptModal = true;
 
@@ -183,6 +189,7 @@
 			return null;
 		});
 		if (fullPrompt) {
+			editPromptName = fullPrompt.name || '';
 			editPromptContent = fullPrompt.content || '';
 			editPromptItem = { ...prompt, ...fullPrompt };
 		}
@@ -199,8 +206,10 @@
 
 		editPromptLoading = true;
 
+		const trimmedName = editPromptName.trim();
 		const res = await updatePromptById(localStorage.token, {
 			id: editPromptItem.id,
+			...(trimmedName ? { name: trimmedName } : {}),
 			content: editPromptContent
 		}).catch((error) => {
 			toast.error(`${error}`);
@@ -211,6 +220,7 @@
 			toast.success($i18n.t('Prompt updated successfully'));
 			showEditPromptModal = false;
 			editPromptItem = null;
+			editPromptName = '';
 			editPromptContent = '';
 			await loadPrompts();
 		}
@@ -323,6 +333,17 @@
 			<form on:submit|preventDefault={createPromptHandler}>
 				<div class="mb-3">
 					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+						{$i18n.t('Prompt Title')}
+					</label>
+					<input
+						type="text"
+						class="w-full rounded-xl py-2.5 px-4 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-300 outline-hidden border border-gray-300 dark:border-gray-700 focus:border-black dark:focus:border-white focus:ring-0 transition placeholder:text-gray-400 dark:placeholder:text-gray-500"
+						placeholder={$i18n.t('Give this prompt a title (optional)')}
+						bind:value={createPromptName}
+					/>
+				</div>
+				<div class="mb-3">
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
 						{$i18n.t('Prompt Content')} <span class="text-red-500">*</span>
 					</label>
 				<textarea
@@ -398,6 +419,19 @@
 			</div>
 
 			<form on:submit|preventDefault={editPromptHandler}>
+				<div class="mb-3">
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+						{$i18n.t('Prompt Title')}
+					</label>
+					<input
+						type="text"
+						class="w-full rounded-xl py-2.5 px-4 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-300 outline-hidden border border-gray-300 dark:border-gray-700 focus:border-black dark:focus:border-white focus:ring-0 transition placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:opacity-70 disabled:cursor-not-allowed"
+						placeholder={$i18n.t('Give this prompt a title (optional)')}
+						bind:value={editPromptName}
+						disabled={!category?.write_access}
+						readonly={!category?.write_access}
+					/>
+				</div>
 				<div class="mb-3">
 					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
 						{$i18n.t('Prompt Content')}{#if category?.write_access} <span class="text-red-500">*</span>{/if}
@@ -535,7 +569,11 @@
 				{#if category.write_access}
 					<button
 						class="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-black dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center gap-1.5 border border-gray-200/60 dark:border-gray-700/60"
-						on:click={() => (showCreatePromptModal = true)}
+						on:click={() => {
+							createPromptName = '';
+							createPromptContent = '';
+							showCreatePromptModal = true;
+						}}
 					>
 						<Plus className="size-3.5" strokeWidth="2.5" />
 						<div class="hidden md:block text-xs">{$i18n.t('New Prompt')}</div>
