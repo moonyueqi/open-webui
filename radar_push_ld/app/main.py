@@ -27,7 +27,10 @@ from .echo_detect import (
     robust_value,
     strong_connected_mask,
 )
-from .extrapolation import analyze_extrapolation, threat_score
+from .extrapolation import (
+    analyze_extrapolation,
+    threat_score,
+)
 from .fengche_finder import find_forecast_for_target, resolve_target_start
 from .fengche_rain import build_rainfall_forecast_line
 from .fengche_reader import read_tp_at_lead
@@ -95,9 +98,12 @@ class RadarPushWorker:
             self.settings.state_dir,
             level_step=self.settings.thresholds.level_step_dbz,
             redalert_dbz=self.settings.thresholds.redalert_dbz,
+            hail_dbz=self.settings.thresholds.hail_cr_dbz,
             strong_dbz=self.settings.thresholds.strong_dbz,
             boundary_milestones_km=self.settings.thresholds.boundary_km_milestones,
             push_window_minutes=self.settings.thresholds.push_window_minutes,
+            push_window_low_minutes=self.settings.thresholds.push_window_low_minutes,
+            full_coverage_ratio=self.settings.thresholds.full_coverage_ratio,
         )
         self.tz = ZoneInfo(self.settings.timezone)
         self._last_ts: Optional[str] = None
@@ -325,6 +331,11 @@ class RadarPushWorker:
             log.info("风掣未就绪且未超时，本时次暂不推、下轮重试 at %s", rf.timestamp)
             return False
 
+        # 方向完全以外推为准（语义为"未来1h移向"）。历史实况质心趋势纠偏已停用：
+        # 历史窗口串接的是各时次 threat_score 选出的主威胁团，跨时次可能并非同一回波团，
+        # 且缺少外推所具备的最近邻/跳变(max_jump)保护，趋势质量反而低于外推，纠偏易越纠越偏。
+        move_arrow_override: Optional[tuple] = None
+
         decisions = []
 
         # 「市外逼近」推送须外推会入市、或市内已有真对流强回波；否则不调用
@@ -384,15 +395,41 @@ class RadarPushWorker:
 
         will_enter_final = will_enter or bool(affected_now)
 
-        # 各区县乡镇（街道）总数：供"大部分乡镇"折叠展示用
+        # 各区县乡镇（街道）总数：供"大部分乡镇"折叠与覆盖维度判定共用
         district_township_total: Dict[str, int] = {}
         for _tname, _tcode, _tmask in masks.townships:
             district_township_total[_tcode] = district_township_total.get(_tcode, 0) + 1
 
-        # 全局节流：距上次推送不足窗口期则本轮不推（去重等级状态已更新，不丢失）
-        if self.dedup.in_throttle_window(now_ts):
-            wait_min = self.settings.thresholds.push_window_minutes
-            log.info("命中节流窗口（%d 分钟内已推过），本轮不推 at %s", wait_min, rf.timestamp)
+        # 覆盖维度仅当"会影响本市"时纳入；只作额外推送理由+状态维护，不一票否决整条推送
+        if will_enter_final:
+            affected_tw_counts = {
+                code: len([t for t in tws if t])
+                for code, tws in merged.items()
+                if any(t for t in tws)
+            }
+            cov_dec = self.dedup.decide_coverage(
+                affected_township_counts=affected_tw_counts,
+                district_township_total=district_township_total,
+                global_level=int(strongest.level_dbz),
+                now_ts=now_ts,
+            )
+            if cov_dec.should_push:
+                decisions.append(("coverage", cov_dec))
+
+        # 分级全局节流：本轮含任一高优先级理由用短窗口，仅低优先级用长窗口
+        batch_high_priority = any(
+            getattr(dec, "high_priority", False) for _k, dec in decisions
+        )
+        if self.dedup.in_throttle_window(now_ts, high_priority=batch_high_priority):
+            wait_min = (
+                self.settings.thresholds.push_window_minutes
+                if batch_high_priority
+                else self.settings.thresholds.push_window_low_minutes
+            )
+            log.info(
+                "命中节流窗口（%s优先级，%d 分钟内已推过），本轮不推 at %s",
+                "高" if batch_high_priority else "低", wait_min, rf.timestamp,
+            )
             _runtime["throttled"] = int(_runtime["throttled"]) + 1
             _runtime["last_throttled"] = datetime.now(self.tz).isoformat()
             self.dedup.save()
@@ -458,9 +495,18 @@ class RadarPushWorker:
         text = template_text
 
         reasons = "; ".join(
-            f"{k}:{','.join(dec.reasons)}" for k, dec in decisions
+            f"{k}:{','.join(dec.reasons)}"
+            f"({'高' if getattr(dec, 'high_priority', False) else '低'})"
+            for k, dec in decisions
         )
-        release = f"放行:节流窗口({self.settings.thresholds.push_window_minutes}min)外"
+        release_win = (
+            self.settings.thresholds.push_window_minutes
+            if batch_high_priority
+            else self.settings.thresholds.push_window_low_minutes
+        )
+        release = (
+            f"放行:{'高' if batch_high_priority else '低'}优先级窗口({release_win}min)"
+        )
         log.info(
             "PUSH at %s reasons=[%s] | %s\n%s",
             rf.timestamp, reasons, release, text,
@@ -468,8 +514,12 @@ class RadarPushWorker:
 
         png = None
         try:
+            # 箭头方向须与文字一致：触发纠偏时用"当前回波位置→实况趋势方向"，
+            # 否则用外推轨迹（常态，起点已锚在当前实况质心）。
             move_arrow = None
-            if ex.track_start is not None and ex.track_end is not None:
+            if move_arrow_override is not None:
+                move_arrow = move_arrow_override
+            elif ex.track_start is not None and ex.track_end is not None:
                 move_arrow = (ex.track_start, ex.track_end)
             png = render_radar_png(
                 grid,
@@ -782,6 +832,7 @@ def health():
         "timezone": SETTINGS.timezone,
         "scan_interval_sec": SETTINGS.scan_interval_sec,
         "push_window_minutes": SETTINGS.thresholds.push_window_minutes,
+        "push_window_low_minutes": SETTINGS.thresholds.push_window_low_minutes,
         "webhook_configured": bool(SETTINGS.wecom_webhook_url),
         "ftp_upload_enabled": SETTINGS.ftp.enabled,
         "ftp_remote_dir": SETTINGS.ftp.remote_dir if SETTINGS.ftp.enabled else None,

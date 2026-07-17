@@ -29,6 +29,20 @@ def bearing_to_direction(d_lat: float, d_lon: float, move_threshold_deg: float) 
     return best[1]
 
 
+def vectors_angle_deg(
+    v1: Tuple[float, float],
+    v2: Tuple[float, float],
+) -> Optional[float]:
+    """两个位移向量的夹角（0~180 度）。任一向量近零向量则返回 None（无从比较）。"""
+    n1 = float(np.hypot(v1[0], v1[1]))
+    n2 = float(np.hypot(v2[0], v2[1]))
+    if n1 <= 1e-9 or n2 <= 1e-9:
+        return None
+    cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)
+    cos = max(-1.0, min(1.0, cos))
+    return float(np.degrees(np.arccos(cos)))
+
+
 def threat_score(cluster) -> float:
     """主威胁团评分：距市界越近、强度越大越高。"""
     dist = cluster.min_dist_to_city_km

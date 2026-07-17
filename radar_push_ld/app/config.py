@@ -143,7 +143,9 @@ class Thresholds:
         default_factory=lambda: [25.0, 10.0, 5.0, 0.0]
     )
     buffer_km: float = 50.0
-    push_window_minutes: int = 12   # 全局节流窗口：该时间内最多推送 1 次
+    push_window_minutes: int = 12   # 高优先级节流窗口：首次/≥45dBZ/进入市内等灵敏事件
+    push_window_low_minutes: int = 48  # 低优先级节流窗口：普通升档/新增区县/区县首次检测/远距里程碑
+    full_coverage_ratio: float = 0.7  # 规则7：每区县受影响乡镇占比≥此值即视为"大部分乡镇"
 
 
 @dataclass(frozen=True)
@@ -214,6 +216,8 @@ def load_settings() -> Settings:
         boundary_km_milestones=_floats("BOUNDARY_KM_MILESTONES", [25.0, 10.0, 5.0, 0.0]),
         buffer_km=_float("BUFFER_KM", 50.0),
         push_window_minutes=_int("PUSH_WINDOW_MIN", 12),
+        push_window_low_minutes=_int("PUSH_WINDOW_LOW_MIN", 48),
+        full_coverage_ratio=_float("FULL_COVERAGE_RATIO", 0.7),
     )
 
     ftp = FtpSettings(

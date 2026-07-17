@@ -1,0 +1,13 @@
+# 运行时依赖（geojson 已离线预生成，无需 geopandas/GDAL/pyproj）
+netCDF4==1.7.4
+numpy>=1.24,<2.3
+scipy>=1.10
+pandas>=2.0
+openpyxl>=3.1
+shapely>=2.0
+matplotlib>=3.7
+paramiko>=3.4
+requests>=2.31
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-dotenv>=1.0
