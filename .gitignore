@@ -338,11 +338,15 @@ render_*.docx
 /weather_templates/
 
 # ---------------------------------------------------------------------------
-# fengche 子项目：本地数据 / 地理底图原料 / 演示产物（不入库）
+# sz_tools 子项目：本地数据 / 地理底图原料 / 演示产物 / 运行时状态（不入库）
 # ---------------------------------------------------------------------------
-/fengche/data_samples/
-/fengche/shp_raw/
-/fengche/warning_server/scripts/demo_sample_output.*
+/sz_tools/fengche/data_samples/
+/sz_tools/fengche/shp_raw/
+/sz_tools/fengche/warning_server/scripts/demo_sample_output.*
+/sz_tools/**/data_samples/
+/sz_tools/**/state/dedup_state.json
+/sz_tools/**/deploy/.env
+/sz_tools/**/__pycache__/
 
 # Docker 镜像 tar（leadsee-webui.tar 等），统一放 dist/（已经被 ignore），不要在仓库其它位置
 *.tar
@@ -352,7 +356,18 @@ render_*.docx
 # ---------------------------------------------------------------------------
 *.nc
 /data_samples/
+/sz_tools/data_samples/
 /data_test/
 /Cr/
 /Et/
 /TreRef/
+
+# ---------------------------------------------------------------------------
+# 运行时日志 / 冗余打包产物（不入库）
+# 注意：punkt_tab.zip / averaged_perceptron_tagger_eng.zip / cl100k_base.tiktoken
+# 是 Dockerfile 构建期离线注入 NLTK/tiktoken 数据的必需资源，必须入库，不能忽略。
+# ---------------------------------------------------------------------------
+/radar_push.zip
+/radar_push_bk.zip
+uvicorn_stdout.log
+*.log

@@ -125,5 +125,9 @@ def build_datasource(settings: Optional[Settings] = None) -> DataSource:
             password=_env("FTP_PASSWORD", "") or "",
             base_dir=_env("FTP_BASE_DIR", "/fengche") or "/fengche",
         )
-    base_dir = _env("LOCAL_BASE_DIR", "./fengche/data_samples") or "./fengche/data_samples"
+    _default_base = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data_samples",
+    )
+    base_dir = _env("LOCAL_BASE_DIR", _default_base) or _default_base
     return LocalDataSource(base_dir=base_dir)

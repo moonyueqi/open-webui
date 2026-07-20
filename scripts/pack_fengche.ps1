@@ -6,7 +6,7 @@
 # Output: dist\fengche_deploy_<timestamp>.zip
 #
 # Source layout (in repo):
-#   fengche/
+#   sz_tools/fengche/
 #     ├── deploy/
 #     │   ├── docker-compose.yml
 #     │   ├── .env.example
@@ -85,21 +85,21 @@ $commonExcludes = @(
 )
 
 Write-Host "==> Copy fengche/tool_server -> fengche_tool_server" -ForegroundColor Green
-Copy-WithExcludes -Source (Join-Path $RepoRoot "fengche\tool_server") `
+Copy-WithExcludes -Source (Join-Path $RepoRoot "sz_tools\fengche\tool_server") `
                   -Dest   (Join-Path $Stage    "fengche_tool_server") `
                   -Excludes $commonExcludes
 
 Write-Host "==> Copy fengche/warning_server -> fengche_warning_server" -ForegroundColor Green
-Copy-WithExcludes -Source (Join-Path $RepoRoot "fengche\warning_server") `
+Copy-WithExcludes -Source (Join-Path $RepoRoot "sz_tools\fengche\warning_server") `
                   -Dest   (Join-Path $Stage    "fengche_warning_server") `
                   -Excludes $commonExcludes
 
 Write-Host "==> Copy deploy files (rename to historical names so server-side commands stay unchanged)" -ForegroundColor Green
 # 仓库内（移动后） -> zip 内（保持老命名，部署文档不用改）
 $deployFiles = @{
-    "fengche\deploy\docker-compose.yml" = "docker-compose.fengche.yml"
-    "fengche\deploy\.env.example"       = ".env.fengche.example"
-    "fengche\deploy\DEPLOY.md"          = "DEPLOY_FENGCHE.md"
+    "sz_tools\fengche\deploy\docker-compose.yml" = "docker-compose.fengche.yml"
+    "sz_tools\fengche\deploy\.env.example"       = ".env.fengche.example"
+    "sz_tools\fengche\deploy\DEPLOY.md"          = "DEPLOY_FENGCHE.md"
 }
 foreach ($srcRel in $deployFiles.Keys) {
     $src = Join-Path $RepoRoot $srcRel

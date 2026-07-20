@@ -1,8 +1,8 @@
 """推送去重 / 抑制状态机（JSON 持久化）。
 
-去重规则：首次检测推一次；强度每上升一个等级(+5dBZ)推一次；距市界跨越里程碑
-(25/10/5/0km)推一次；>=45dBZ 后每帧持续推；新区县单独开轨迹。
-过期(超过 gap_minutes 无强回波)自动重置轨迹。
+去重规则：首次检测、强度每升一档(+5dBZ)、跨里程碑(25/10/5/0km)各推一次；
+>=45dBZ 只要当前维持红色级别就持续产生推送理由（首次达到 / 维持均推）；
+过期(gap_minutes 无强回波)自动重置轨迹。持续推的实际频率由全局节流窗口兜底。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def _now() -> float:
 @dataclass
 class TrackState:
     last_level: int = 0
-    redalert: bool = False              # 是否进入 >=45 持续推送态
+    redalert: bool = False              # 当前是否处于 >=45 持续推送态（区分"首次达到"与"维持"文案）
     last_milestone_idx: int = -1        # 已跨越到的里程碑索引（越大越近）
     last_push_ts: float = 0.0
     last_seen_ts: float = 0.0
@@ -152,13 +152,14 @@ class DedupManager:
         if observed_level > track.last_level:
             should = True
             reasons.append(f"等级上升至{observed_level}dBZ")
+        # ≥45dBZ：只要当前维持在红色级别就持续产生推送理由（首次达到 / 维持均推），
+        #   实际推送频率由全局节流窗口（push_window_minutes）兜底控制。
         if observed_max_dbz >= self.redalert_dbz:
-            if not track.redalert:
-                reasons.append("达到≥45dBZ，进入持续推送")
-            else:
-                reasons.append("≥45dBZ持续推送")
             should = True
+            reasons.append("达到≥45dBZ" if not track.redalert else "维持≥45dBZ")
             track.redalert = True
+        else:
+            track.redalert = False
 
         if should:
             track.pushed_once = True
@@ -202,10 +203,14 @@ class DedupManager:
             should = True
             reasons.append(f"等级上升至{observed_level}dBZ")
 
+        # ≥45dBZ：只要当前维持在红色级别就持续产生推送理由（与 decide_district 一致），
+        #   实际推送频率由全局节流窗口兜底控制。
         if observed_max_dbz >= self.redalert_dbz:
             should = True
+            reasons.append("达到≥45dBZ" if not track.redalert else "维持≥45dBZ")
             track.redalert = True
-            reasons.append("≥45dBZ持续推送")
+        else:
+            track.redalert = False
 
         if should:
             track.pushed_once = True

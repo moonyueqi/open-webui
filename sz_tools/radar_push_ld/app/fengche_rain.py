@@ -231,13 +231,16 @@ def build_rainfall_line_template(
     start_hour / end_hour 为目标时段的本地整点（如 9,10 表示 9-10 时）。
     """
     span = f"{start_hour}-{end_hour}时"
+    # 无强阵风时统一在首行补一句「无明显强阵风」总结（不依赖 LLM，保证确定性）。
+    no_gust = not gust_districts
+    gust_suffix = "，无明显强阵风" if no_gust else ""
     if not rain_districts and not gust_districts:
-        return f"▶ 风掣预报：预计{span}苏州各区无明显降水。"
+        return f"▶ 风掣预报：预计{span}苏州各区无明显降水{gust_suffix}。"
 
     if overview:
-        head = f"▶ 风掣预报：预计{span}苏州{overview}。"
+        head = f"▶ 风掣预报：预计{span}苏州{overview}{gust_suffix}。"
     elif rain_districts:
-        head = f"▶ 风掣预报：预计{span}苏州部分地区有降水。"
+        head = f"▶ 风掣预报：预计{span}苏州部分地区有降水{gust_suffix}。"
     else:
         head = f"▶ 风掣预报：预计{span}苏州无明显降水，部分地区有较强阵风。"
 
@@ -305,6 +308,14 @@ def build_overview_phrase(
             "\n【硬性约束】本时段全市无明显降水。请以'无明显降水'开头，随后只描述风势"
             "（如'无明显降水，局地伴有较强阵风'）；不得写出任何'有雨/雨势/阵雨/降水明显'"
             "等表示确有降水的措辞。"
+        )
+    elif rain_districts and not gust_districts:
+        # 有降水但无强阵风：概况只写降水与雨势，不要提风——句尾会由代码统一补「无明显强阵风」，
+        # 避免概况再写风造成重复或矛盾。
+        constraint = (
+            "\n【硬性约束】本时段全市无明显强阵风。请只描述降水落区与雨势，"
+            "不要提及风、阵风、大风或风力（如'南部有弱降水，雨势平缓'）；"
+            "不得写出'伴有阵风/风力较强'等表示有明显风力的措辞。"
         )
     else:
         constraint = ""
