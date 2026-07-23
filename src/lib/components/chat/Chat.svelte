@@ -119,6 +119,7 @@
 	let autoScroll = true;
 	let processing = '';
 	let messagesContainerElement: HTMLDivElement;
+	let messagesElement;
 
 	let navbarElement;
 
@@ -2773,6 +2774,9 @@
 						{initNewChat}
 						archiveChatHandler={() => {}}
 						{moveChatHandler}
+						scrollToTop={() => {
+							messagesElement?.scrollToTop();
+						}}
 						onSaveTempChat={async () => {
 							try {
 								if (!history?.currentId || !Object.keys(history.messages).length) {
@@ -2826,6 +2830,7 @@
 							>
 								<div class=" h-full w-full flex flex-col">
 									<Messages
+										bind:this={messagesElement}
 										chatId={$chatId}
 										bind:history
 										bind:autoScroll

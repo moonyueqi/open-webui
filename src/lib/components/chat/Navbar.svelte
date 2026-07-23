@@ -54,6 +54,7 @@
 	export let onSaveTempChat: () => {};
 	export let archiveChatHandler: (id: string) => void;
 	export let moveChatHandler: (id: string, folderId: string) => void;
+	export let scrollToTop: (() => void) | null = null;
 
 	let closedBannerIds = [];
 
@@ -200,6 +201,7 @@
 								archiveChatHandler(chat.id);
 							}}
 							{moveChatHandler}
+							{scrollToTop}
 						>
 							<button
 								class="flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"

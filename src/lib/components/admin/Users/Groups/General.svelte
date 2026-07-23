@@ -2,6 +2,8 @@
 	import { getContext } from 'svelte';
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import Switch from '$lib/components/common/Switch.svelte';
+	import { DEFAULT_PERMISSIONS } from '$lib/constants/permissions';
 
 	const i18n = getContext('i18n');
 
@@ -13,6 +15,19 @@
 
 	export let edit = false;
 	export let onDelete: Function = () => {};
+
+	// Group permissions (only a minimal subset is surfaced here to match the
+	// simplified admin panel; the full permissions page is intentionally not shown).
+	export let permissions = {};
+
+	$: {
+		if (!permissions.features) {
+			permissions = {
+				...permissions,
+				features: { ...DEFAULT_PERMISSIONS.features, ...(permissions.features ?? {}) }
+			};
+		}
+	}
 
 	$: currentShare = data?.config?.share ?? 'members';
 </script>
@@ -71,6 +86,18 @@
 			>
 				{$i18n.t('Everyone')}
 			</button>
+		</div>
+	</div>
+
+	<div class="flex flex-col w-full">
+		<label class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400"
+			>{$i18n.t('Feature Permissions')}</label
+		>
+		<div class="flex w-full items-center justify-between py-1">
+			<div class="self-center text-xs font-medium">
+				{$i18n.t('Memories')}
+			</div>
+			<Switch bind:state={permissions.features.memories} />
 		</div>
 	</div>
 </div>
