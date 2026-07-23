@@ -147,29 +147,28 @@
 		// 		'settings'
 		// 	]
 		// },
-		// 【已注释】个性化标签页 - 不允许普通用户修改
-		// {
-		// 	id: 'personalization',
-		// 	title: 'Personalization',
-		// 	keywords: [
-		// 		'account preferences',
-		// 		'account settings',
-		// 		'accountpreferences',
-		// 		'accountsettings',
-		// 		'custom settings',
-		// 		'customsettings',
-		// 		'experimental',
-		// 		'memories',
-		// 		'memory',
-		// 		'personalization',
-		// 		'personalize',
-		// 		'personal settings',
-		// 		'personalsettings',
-		// 		'profile',
-		// 		'user preferences',
-		// 		'userpreferences'
-		// 	]
-		// },
+		{
+			id: 'personalization',
+			title: 'Personalization',
+			keywords: [
+				'account preferences',
+				'account settings',
+				'accountpreferences',
+				'accountsettings',
+				'custom settings',
+				'customsettings',
+				'experimental',
+				'memories',
+				'memory',
+				'personalization',
+				'personalize',
+				'personal settings',
+				'personalsettings',
+				'profile',
+				'user preferences',
+				'userpreferences'
+			]
+		},
 		// 【已注释】语音标签页 - 不允许普通用户修改
 		// {
 		// 	id: 'audio',
@@ -360,13 +359,12 @@
 			// 	return $user?.role === 'admin' || ($user?.permissions?.settings?.interface ?? true);
 			// }
 
-			// 【已注释】个性化标签页已禁用
-			// if (tab.id === 'personalization') {
-			// 	return (
-			// 		$config?.features?.enable_memories &&
-			// 		($user?.role === 'admin' || ($user?.permissions?.features?.memories ?? true))
-			// 	);
-			// }
+			if (tab.id === 'personalization') {
+				return (
+					$config?.features?.enable_memories &&
+					($user?.role === 'admin' || ($user?.permissions?.features?.memories ?? true))
+				);
+			}
 
 			return true;
 		});
@@ -521,6 +519,25 @@
 									{/if}
 								</button>
 							{/if}
+						{:else if tabId === 'personalization'}
+							<button
+								role="tab"
+								aria-controls="tab-personalization"
+								aria-selected={selectedTab === 'personalization'}
+								class="relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors
+									{selectedTab === 'personalization'
+										? 'text-gray-900 dark:text-white'
+										: 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}"
+								on:click={() => { selectedTab = 'personalization'; }}
+							>
+								<div class="flex items-center gap-2">
+									<Face strokeWidth="2" className="size-4" />
+									<span>{$i18n.t('Personalization')}</span>
+								</div>
+								{#if selectedTab === 'personalization'}
+									<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 dark:bg-white rounded-full"></div>
+								{/if}
+							</button>
 						{:else if tabId === 'about'}
 							<button
 								role="tab"
@@ -576,6 +593,13 @@
 				<Connections
 					saveSettings={async (updated) => {
 						await saveSettings(updated);
+						toast.success($i18n.t('Settings saved successfully!'));
+					}}
+				/>
+			{:else if selectedTab === 'personalization'}
+				<Personalization
+					{saveSettings}
+					on:save={async () => {
 						toast.success($i18n.t('Settings saved successfully!'));
 					}}
 				/>

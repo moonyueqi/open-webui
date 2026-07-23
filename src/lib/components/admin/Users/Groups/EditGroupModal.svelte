@@ -195,6 +195,7 @@
 										bind:name
 										bind:description
 										bind:data
+										bind:permissions
 										{nameError}
 										{edit}
 										onDelete={() => {
@@ -229,6 +230,7 @@
 								bind:name
 								bind:description
 								bind:data
+								bind:permissions
 								{nameError}
 								{edit}
 							/>

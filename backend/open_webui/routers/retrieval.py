@@ -522,6 +522,7 @@ async def get_rag_config(request: Request, user=Depends(get_admin_user)):
         # Reranking settings
         "RAG_RERANKING_MODEL": request.app.state.config.RAG_RERANKING_MODEL,
         "RAG_RERANKING_ENGINE": request.app.state.config.RAG_RERANKING_ENGINE,
+        "RAG_RERANKING_BATCH_SIZE": request.app.state.config.RAG_RERANKING_BATCH_SIZE,
         "RAG_EXTERNAL_RERANKER_URL": request.app.state.config.RAG_EXTERNAL_RERANKER_URL,
         "RAG_EXTERNAL_RERANKER_API_KEY": request.app.state.config.RAG_EXTERNAL_RERANKER_API_KEY,
         "RAG_EXTERNAL_RERANKER_TIMEOUT": request.app.state.config.RAG_EXTERNAL_RERANKER_TIMEOUT,
@@ -735,6 +736,7 @@ class ConfigForm(BaseModel):
     # Reranking settings
     RAG_RERANKING_MODEL: Optional[str] = None
     RAG_RERANKING_ENGINE: Optional[str] = None
+    RAG_RERANKING_BATCH_SIZE: Optional[int] = None
     RAG_EXTERNAL_RERANKER_URL: Optional[str] = None
     RAG_EXTERNAL_RERANKER_API_KEY: Optional[str] = None
     RAG_EXTERNAL_RERANKER_TIMEOUT: Optional[str] = None
@@ -1039,6 +1041,12 @@ async def update_rag_config(
         else request.app.state.config.RAG_EXTERNAL_RERANKER_TIMEOUT
     )
 
+    request.app.state.config.RAG_RERANKING_BATCH_SIZE = (
+        form_data.RAG_RERANKING_BATCH_SIZE
+        if form_data.RAG_RERANKING_BATCH_SIZE is not None
+        else request.app.state.config.RAG_RERANKING_BATCH_SIZE
+    )
+
     log.info(
         f"Updating reranking model: {request.app.state.config.RAG_RERANKING_MODEL} to {form_data.RAG_RERANKING_MODEL}"
     )
@@ -1066,6 +1074,7 @@ async def update_rag_config(
                     request.app.state.config.RAG_RERANKING_ENGINE,
                     request.app.state.config.RAG_RERANKING_MODEL,
                     request.app.state.rf,
+                    reranking_batch_size=request.app.state.config.RAG_RERANKING_BATCH_SIZE,
                 )
         except Exception as e:
             log.error(f"Error loading reranking model: {e}")
@@ -1322,6 +1331,7 @@ async def update_rag_config(
         # Reranking settings
         "RAG_RERANKING_MODEL": request.app.state.config.RAG_RERANKING_MODEL,
         "RAG_RERANKING_ENGINE": request.app.state.config.RAG_RERANKING_ENGINE,
+        "RAG_RERANKING_BATCH_SIZE": request.app.state.config.RAG_RERANKING_BATCH_SIZE,
         "RAG_EXTERNAL_RERANKER_URL": request.app.state.config.RAG_EXTERNAL_RERANKER_URL,
         "RAG_EXTERNAL_RERANKER_API_KEY": request.app.state.config.RAG_EXTERNAL_RERANKER_API_KEY,
         "RAG_EXTERNAL_RERANKER_TIMEOUT": request.app.state.config.RAG_EXTERNAL_RERANKER_TIMEOUT,

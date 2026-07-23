@@ -2,20 +2,39 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, Literal
 
 from open_webui.models.memories import Memories, MemoryModel
 from open_webui.retrieval.vector.factory import VECTOR_DB_CLIENT
+from open_webui.config import RAG_EMBEDDING_QUERY_PREFIX
 from open_webui.utils.auth import get_verified_user
 from open_webui.internal.db import get_session
 from sqlalchemy.orm import Session
 
 from open_webui.utils.access_control import require_permission
+from open_webui.utils.memory import (
+    clean_memory_content,
+    clean_memory_path,
+    list_memory_path_groups,
+    memory_vector_text,
+    read_memory_path_rows,
+    search_memory_rows,
+    validate_memory_operations,
+)
 from open_webui.constants import ERROR_MESSAGES
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _memory_metadata(memory: MemoryModel) -> dict:
+    return {
+        "created_at": memory.created_at,
+        "updated_at": memory.updated_at,
+        "type": memory.type,
+        "path": memory.path,
+    }
 
 
 ############################
@@ -47,10 +66,48 @@ async def get_memories(
 
 class AddMemoryForm(BaseModel):
     content: str
+    type: Literal["user", "context"] = "context"
+    path: Optional[str] = None
 
 
 class MemoryUpdateModel(BaseModel):
     content: Optional[str] = None
+    type: Optional[Literal["user", "context"]] = None
+    path: Optional[str] = None
+
+
+class MemoryOperationModel(BaseModel):
+    action: Literal["add", "replace", "remove", "move"]
+    id: Optional[str] = None
+    content: Optional[str] = None
+    type: Optional[Literal["user", "context"]] = None
+    path: Optional[str] = None
+
+
+class UpdateMemoriesForm(BaseModel):
+    operations: list[MemoryOperationModel]
+    source: Optional[Literal["tool", "background_review"]] = None
+
+
+class SearchMemoriesForm(BaseModel):
+    query: Optional[str] = None
+    type: Literal["user", "context", "all"] = "all"
+    path: Optional[str] = None
+    memory_id: Optional[str] = None
+    limit: int = 20
+
+
+class ListMemoryPathsForm(BaseModel):
+    query: Optional[str] = None
+    type: Literal["user", "context", "all"] = "all"
+    limit: int = 100
+
+
+class ReadMemoryPathForm(BaseModel):
+    path: str
+    type: Literal["user", "context", "all"] = "all"
+    include_children: bool = True
+    limit: int = 50
 
 
 @router.post("/add", response_model=Optional[MemoryModel])
@@ -71,10 +128,20 @@ async def add_memory(
 
     require_permission(user, "features.memories", request)
 
-    memory = Memories.insert_new_memory(user.id, form_data.content)
+    content = clean_memory_content(form_data.content)
+    path = clean_memory_path(form_data.path)
+    memory = Memories.insert_new_memory(
+        user.id,
+        content,
+        memory_type=form_data.type,
+        path=path,
+        meta={"created_by": "manual"},
+    )
 
     try:
-        vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+        vector = await request.app.state.EMBEDDING_FUNCTION(
+            memory_vector_text(memory.content, memory.path), user=user
+        )
     except Exception as e:
         log.exception(f"Embedding failed in add_memory: {e}")
         raise HTTPException(
@@ -87,14 +154,95 @@ async def add_memory(
         items=[
             {
                 "id": memory.id,
-                "text": memory.content,
+                "text": memory_vector_text(memory.content, memory.path),
                 "vector": vector,
-                "metadata": {"created_at": memory.created_at},
+                "metadata": _memory_metadata(memory),
             }
         ],
     )
 
     return memory
+
+
+############################
+# UpdateMemories (batch operations)
+############################
+
+
+@router.post("/update", response_model=list[dict])
+async def update_memories(
+    request: Request,
+    form_data: UpdateMemoriesForm,
+    user=Depends(get_verified_user),
+):
+    if not request.app.state.config.ENABLE_MEMORIES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    require_permission(user, "features.memories", request)
+
+    operations = validate_memory_operations(form_data)
+    metadata = getattr(request.state, "metadata", {}) or {}
+    source = form_data.source or "tool"
+    for operation in operations:
+        if operation.get("action") in {"add", "replace", "move"}:
+            operation["meta"] = {
+                "created_by": source,
+                "chat_id": metadata.get("chat_id"),
+                "message_id": metadata.get("message_id"),
+                "model": metadata.get("model"),
+            }
+
+    try:
+        results = Memories.apply_memory_operations(user.id, operations)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    upsert_items = []
+    delete_ids = []
+    response = []
+
+    for result in results:
+        memory = result.get("memory")
+        if isinstance(memory, MemoryModel):
+            result = {**result, "memory": memory.model_dump()}
+            if result.get("status") in {"created", "updated"}:
+                try:
+                    vector = await request.app.state.EMBEDDING_FUNCTION(
+                        memory_vector_text(memory.content, memory.path),
+                        user=user,
+                    )
+                except Exception as e:
+                    log.exception(f"Embedding failed in update_memories: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE,
+                    )
+                upsert_items.append(
+                    {
+                        "id": memory.id,
+                        "text": memory_vector_text(memory.content, memory.path),
+                        "vector": vector,
+                        "metadata": _memory_metadata(memory),
+                    }
+                )
+        if result.get("status") == "deleted" and result.get("id"):
+            delete_ids.append(result["id"])
+        response.append(result)
+
+    if upsert_items:
+        VECTOR_DB_CLIENT.upsert(
+            collection_name=f"user-memory-{user.id}", items=upsert_items
+        )
+
+    if delete_ids:
+        VECTOR_DB_CLIENT.delete(
+            collection_name=f"user-memory-{user.id}", ids=delete_ids
+        )
+
+    return response
 
 
 ############################
@@ -131,7 +279,7 @@ async def query_memory(
 
     try:
         vector = await request.app.state.EMBEDDING_FUNCTION(
-            form_data.content, user=user
+            form_data.content, prefix=RAG_EMBEDDING_QUERY_PREFIX, user=user
         )
     except Exception as e:
         log.exception(f"Embedding failed in query_memory: {e}")
@@ -146,7 +294,127 @@ async def query_memory(
         limit=form_data.k,
     )
 
+    # Filter results by relevance threshold to avoid returning unrelated
+    # memories. Vector similarity search always returns the top-K nearest
+    # neighbours even when they are completely irrelevant; applying the same
+    # RELEVANCE_THRESHOLD used by RAG ensures only genuinely matching memories
+    # are surfaced (distances are normalised to 0->1, higher is better).
+    # Defaults to 0.0 which keeps the legacy behaviour (no filtering).
+    relevance_threshold = getattr(
+        request.app.state.config, "RELEVANCE_THRESHOLD", 0.0
+    )
+    if (
+        results
+        and relevance_threshold > 0.0
+        and results.distances
+        and results.distances[0]
+    ):
+        from open_webui.retrieval.vector.main import SearchResult
+
+        filtered_ids = []
+        filtered_docs = []
+        filtered_metas = []
+        filtered_dists = []
+
+        for idx, score in enumerate(results.distances[0]):
+            if score >= relevance_threshold:
+                if results.ids and results.ids[0]:
+                    filtered_ids.append(results.ids[0][idx])
+                if results.documents and results.documents[0]:
+                    filtered_docs.append(results.documents[0][idx])
+                if results.metadatas and results.metadatas[0]:
+                    filtered_metas.append(results.metadatas[0][idx])
+                filtered_dists.append(score)
+
+        results = SearchResult(
+            ids=[filtered_ids] if filtered_ids else [[]],
+            documents=[filtered_docs] if filtered_docs else [[]],
+            metadatas=[filtered_metas] if filtered_metas else [[]],
+            distances=[filtered_dists] if filtered_dists else [[]],
+        )
+
     return results
+
+
+############################
+# SearchMemories / ListMemoryPaths / ReadMemoryPath (text/path browsing)
+############################
+
+
+@router.post("/search", response_model=list[MemoryModel])
+async def search_memories(
+    request: Request,
+    form_data: SearchMemoriesForm,
+    user=Depends(get_verified_user),
+):
+    if not request.app.state.config.ENABLE_MEMORIES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    require_permission(user, "features.memories", request)
+
+    memories = Memories.get_memories_by_user_id(user.id)
+    return search_memory_rows(
+        memories,
+        query=form_data.query,
+        path=form_data.path,
+        memory_id=form_data.memory_id,
+        memory_type=form_data.type,
+        limit=form_data.limit,
+    )
+
+
+@router.post("/paths")
+async def list_memory_paths(
+    request: Request,
+    form_data: ListMemoryPathsForm,
+    user=Depends(get_verified_user),
+):
+    if not request.app.state.config.ENABLE_MEMORIES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    require_permission(user, "features.memories", request)
+
+    memories = Memories.get_memories_by_user_id(user.id)
+    return list_memory_path_groups(
+        memories,
+        query=form_data.query or "",
+        memory_type=form_data.type,
+        limit=form_data.limit,
+    )
+
+
+@router.post("/path")
+async def read_memory_path(
+    request: Request,
+    form_data: ReadMemoryPathForm,
+    user=Depends(get_verified_user),
+):
+    if not request.app.state.config.ENABLE_MEMORIES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    require_permission(user, "features.memories", request)
+
+    memories = Memories.get_memories_by_user_id(user.id)
+    result = read_memory_path_rows(
+        memories,
+        path=form_data.path,
+        memory_type=form_data.type,
+        include_children=form_data.include_children,
+        limit=form_data.limit,
+    )
+    return {
+        **result,
+        "memories": [memory.model_dump() for memory in result["memories"]],
+    }
 
 
 ############################
@@ -180,7 +448,9 @@ async def reset_memory_from_vector_db(
     try:
         vectors = await asyncio.gather(
             *[
-                request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+                request.app.state.EMBEDDING_FUNCTION(
+                    memory_vector_text(memory.content, memory.path), user=user
+                )
                 for memory in memories
             ]
         )
@@ -196,12 +466,9 @@ async def reset_memory_from_vector_db(
         items=[
             {
                 "id": memory.id,
-                "text": memory.content,
+                "text": memory_vector_text(memory.content, memory.path),
                 "vector": vectors[idx],
-                "metadata": {
-                    "created_at": memory.created_at,
-                    "updated_at": memory.updated_at,
-                },
+                "metadata": _memory_metadata(memory),
             }
             for idx, memory in enumerate(memories)
         ],
@@ -265,16 +532,31 @@ async def update_memory_by_id(
 
     require_permission(user, "features.memories", request)
 
+    content = (
+        clean_memory_content(form_data.content)
+        if form_data.content is not None
+        else None
+    )
+    path = clean_memory_path(form_data.path)
+    if content is None and form_data.type is None and form_data.path is None:
+        raise HTTPException(status_code=400, detail="未提供任何记忆更新内容。")
+
     memory = Memories.update_memory_by_id_and_user_id(
-        memory_id, user.id, form_data.content
+        memory_id,
+        user.id,
+        content,
+        memory_type=form_data.type,
+        path=path,
+        update_path=form_data.path is not None,
+        meta={"created_by": "manual"},
     )
     if memory is None:
         raise HTTPException(status_code=404, detail="未找到该记忆。")
 
-    if form_data.content is not None:
+    if form_data.content is not None or form_data.path is not None:
         try:
             vector = await request.app.state.EMBEDDING_FUNCTION(
-                memory.content, user=user
+                memory_vector_text(memory.content, memory.path), user=user
             )
         except Exception as e:
             log.exception(f"Embedding failed in update_memory_by_id: {e}")
@@ -288,12 +570,9 @@ async def update_memory_by_id(
             items=[
                 {
                     "id": memory.id,
-                    "text": memory.content,
+                    "text": memory_vector_text(memory.content, memory.path),
                     "vector": vector,
-                    "metadata": {
-                        "created_at": memory.created_at,
-                        "updated_at": memory.updated_at,
-                    },
+                    "metadata": _memory_metadata(memory),
                 }
             ],
         )

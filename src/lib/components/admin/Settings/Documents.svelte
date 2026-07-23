@@ -417,6 +417,7 @@
 
 			// Reranking Model
 			RAG_RERANKING_MODEL: RAGConfig.RAG_RERANKING_MODEL,
+			RAG_RERANKING_BATCH_SIZE: RAGConfig.RAG_RERANKING_BATCH_SIZE,
 			RAG_EXTERNAL_RERANKER_URL: RAGConfig.RAG_EXTERNAL_RERANKER_URL,
 			RAG_EXTERNAL_RERANKER_API_KEY: RAGConfig.RAG_EXTERNAL_RERANKER_API_KEY,
 
@@ -1397,7 +1398,6 @@
 							<input
 								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
 								type="number"
-								placeholder={$i18n.t('Enter Top K')}
 								bind:value={RAGConfig.TOP_K}
 								autocomplete="off"
 								min="0"
@@ -1409,10 +1409,22 @@
 							<input
 								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
 								type="number"
-								placeholder={$i18n.t('Enter Top K Reranker')}
 								bind:value={RAGConfig.TOP_K_RERANKER}
 								autocomplete="off"
 								min="0"
+							/>
+						</div>
+
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">{$i18n.t('Reranking Batch Size')}</div>
+							<input
+								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
+								type="number"
+								bind:value={RAGConfig.RAG_RERANKING_BATCH_SIZE}
+								autocomplete="off"
+								min="1"
+								max="16000"
+								step="1"
 							/>
 						</div>
 
@@ -1431,7 +1443,6 @@
 								class="bg-gray-50 dark:bg-gray-850 dark:text-gray-300 rounded-lg py-1 px-2 text-center w-20 text-sm outline-none"
 								type="number"
 								step="0.01"
-								placeholder={$i18n.t('Enter Score')}
 								bind:value={RAGConfig.RELEVANCE_THRESHOLD}
 								autocomplete="off"
 								min="0.0"

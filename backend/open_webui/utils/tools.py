@@ -40,7 +40,11 @@ from open_webui.models.users import UserModel
 from open_webui.models.groups import Groups
 from open_webui.models.access_grants import AccessGrants
 from open_webui.utils.plugin import load_tool_module_by_id
-from open_webui.utils.access_control import has_access, has_connection_access
+from open_webui.utils.access_control import (
+    has_access,
+    has_connection_access,
+    has_permission,
+)
 from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
 from open_webui.env import (
     AIOHTTP_CLIENT_TIMEOUT,
@@ -59,9 +63,12 @@ from open_webui.tools.builtin import (
     execute_code,
     search_memories,
     add_memory,
+    update_memory,
     replace_memory_content,
     delete_memory,
     list_memories,
+    list_memory_paths,
+    read_memory_path,
     get_current_timestamp,
     get_current_time,
     calculate_timestamp,
@@ -467,15 +474,41 @@ def get_builtin_tools(
     if is_builtin_tool_enabled("chats"):
         builtin_functions.extend([search_chats, view_chat])
 
-    # Add memory tools if builtin category enabled AND enabled for this chat
-    if is_builtin_tool_enabled("memory") and features.get("memory"):
+    # Add memory tools when memory is enabled for this chat AND the model
+    # declares the "memory" capability AND the user holds the memories
+    # permission (admins always pass).
+    def _user_allows_memories() -> bool:
+        user_dict = extra_params.get("__user__") or {}
+        user_id = user_dict.get("id")
+        if not user_id:
+            return False
+        if user_dict.get("role") == "admin":
+            return True
+        try:
+            default_permissions = (
+                getattr(request.app.state.config, "USER_PERMISSIONS", None) or {}
+            )
+            return has_permission(user_id, "features.memories", default_permissions)
+        except Exception as e:
+            log.debug(f"memory permission check failed: {e}")
+            return False
+
+    if (
+        is_builtin_tool_enabled("memory")
+        and features.get("memory")
+        and get_model_capability("memory")
+        and _user_allows_memories()
+    ):
         builtin_functions.extend(
             [
                 search_memories,
+                list_memory_paths,
+                read_memory_path,
+                list_memories,
+                update_memory,
                 add_memory,
                 replace_memory_content,
                 delete_memory,
-                list_memories,
             ]
         )
 

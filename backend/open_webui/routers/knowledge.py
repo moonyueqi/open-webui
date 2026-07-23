@@ -720,6 +720,15 @@ def add_file_to_knowledge_by_id(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
+    # Reject duplicate filenames within the same knowledge base
+    if Knowledges.has_file_with_name_in_knowledge(
+        knowledge_id=id, filename=file.filename, db=db
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.KNOWLEDGE_FILE_NAME_TAKEN,
+        )
+
     # Add content to the vector database
     try:
         process_file(
@@ -1105,6 +1114,20 @@ async def add_files_to_knowledge_batch(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"未找到文件 {missing_ids[0]}",
         )
+
+    # Reject duplicate filenames: both within this batch and against files
+    # already present in the knowledge base.
+    seen_names = set()
+    for file in files:
+        name_key = (file.filename or "").lower()
+        if name_key in seen_names or Knowledges.has_file_with_name_in_knowledge(
+            knowledge_id=id, filename=file.filename, db=db
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.KNOWLEDGE_FILE_NAME_TAKEN,
+            )
+        seen_names.add(name_key)
 
     # Process files
     try:

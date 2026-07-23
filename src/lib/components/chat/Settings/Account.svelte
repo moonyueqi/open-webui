@@ -187,7 +187,7 @@
 
 	<div class="flex justify-end pt-5 mt-4 border-t border-gray-100 dark:border-gray-800">
 		<button
-			class="px-5 py-2 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 transition-all rounded-lg shadow-sm"
+			class="px-4 py-1.5 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 transition-all rounded-lg shadow-sm"
 			on:click={async () => {
 				const res = await submitHandler();
 				if (res) {
