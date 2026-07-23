@@ -480,6 +480,13 @@ async def get_rag_config(request: Request, user=Depends(get_admin_user)):
         "TOP_K_RERANKER": request.app.state.config.TOP_K_RERANKER,
         "RELEVANCE_THRESHOLD": request.app.state.config.RELEVANCE_THRESHOLD,
         "HYBRID_BM25_WEIGHT": request.app.state.config.HYBRID_BM25_WEIGHT,
+        # Document preprocessing (meteokb) settings
+        "DOC_PREPROCESS_SERVICE_URL": request.app.state.config.DOC_PREPROCESS_SERVICE_URL,
+        "DOC_PREPROCESS_ENRICH_ENABLED": request.app.state.config.DOC_PREPROCESS_ENRICH_ENABLED,
+        "DOC_PREPROCESS_ENRICH_BASE_URL": request.app.state.config.DOC_PREPROCESS_ENRICH_BASE_URL,
+        "DOC_PREPROCESS_ENRICH_API_KEY": request.app.state.config.DOC_PREPROCESS_ENRICH_API_KEY,
+        "DOC_PREPROCESS_ENRICH_MODEL": request.app.state.config.DOC_PREPROCESS_ENRICH_MODEL,
+        "DOC_PREPROCESS_ENRICH_DEFAULT_REGION": request.app.state.config.DOC_PREPROCESS_ENRICH_DEFAULT_REGION,
         # Content extraction settings
         "CONTENT_EXTRACTION_ENGINE": request.app.state.config.CONTENT_EXTRACTION_ENGINE,
         "PDF_EXTRACT_IMAGES": request.app.state.config.PDF_EXTRACT_IMAGES,
@@ -680,6 +687,14 @@ class ConfigForm(BaseModel):
     RELEVANCE_THRESHOLD: Optional[float] = None
     HYBRID_BM25_WEIGHT: Optional[float] = None
 
+    # Document preprocessing (meteokb) settings
+    DOC_PREPROCESS_SERVICE_URL: Optional[str] = None
+    DOC_PREPROCESS_ENRICH_ENABLED: Optional[bool] = None
+    DOC_PREPROCESS_ENRICH_BASE_URL: Optional[str] = None
+    DOC_PREPROCESS_ENRICH_API_KEY: Optional[str] = None
+    DOC_PREPROCESS_ENRICH_MODEL: Optional[str] = None
+    DOC_PREPROCESS_ENRICH_DEFAULT_REGION: Optional[str] = None
+
     # Content extraction settings
     CONTENT_EXTRACTION_ENGINE: Optional[str] = None
     PDF_EXTRACT_IMAGES: Optional[bool] = None
@@ -798,6 +813,38 @@ async def update_rag_config(
         form_data.HYBRID_BM25_WEIGHT
         if form_data.HYBRID_BM25_WEIGHT is not None
         else request.app.state.config.HYBRID_BM25_WEIGHT
+    )
+
+    # Document preprocessing (meteokb) settings
+    request.app.state.config.DOC_PREPROCESS_SERVICE_URL = (
+        form_data.DOC_PREPROCESS_SERVICE_URL
+        if form_data.DOC_PREPROCESS_SERVICE_URL is not None
+        else request.app.state.config.DOC_PREPROCESS_SERVICE_URL
+    )
+    request.app.state.config.DOC_PREPROCESS_ENRICH_ENABLED = (
+        form_data.DOC_PREPROCESS_ENRICH_ENABLED
+        if form_data.DOC_PREPROCESS_ENRICH_ENABLED is not None
+        else request.app.state.config.DOC_PREPROCESS_ENRICH_ENABLED
+    )
+    request.app.state.config.DOC_PREPROCESS_ENRICH_BASE_URL = (
+        form_data.DOC_PREPROCESS_ENRICH_BASE_URL
+        if form_data.DOC_PREPROCESS_ENRICH_BASE_URL is not None
+        else request.app.state.config.DOC_PREPROCESS_ENRICH_BASE_URL
+    )
+    request.app.state.config.DOC_PREPROCESS_ENRICH_API_KEY = (
+        form_data.DOC_PREPROCESS_ENRICH_API_KEY
+        if form_data.DOC_PREPROCESS_ENRICH_API_KEY is not None
+        else request.app.state.config.DOC_PREPROCESS_ENRICH_API_KEY
+    )
+    request.app.state.config.DOC_PREPROCESS_ENRICH_MODEL = (
+        form_data.DOC_PREPROCESS_ENRICH_MODEL
+        if form_data.DOC_PREPROCESS_ENRICH_MODEL is not None
+        else request.app.state.config.DOC_PREPROCESS_ENRICH_MODEL
+    )
+    request.app.state.config.DOC_PREPROCESS_ENRICH_DEFAULT_REGION = (
+        form_data.DOC_PREPROCESS_ENRICH_DEFAULT_REGION
+        if form_data.DOC_PREPROCESS_ENRICH_DEFAULT_REGION is not None
+        else request.app.state.config.DOC_PREPROCESS_ENRICH_DEFAULT_REGION
     )
 
     # Content extraction settings
@@ -1234,6 +1281,13 @@ async def update_rag_config(
         "TOP_K_RERANKER": request.app.state.config.TOP_K_RERANKER,
         "RELEVANCE_THRESHOLD": request.app.state.config.RELEVANCE_THRESHOLD,
         "HYBRID_BM25_WEIGHT": request.app.state.config.HYBRID_BM25_WEIGHT,
+        # Document preprocessing (meteokb) settings
+        "DOC_PREPROCESS_SERVICE_URL": request.app.state.config.DOC_PREPROCESS_SERVICE_URL,
+        "DOC_PREPROCESS_ENRICH_ENABLED": request.app.state.config.DOC_PREPROCESS_ENRICH_ENABLED,
+        "DOC_PREPROCESS_ENRICH_BASE_URL": request.app.state.config.DOC_PREPROCESS_ENRICH_BASE_URL,
+        "DOC_PREPROCESS_ENRICH_API_KEY": request.app.state.config.DOC_PREPROCESS_ENRICH_API_KEY,
+        "DOC_PREPROCESS_ENRICH_MODEL": request.app.state.config.DOC_PREPROCESS_ENRICH_MODEL,
+        "DOC_PREPROCESS_ENRICH_DEFAULT_REGION": request.app.state.config.DOC_PREPROCESS_ENRICH_DEFAULT_REGION,
         # Content extraction settings
         "CONTENT_EXTRACTION_ENGINE": request.app.state.config.CONTENT_EXTRACTION_ENGINE,
         "PDF_EXTRACT_IMAGES": request.app.state.config.PDF_EXTRACT_IMAGES,

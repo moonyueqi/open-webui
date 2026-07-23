@@ -23,6 +23,7 @@
 	import { reindexKnowledgeFiles } from '$lib/apis/knowledge';
 	import { deleteAllFiles } from '$lib/apis/files';
 	import { verifyOpenAIConnection } from '$lib/apis/openai';
+	import { verifyPreprocessService } from '$lib/apis/documentPreprocessing';
 
 	import ResetUploadDirConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ResetVectorDBConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -40,6 +41,8 @@
 
 	let verifyingEmbedding = false;
 	let verifyingReranker = false;
+	let verifyingPreprocessService = false;
+	let verifyingEnrich = false;
 
 	// 从 verifyOpenAIConnection 抛出的字符串里提取 HTTP 状态码。
 	// 字符串约定形如 "OpenAI: [401] xxx" / "OpenAI: [404] xxx" / "OpenAI: Network Problem"。
@@ -207,6 +210,52 @@
 		await runVerifyReranker();
 	};
 
+	const verifyPreprocessServiceHandler = async () => {
+		if (!RAGConfig?.DOC_PREPROCESS_SERVICE_URL) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		verifyingPreprocessService = true;
+		try {
+			const res = await verifyPreprocessService(localStorage.token).catch((err) => {
+				toast.error(`${err}`);
+				return null;
+			});
+			if (res?.status) {
+				toast.success($i18n.t('Preprocessing service is reachable'));
+			}
+		} finally {
+			verifyingPreprocessService = false;
+		}
+	};
+
+	const verifyEnrichHandler = async () => {
+		if (!RAGConfig?.DOC_PREPROCESS_ENRICH_BASE_URL) {
+			toast.error($i18n.t('URL is required'));
+			return;
+		}
+		const model = RAGConfig?.DOC_PREPROCESS_ENRICH_MODEL ?? '';
+		if (!model) {
+			toast.error($i18n.t('Please fill in the model name first'));
+			return;
+		}
+		verifyingEnrich = true;
+		try {
+			const conn = await verifyOpenAIConnection(localStorage.token, {
+				url: RAGConfig.DOC_PREPROCESS_ENRICH_BASE_URL.replace(/\/$/, ''),
+				key: RAGConfig.DOC_PREPROCESS_ENRICH_API_KEY ?? '',
+				config: { auth_type: 'bearer' }
+			}).catch((err) => {
+				toast.error(classifyVerifyError(err));
+				return null;
+			});
+			if (!conn) return;
+			toast.success($i18n.t('Verified: model "{{model}}" is available', { model }));
+		} finally {
+			verifyingEnrich = false;
+		}
+	};
+
 	let showResetConfirm = false;
 	let showResetUploadDirConfirm = false;
 	let showReindexConfirm = false;
@@ -332,10 +381,21 @@
 		}
 	};
 
+	// 判断当前嵌入模型配置是否填写完整（未填则视为"不使用此功能"，保存时静默跳过嵌入更新，
+	// 不阻断文档预处理等其他设置的保存）。
+	const isEmbeddingConfigured = () => {
+		if (RAG_EMBEDDING_ENGINE === 'azure_openai') {
+			return !!(AzureOpenAIKey && AzureOpenAIUrl && AzureOpenAIVersion);
+		}
+		// openai / ollama / 本地引擎：至少要有模型名
+		return !!RAG_EMBEDDING_MODEL;
+	};
+
 	const submitHandler = async () => {
 		// 嵌入模型相关字段走 /embedding/update（独立接口）；
-		// 仅在用户实际修改了嵌入相关字段时才调用，避免后端重新构造 embedding function。
-		if (!RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL) {
+		// 仅在用户实际修改了嵌入相关字段、且嵌入配置填写完整时才调用，
+		// 避免后端重新构造 embedding function，也避免未配置嵌入时阻断其他设置的保存。
+		if (!RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL && isEmbeddingConfigured()) {
 			const currentFingerprint = buildEmbeddingFingerprint();
 			const embeddingChanged =
 				!embeddingSnapshot ||
@@ -367,7 +427,16 @@
 			HYBRID_BM25_WEIGHT: RAGConfig.HYBRID_BM25_WEIGHT,
 
 			// RAG Template
-			RAG_TEMPLATE: RAGConfig.RAG_TEMPLATE
+			RAG_TEMPLATE: RAGConfig.RAG_TEMPLATE,
+
+			// Document preprocessing (meteokb)
+			DOC_PREPROCESS_SERVICE_URL: RAGConfig.DOC_PREPROCESS_SERVICE_URL,
+			DOC_PREPROCESS_ENRICH_ENABLED: RAGConfig.DOC_PREPROCESS_ENRICH_ENABLED,
+			DOC_PREPROCESS_ENRICH_BASE_URL: RAGConfig.DOC_PREPROCESS_ENRICH_BASE_URL,
+			DOC_PREPROCESS_ENRICH_API_KEY: RAGConfig.DOC_PREPROCESS_ENRICH_API_KEY,
+			DOC_PREPROCESS_ENRICH_MODEL: RAGConfig.DOC_PREPROCESS_ENRICH_MODEL,
+			// 不再暴露默认区域：文档无地名时 region 留空
+			DOC_PREPROCESS_ENRICH_DEFAULT_REGION: ''
 		};
 
 		const res = await updateRAGConfig(localStorage.token, payload).catch((error) => {
@@ -1144,7 +1213,6 @@
 								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 								placeholder={$i18n.t('API Base URL')}
 								bind:value={OpenAIUrl}
-								required
 							/>
 						</div>
 						<div class="flex flex-col">
@@ -1284,7 +1352,6 @@
 								class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 								placeholder={$i18n.t('API Base URL')}
 								bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_URL}
-								required
 							/>
 						</div>
 						<div class="flex flex-col">
@@ -1451,6 +1518,140 @@
 							)}
 						/>
 					</Tooltip>
+				</div>
+			</div>
+
+			<!-- Document Preprocessing (meteokb) -->
+			<div class="mb-3">
+				<div class="text-base font-medium mt-0.5 mb-2">
+					{$i18n.t('Document Preprocessing')}
+				</div>
+
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5">
+					<div class="flex items-center justify-between mb-3">
+						<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+							{$i18n.t('Preprocessing Service URL')}
+						</div>
+						<Tooltip content={$i18n.t('Verify')}>
+							<button
+								class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+								type="button"
+								on:click={verifyPreprocessServiceHandler}
+								disabled={verifyingPreprocessService || !RAGConfig.DOC_PREPROCESS_SERVICE_URL}
+							>
+								{#if verifyingPreprocessService}
+									<Spinner className="size-3.5" />
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+										aria-hidden="true"
+										class="size-3.5"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								{/if}
+								<span>{$i18n.t('Verify')}</span>
+							</button>
+						</Tooltip>
+					</div>
+					<div class="flex flex-col">
+						<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+							{$i18n.t('API Base URL')}
+						</label>
+						<input
+							class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+							bind:value={RAGConfig.DOC_PREPROCESS_SERVICE_URL}
+							placeholder="http://localhost:8100"
+						/>
+					</div>
+				</div>
+
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="flex items-center justify-between mb-3">
+						<div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+							{$i18n.t('Metadata Extraction (LLM)')}
+						</div>
+						<div class="flex items-center gap-2">
+							{#if RAGConfig.DOC_PREPROCESS_ENRICH_ENABLED}
+								<Tooltip content={$i18n.t('Verify')}>
+									<button
+										class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+										type="button"
+										on:click={verifyEnrichHandler}
+										disabled={verifyingEnrich || !RAGConfig.DOC_PREPROCESS_ENRICH_BASE_URL}
+									>
+										{#if verifyingEnrich}
+											<Spinner className="size-3.5" />
+										{:else}
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+												aria-hidden="true"
+												class="size-3.5"
+											>
+												<path
+													fill-rule="evenodd"
+													d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+													clip-rule="evenodd"
+												/>
+											</svg>
+										{/if}
+										<span>{$i18n.t('Verify')}</span>
+									</button>
+								</Tooltip>
+							{/if}
+							<Switch bind:state={RAGConfig.DOC_PREPROCESS_ENRICH_ENABLED} />
+						</div>
+					</div>
+
+					{#if RAGConfig.DOC_PREPROCESS_ENRICH_ENABLED}
+						<div class="flex flex-col gap-3">
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Base URL')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={RAGConfig.DOC_PREPROCESS_ENRICH_BASE_URL}
+									placeholder="https://api.openai.com/v1"
+								/>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('API Key')}
+								</label>
+								<div
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:bg-gray-850 flex items-center"
+								>
+									<SensitiveInput
+										placeholder={$i18n.t('API Key')}
+										bind:value={RAGConfig.DOC_PREPROCESS_ENRICH_API_KEY}
+										required={false}
+										outerClassName="flex flex-1 bg-transparent items-center"
+										inputClassName="w-full text-sm bg-transparent dark:text-gray-300 outline-hidden"
+										showButtonClassName="pl-1.5 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition bg-transparent"
+									/>
+								</div>
+							</div>
+							<div class="flex flex-col">
+								<label class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+									{$i18n.t('Model')}
+								</label>
+								<input
+									class="w-full rounded-lg py-1.5 px-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+									bind:value={RAGConfig.DOC_PREPROCESS_ENRICH_MODEL}
+									placeholder={$i18n.t('Set model name')}
+								/>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</div>
 

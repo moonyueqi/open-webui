@@ -89,6 +89,7 @@ from open_webui.routers import (
     memories,
     models,
     knowledge,
+    document_preprocessing,
     prompts,
     prompt_categories,
     evaluations,
@@ -269,6 +270,12 @@ from open_webui.config import (
     CHUNK_MIN_SIZE_TARGET,
     CHUNK_SIZE,
     CONTENT_EXTRACTION_ENGINE,
+    DOC_PREPROCESS_SERVICE_URL,
+    DOC_PREPROCESS_ENRICH_ENABLED,
+    DOC_PREPROCESS_ENRICH_BASE_URL,
+    DOC_PREPROCESS_ENRICH_API_KEY,
+    DOC_PREPROCESS_ENRICH_MODEL,
+    DOC_PREPROCESS_ENRICH_DEFAULT_REGION,
     DATALAB_MARKER_API_KEY,
     DATALAB_MARKER_API_BASE_URL,
     DATALAB_MARKER_ADDITIONAL_CONFIG,
@@ -964,6 +971,14 @@ app.state.config.ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS = (
 app.state.config.ENABLE_WEB_LOADER_SSL_VERIFICATION = ENABLE_WEB_LOADER_SSL_VERIFICATION
 
 app.state.config.CONTENT_EXTRACTION_ENGINE = CONTENT_EXTRACTION_ENGINE
+app.state.config.DOC_PREPROCESS_SERVICE_URL = DOC_PREPROCESS_SERVICE_URL
+app.state.config.DOC_PREPROCESS_ENRICH_ENABLED = DOC_PREPROCESS_ENRICH_ENABLED
+app.state.config.DOC_PREPROCESS_ENRICH_BASE_URL = DOC_PREPROCESS_ENRICH_BASE_URL
+app.state.config.DOC_PREPROCESS_ENRICH_API_KEY = DOC_PREPROCESS_ENRICH_API_KEY
+app.state.config.DOC_PREPROCESS_ENRICH_MODEL = DOC_PREPROCESS_ENRICH_MODEL
+app.state.config.DOC_PREPROCESS_ENRICH_DEFAULT_REGION = (
+    DOC_PREPROCESS_ENRICH_DEFAULT_REGION
+)
 app.state.config.DATALAB_MARKER_API_KEY = DATALAB_MARKER_API_KEY
 app.state.config.DATALAB_MARKER_API_BASE_URL = DATALAB_MARKER_API_BASE_URL
 app.state.config.DATALAB_MARKER_ADDITIONAL_CONFIG = DATALAB_MARKER_ADDITIONAL_CONFIG
@@ -1546,6 +1561,11 @@ app.include_router(chats.router, prefix="/api/v1/chats", tags=["chats"])
 
 app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
 app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
+app.include_router(
+    document_preprocessing.router,
+    prefix="/api/v1/document-preprocessing",
+    tags=["document-preprocessing"],
+)
 app.include_router(prompts.router, prefix="/api/v1/prompts", tags=["prompts"])
 app.include_router(prompt_categories.router, prefix="/api/v1/prompt-categories", tags=["prompt-categories"])
 app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])

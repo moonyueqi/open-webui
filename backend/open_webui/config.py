@@ -2664,6 +2664,43 @@ ONEDRIVE_SHAREPOINT_TENANT_ID = PersistentConfig(
     os.environ.get("ONEDRIVE_SHAREPOINT_TENANT_ID", ""),
 )
 
+# Document Preprocessing (meteokb-preprocess 微服务)
+DOC_PREPROCESS_SERVICE_URL = PersistentConfig(
+    "DOC_PREPROCESS_SERVICE_URL",
+    "rag.doc_preprocess.service_url",
+    os.environ.get("DOC_PREPROCESS_SERVICE_URL", "http://localhost:8100"),
+)
+
+DOC_PREPROCESS_ENRICH_ENABLED = PersistentConfig(
+    "DOC_PREPROCESS_ENRICH_ENABLED",
+    "rag.doc_preprocess.enrich_enabled",
+    os.environ.get("DOC_PREPROCESS_ENRICH_ENABLED", "false").lower() == "true",
+)
+
+DOC_PREPROCESS_ENRICH_BASE_URL = PersistentConfig(
+    "DOC_PREPROCESS_ENRICH_BASE_URL",
+    "rag.doc_preprocess.enrich_base_url",
+    os.environ.get("DOC_PREPROCESS_ENRICH_BASE_URL", ""),
+)
+
+DOC_PREPROCESS_ENRICH_API_KEY = PersistentConfig(
+    "DOC_PREPROCESS_ENRICH_API_KEY",
+    "rag.doc_preprocess.enrich_api_key",
+    os.environ.get("DOC_PREPROCESS_ENRICH_API_KEY", ""),
+)
+
+DOC_PREPROCESS_ENRICH_MODEL = PersistentConfig(
+    "DOC_PREPROCESS_ENRICH_MODEL",
+    "rag.doc_preprocess.enrich_model",
+    os.environ.get("DOC_PREPROCESS_ENRICH_MODEL", "gpt-4o-mini"),
+)
+
+DOC_PREPROCESS_ENRICH_DEFAULT_REGION = PersistentConfig(
+    "DOC_PREPROCESS_ENRICH_DEFAULT_REGION",
+    "rag.doc_preprocess.enrich_default_region",
+    os.environ.get("DOC_PREPROCESS_ENRICH_DEFAULT_REGION", ""),
+)
+
 # RAG Content Extraction
 CONTENT_EXTRACTION_ENGINE = PersistentConfig(
     "CONTENT_EXTRACTION_ENGINE",
