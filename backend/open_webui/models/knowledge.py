@@ -27,6 +27,7 @@ from sqlalchemy import (
     Text,
     JSON,
     UniqueConstraint,
+    cast,
     or_,
 )
 
@@ -325,11 +326,17 @@ class KnowledgeTable:
                     permission="read",
                 )
 
-                # Apply filename search
+                # Apply filename and content search
                 if filter:
                     q = filter.get("query")
                     if q:
-                        query = query.filter(File.filename.ilike(f"%{q}%"))
+                        like = f"%{q}%"
+                        query = query.filter(
+                            or_(
+                                File.filename.ilike(like),
+                                cast(File.data["content"], String).ilike(like),
+                            )
+                        )
 
                 # Order by file changes
                 query = query.order_by(File.updated_at.desc(), File.id.asc())
@@ -564,6 +571,31 @@ class KnowledgeTable:
         except Exception as e:
             print(e)
             return KnowledgeFileListResponse(items=[], total=0)
+
+    def has_file_with_name_in_knowledge(
+        self,
+        knowledge_id: str,
+        filename: str,
+        exclude_file_id: Optional[str] = None,
+        db: Optional[Session] = None,
+    ) -> bool:
+        """Return True if the knowledge base already contains a file with the
+        given filename (case-insensitive). Optionally exclude a specific file id
+        (used when renaming a file to itself's new name)."""
+        try:
+            with get_db_context(db) as db:
+                query = (
+                    db.query(File.id)
+                    .join(KnowledgeFile, File.id == KnowledgeFile.file_id)
+                    .filter(KnowledgeFile.knowledge_id == knowledge_id)
+                    .filter(File.filename.ilike(filename))
+                )
+                if exclude_file_id:
+                    query = query.filter(File.id != exclude_file_id)
+                return db.query(query.exists()).scalar() or False
+        except Exception as e:
+            log.exception(f"Error checking duplicate filename in knowledge: {e}")
+            return False
 
     def get_files_by_id(
         self, knowledge_id: str, db: Optional[Session] = None

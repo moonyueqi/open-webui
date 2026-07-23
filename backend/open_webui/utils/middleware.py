@@ -2325,7 +2325,25 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                     request, form_data, extra_params, user
                 )
 
-        if "code_interpreter" in features and features["code_interpreter"]:
+        # Mirror the authorization gates from utils/tools.py get_builtin_tools
+        # so the legacy XML-tag prompt-injection path enforces the same
+        # code-interpreter authz as the native FC path (previously the legacy
+        # path only checked features and could bypass global/model/meta gates).
+        code_interpreter_meta_enabled = (
+            (model.get("info", {}).get("meta", {}).get("builtinTools") or {}).get(
+                "code_interpreter", True
+            )
+        )
+        code_interpreter_capability = (
+            model.get("info", {}).get("meta", {}).get("capabilities") or {}
+        ).get("code_interpreter", True)
+
+        if (
+            features.get("code_interpreter")
+            and code_interpreter_meta_enabled
+            and getattr(request.app.state.config, "ENABLE_CODE_INTERPRETER", True)
+            and code_interpreter_capability
+        ):
             # Skip XML-tag prompt injection when native FC is enabled —
             # execute_code will be injected as a builtin tool instead
             if metadata.get("params", {}).get("function_calling") != "native":
@@ -4460,6 +4478,33 @@ async def streaming_chat_response_handler(response, ctx):
                     except Exception as e:
                         log.debug(e)
                         break
+
+                # If the loop exited because the iteration cap was hit (rather
+                # than the model finishing its tool calls), surface a visible
+                # error instead of silently stopping.
+                if (
+                    len(tool_calls) > 0
+                    and tool_call_retries >= CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES
+                ):
+                    limit_error = (
+                        f"Tool-call limit reached "
+                        f"({CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES} iterations)."
+                    )
+                    log.warning(limit_error)
+                    if metadata.get("chat_id") and metadata.get("message_id"):
+                        Chats.upsert_message_to_chat_by_id_and_message_id(
+                            metadata["chat_id"],
+                            metadata["message_id"],
+                            {
+                                "error": {"content": limit_error},
+                            },
+                        )
+                    await event_emitter(
+                        {
+                            "type": "chat:message:error",
+                            "data": {"error": {"content": limit_error}},
+                        }
+                    )
 
                 if DETECT_CODE_INTERPRETER:
                     MAX_RETRIES = 5

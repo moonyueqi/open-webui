@@ -31,6 +31,7 @@
 	import ManifestModal from '../common/ManifestModal.svelte';
 	import ViewSelector from '../common/ViewSelector.svelte';
 	import ToolMenu from './ToolMenu.svelte';
+	import RegisterToModelsModal from './RegisterToModelsModal.svelte';
 	import Plus from '../../icons/Plus.svelte';
 	import GarbageBin from '../../icons/GarbageBin.svelte';
 	import EllipsisHorizontal from '../../icons/EllipsisHorizontal.svelte';
@@ -52,6 +53,8 @@
 	let showAccessControlModal = false;
 	let showManifestModal = false;
 	let showValvesModal = false;
+	let showRegisterModal = false;
+	let registerTool: any = null;
 
 	let query = '';
 	let viewOption = '';
@@ -255,6 +258,7 @@
 
 	<ManifestModal bind:show={showManifestModal} manifest={selectedTool?.meta?.manifest ?? {}} />
 	<ValvesModal bind:show={showValvesModal} type="tool" id={selectedTool?.id ?? null} />
+	<RegisterToModelsModal bind:show={showRegisterModal} tool={registerTool} />
 
 	<div class="flex flex-col w-full h-full min-h-0">
 		<div class="flex flex-col gap-2 px-1 mt-1.5 mb-4 shrink-0">
@@ -572,6 +576,10 @@
 												shareHandler={() => {}}
 												cloneHandler={() => cloneHandler(tool)}
 												exportHandler={() => exportHandler(tool)}
+												registerHandler={() => {
+													registerTool = tool;
+													showRegisterModal = true;
+												}}
 												deleteHandler={async () => {
 													selectedTool = tool;
 													showDeleteConfirm = true;
@@ -586,6 +594,31 @@
 												</button>
 											</ToolMenu>
 										{/if}
+									</div>
+								{:else if isServer && $user?.role === 'admin'}
+									<div
+										class="flex flex-row gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity"
+									>
+										<ToolMenu
+											registerOnly={true}
+											editHandler={() => {}}
+											shareHandler={() => {}}
+											cloneHandler={() => {}}
+											exportHandler={() => {}}
+											registerHandler={() => {
+												registerTool = tool;
+												showRegisterModal = true;
+											}}
+											deleteHandler={() => {}}
+											onClose={() => {}}
+										>
+											<button
+												class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+												type="button"
+											>
+												<EllipsisHorizontal className="size-5" />
+											</button>
+										</ToolMenu>
 									</div>
 								{/if}
 							</div>

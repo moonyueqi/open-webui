@@ -39,6 +39,7 @@ class ERROR_MESSAGES(str, Enum):
     MODEL_ID_TAKEN = "此模型ID已被注册，请选择其他模型ID。"
     NAME_TAG_TAKEN = "此名称标签已被注册，请选择其他名称标签。"
     KNOWLEDGE_NAME_TAKEN = "您已有一个同名的知识库，请使用其他名称。"
+    KNOWLEDGE_FILE_NAME_TAKEN = "该知识库中已存在同名文件，请重命名后再添加。"
     SKILL_NAME_TAKEN = "已存在同名的技能，请使用其他名称。"
     TOOL_NAME_TAKEN = "已存在同名的工具，请使用其他名称。"
     MODEL_ID_TOO_LONG = "模型ID过长，请确保模型ID长度不超过256个字符。"

@@ -557,6 +557,130 @@ async def update_model_access_by_id(
 
 
 ############################
+# RegisterToolToModels
+############################
+
+
+class ModelToolRegisterForm(BaseModel):
+    tool_id: str
+    model_ids: list[str]
+
+
+@router.post("/model/tools/register", response_model=list[str])
+async def register_tool_to_models(
+    request: Request,
+    form_data: ModelToolRegisterForm,
+    user=Depends(get_admin_user),
+    db: Session = Depends(get_session),
+):
+    """Register (or unregister) a tool to a set of models by editing each
+    model's meta.toolIds. Models without a DB entry (e.g. direct
+    Ollama/OpenAI models) get a minimal record created first, mirroring
+    update_model_access_by_id. Returns the final list of model ids that
+    have this tool registered (limited to the ids passed in)."""
+
+    tool_id = form_data.tool_id
+    target_ids = set(form_data.model_ids or [])
+
+    registered_ids: list[str] = []
+
+    for model_id in target_ids:
+        model = Models.get_model_by_id(model_id, db=db)
+
+        if not model:
+            # Non-preset external model without a DB entry: create a minimal
+            # one so we can store the tool association.
+            model = Models.insert_new_model(
+                ModelForm(
+                    id=model_id,
+                    name=model_id,
+                    meta=ModelMeta(),
+                    params=ModelParams(),
+                ),
+                user.id,
+                db=db,
+            )
+            if not model:
+                log.warning(f"Failed to create model entry for {model_id}")
+                continue
+
+        meta = model.meta.model_dump() if model.meta else {}
+        tool_ids = list(meta.get("toolIds") or [])
+
+        if tool_id not in tool_ids:
+            tool_ids.append(tool_id)
+
+        meta["toolIds"] = tool_ids
+
+        updated = Models.update_model_by_id(
+            model_id,
+            ModelForm(
+                id=model.id,
+                base_model_id=model.base_model_id,
+                name=model.name,
+                meta=ModelMeta(**meta),
+                params=model.params,
+                is_active=model.is_active,
+            ),
+            db=db,
+        )
+        if updated:
+            registered_ids.append(model_id)
+
+    return registered_ids
+
+
+@router.post("/model/tools/unregister", response_model=list[str])
+async def unregister_tool_from_models(
+    request: Request,
+    form_data: ModelToolRegisterForm,
+    user=Depends(get_admin_user),
+    db: Session = Depends(get_session),
+):
+    """Remove a tool from each given model's meta.toolIds. Missing models are
+    skipped. Returns the list of model ids that were updated."""
+
+    tool_id = form_data.tool_id
+    target_ids = set(form_data.model_ids or [])
+
+    updated_ids: list[str] = []
+
+    for model_id in target_ids:
+        model = Models.get_model_by_id(model_id, db=db)
+        if not model:
+            continue
+
+        meta = model.meta.model_dump() if model.meta else {}
+        tool_ids = list(meta.get("toolIds") or [])
+
+        if tool_id not in tool_ids:
+            continue
+
+        tool_ids = [t for t in tool_ids if t != tool_id]
+        if tool_ids:
+            meta["toolIds"] = tool_ids
+        else:
+            meta.pop("toolIds", None)
+
+        updated = Models.update_model_by_id(
+            model_id,
+            ModelForm(
+                id=model.id,
+                base_model_id=model.base_model_id,
+                name=model.name,
+                meta=ModelMeta(**meta),
+                params=model.params,
+                is_active=model.is_active,
+            ),
+            db=db,
+        )
+        if updated:
+            updated_ids.append(model_id)
+
+    return updated_ids
+
+
+############################
 # DeleteModelById
 ############################
 

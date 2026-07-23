@@ -21,7 +21,12 @@
 	export let cloneHandler: Function;
 	export let exportHandler: Function;
 	export let deleteHandler: Function;
+	export let registerHandler: Function = () => {};
 	export let onClose: Function;
+
+	// When true, only show the "Register to Models" item (used for MCP/OpenAPI
+	// server tools which can't be edited/deleted here).
+	export let registerOnly: boolean = false;
 
 	let show = false;
 </script>
@@ -46,29 +51,57 @@
 			align="start"
 			transition={flyAndScale}
 		>
-			<DropdownMenu.Item
-				class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"
-				on:click={() => {
-					editHandler();
-				}}
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-					stroke="currentColor"
-					class="w-4 h-4"
+			{#if !registerOnly}
+				<DropdownMenu.Item
+					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"
+					on:click={() => {
+						editHandler();
+					}}
 				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"
-					/>
-				</svg>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+						stroke="currentColor"
+						class="w-4 h-4"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"
+						/>
+					</svg>
 
-				<div class="flex items-center">{$i18n.t('Edit')}</div>
-			</DropdownMenu.Item>
+					<div class="flex items-center">{$i18n.t('Edit')}</div>
+				</DropdownMenu.Item>
+			{/if}
+
+			{#if $user?.role === 'admin'}
+				<DropdownMenu.Item
+					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800  rounded-xl"
+					on:click={() => {
+						registerHandler();
+					}}
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+						stroke="currentColor"
+						class="w-4 h-4"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+						/>
+					</svg>
+
+					<div class="flex items-center">{$i18n.t('Register to Models')}</div>
+				</DropdownMenu.Item>
+			{/if}
 
 			<!-- {#if $config.features.enable_community_sharing}
 				<DropdownMenu.Item
@@ -94,30 +127,32 @@
 			<div class="flex items-center">{$i18n.t('Clone')}</div>
 		</DropdownMenu.Item> -->
 
-			{#if $user?.role === 'admin' || $user?.permissions?.workspace?.tools_export}
+			{#if !registerOnly}
+				{#if $user?.role === 'admin' || $user?.permissions?.workspace?.tools_export}
+					<DropdownMenu.Item
+						class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+						on:click={() => {
+							exportHandler();
+						}}
+					>
+						<Download />
+
+						<div class="flex items-center">{$i18n.t('Export')}</div>
+					</DropdownMenu.Item>
+				{/if}
+
+				<hr class="border-gray-50 dark:border-gray-850/30 my-1" />
+
 				<DropdownMenu.Item
-					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
+					class="select-none flex  gap-2  items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
 					on:click={() => {
-						exportHandler();
+						deleteHandler();
 					}}
 				>
-					<Download />
-
-					<div class="flex items-center">{$i18n.t('Export')}</div>
+					<GarbageBin />
+					<div class="flex items-center">{$i18n.t('Delete')}</div>
 				</DropdownMenu.Item>
 			{/if}
-
-			<hr class="border-gray-50 dark:border-gray-850/30 my-1" />
-
-			<DropdownMenu.Item
-				class="select-none flex  gap-2  items-center px-3 py-1.5 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"
-				on:click={() => {
-					deleteHandler();
-				}}
-			>
-				<GarbageBin />
-				<div class="flex items-center">{$i18n.t('Delete')}</div>
-			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>

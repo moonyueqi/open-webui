@@ -49,7 +49,7 @@ from open_webui.storage.provider import Storage
 
 from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.misc import strict_match_mime_type
+from open_webui.utils.misc import strict_match_mime_type, calculate_sha256_string
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
@@ -578,13 +578,66 @@ def update_file_data_content_by_id(
         or user.role == "admin"
         or has_access_to_file(id, "write", user, db=db)
     ):
+        # Knowledge bases this file belongs to (used for duplicate check + resync)
+        knowledges = Knowledges.get_knowledges_by_file_id(id, db=db)
+
+        # Pre-check: reject if the new content would duplicate the content of a
+        # DIFFERENT file already present in any of these knowledge bases.
+        new_hash = calculate_sha256_string(form_data.content)
+        for knowledge in knowledges:
+            try:
+                result = VECTOR_DB_CLIENT.query(
+                    collection_name=knowledge.id, filter={"hash": new_hash}
+                )
+            except Exception:
+                result = None
+
+            if result is not None and result.ids and len(result.ids) > 0:
+                existing_ids = result.ids[0]
+                existing_metadatas = (
+                    result.metadatas[0] if result.metadatas else []
+                )
+                for idx, _ in enumerate(existing_ids):
+                    existing_file_id = (
+                        existing_metadatas[idx].get("file_id")
+                        if idx < len(existing_metadatas)
+                        else None
+                    )
+                    if existing_file_id and existing_file_id != id:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=ERROR_MESSAGES.DUPLICATE_CONTENT,
+                        )
+
         try:
+            # Update the file's own content and its private collection
             process_file(
                 request,
                 ProcessFileForm(file_id=id, content=form_data.content),
                 user=user,
+                db=db,
             )
             file = Files.get_file_by_id(id=id, db=db)
+
+            # Re-sync the updated content into every knowledge base collection
+            # this file belongs to, so KB search reflects the new content.
+            for knowledge in knowledges:
+                try:
+                    VECTOR_DB_CLIENT.delete(
+                        collection_name=knowledge.id, filter={"file_id": id}
+                    )
+                    process_file(
+                        request,
+                        ProcessFileForm(file_id=id, collection_name=knowledge.id),
+                        user=user,
+                        db=db,
+                    )
+                except Exception as e:
+                    log.warning(
+                        f"Failed to resync knowledge {knowledge.id} after content update for file {id}: {e}"
+                    )
+        except HTTPException:
+            raise
         except Exception as e:
             log.exception(e)
             log.error(f"Error processing file: {file.id}")
