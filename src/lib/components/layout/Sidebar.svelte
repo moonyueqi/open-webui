@@ -63,6 +63,7 @@
 	import FolderModal from './Sidebar/Folders/FolderModal.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import PinnedModelList from './Sidebar/PinnedModelList.svelte';
+	import AlertTicker from './Sidebar/AlertTicker.svelte';
 	import Note from '../icons/Note.svelte';
 	import ChatBubbleDotted from '../icons/ChatBubbleDotted.svelte';
 	import ChatBubbleDottedChecked from '../icons/ChatBubbleDottedChecked.svelte';
@@ -1078,6 +1079,49 @@
 							</a>
 						</div>
 					{/if}
+
+					<div class="px-[0.4375rem] flex justify-center text-gray-800 dark:text-gray-200">
+						<a
+							id="sidebar-monitoring-button"
+							class="grow flex items-center space-x-3 rounded-lg px-2.5 py-2 hover:bg-sidebar-hover dark:hover:bg-gray-900 transition"
+							href="/monitoring"
+							on:click={itemClickHandler}
+							draggable="false"
+							aria-label={$i18n.t('Monitoring & Alerts')}
+						>
+							<div class="self-center">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+									stroke="currentColor"
+									class="size-4.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+									/>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+									/>
+								</svg>
+							</div>
+
+							<div class="flex self-center translate-y-[0.5px]">
+								<div class=" self-center text-sm font-primary">
+									{$i18n.t('Monitoring & Alerts')}
+								</div>
+							</div>
+						</a>
+					</div>
+
+					<div class="mt-1">
+						<AlertTicker />
+					</div>
 				</div>
 
 				<div class="mx-3 my-1.5 border-t border-gray-200/80 dark:border-gray-800/80 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_0_rgba(0,0,0,0.2)]"></div>
