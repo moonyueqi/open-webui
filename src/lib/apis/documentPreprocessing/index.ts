@@ -61,7 +61,7 @@ export const uploadPreprocessJob = async (token: string, files: File[]) => {
 };
 
 export const getPreprocessJob = async (token: string, jobId: string) => {
-	let error = null;
+	let error: any = null;
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/document-preprocessing/jobs/${jobId}`, {
 		method: 'GET',
@@ -71,11 +71,15 @@ export const getPreprocessJob = async (token: string, jobId: string) => {
 		}
 	})
 		.then(async (res) => {
-			if (!res.ok) throw await res.json();
+			if (!res.ok) {
+				const payload = await res.json().catch(() => ({}));
+				// 附带 HTTP status，便于调用方区分 404（已过期清理）与网络错误
+				throw { status: res.status, detail: payload?.detail };
+			}
 			return res.json();
 		})
 		.catch((err) => {
-			error = err.detail || err.message || `${err}`;
+			error = { status: err?.status, detail: err?.detail || err?.message || `${err}` };
 			console.error(err);
 			return null;
 		});
@@ -124,11 +128,14 @@ export const downloadPreprocessResult = async (token: string, jobId: string) => 
 		}
 	})
 		.then(async (res) => {
-			if (!res.ok) throw await res.json();
+			if (!res.ok) {
+				const payload = await res.json().catch(() => ({}));
+				throw { status: res.status, detail: payload?.detail };
+			}
 			return res.blob();
 		})
 		.catch((err) => {
-			error = err.detail || err.message || `${err}`;
+			error = { status: err?.status, detail: err?.detail || err?.message || `${err}` };
 			console.error(err);
 			return null;
 		});
