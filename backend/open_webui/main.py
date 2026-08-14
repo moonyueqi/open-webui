@@ -102,7 +102,7 @@ from open_webui.routers import (
     terminals,
     automations,
     calendar,
-    monitoring,
+    # monitoring,  # 监测预警模块尚未成熟，暂不随本次发布上线，等验证稳定后再打开
 )
 
 from open_webui.routers.retrieval import (
@@ -646,11 +646,12 @@ async def lifespan(app: FastAPI):
 
     from open_webui.utils.automations import automation_worker_loop
     from open_webui.utils.calendar import calendar_alert_worker_loop
-    from open_webui.utils.monitoring_ingest import monitoring_ingest_worker_loop
+
+    # from open_webui.utils.monitoring_ingest import monitoring_ingest_worker_loop  # 监测预警模块暂不上线
 
     asyncio.create_task(automation_worker_loop(app))
     asyncio.create_task(calendar_alert_worker_loop(app))
-    asyncio.create_task(monitoring_ingest_worker_loop(app))
+    # asyncio.create_task(monitoring_ingest_worker_loop(app))  # 监测预警模块暂不上线
 
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         try:
@@ -1573,7 +1574,7 @@ app.include_router(utils.router, prefix="/api/v1/utils", tags=["utils"])
 app.include_router(terminals.router, prefix="/api/v1/terminals", tags=["terminals"])
 app.include_router(automations.router, prefix="/api/v1/automations", tags=["automations"])
 app.include_router(calendar.router, prefix="/api/v1/calendars", tags=["calendars"])
-app.include_router(monitoring.router, prefix="/api/v1/monitoring", tags=["monitoring"])
+# app.include_router(monitoring.router, prefix="/api/v1/monitoring", tags=["monitoring"])  # 监测预警模块尚未成熟，暂不上线
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

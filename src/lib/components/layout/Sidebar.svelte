@@ -101,6 +101,10 @@
 	let showChannels = false;
 	let showFolders = false;
 
+	// 监测预警模块尚未成熟，本次先整体关闭（入口按钮 + 下方滚动播报），
+	// 等后续验证稳定后把这个开关打开即可恢复，不用再翻代码。
+	const ENABLE_MONITORING = false;
+
 	// 监测预警侧边栏播报：文案/跳转目标直接用后端 feed 接口返回的，
 	// 跟地面监测/闪电跃增预警页面里看到的是同一套措辞，不在前端二次编排。
 	let monitoringAlerts: { id: string; text: string; level?: string; target?: string }[] = [];
@@ -565,8 +569,10 @@
 		const socketInstance = $socket;
 		socketInstance?.on('events', chatActiveEventHandler);
 
-		fetchMonitoringAlerts();
-		monitoringAlertsTimer = setInterval(fetchMonitoringAlerts, 60_000);
+		if (ENABLE_MONITORING) {
+			fetchMonitoringAlerts();
+			monitoringAlertsTimer = setInterval(fetchMonitoringAlerts, 60_000);
+		}
 
 		return () => {
 			if (monitoringAlertsTimer) clearInterval(monitoringAlertsTimer);
@@ -1130,6 +1136,7 @@
 						</div>
 					{/if}
 
+					{#if ENABLE_MONITORING}
 					<div class="px-[0.4375rem] flex justify-center text-gray-800 dark:text-gray-200">
 						<a
 							id="sidebar-monitoring-button"
@@ -1172,7 +1179,7 @@
 					<div class="mt-1">
 						<AlertTicker alerts={monitoringAlerts} />
 					</div>
-				</div>
+				{/if}
 
 				<div class="mx-3 my-1.5 border-t border-gray-200/80 dark:border-gray-800/80 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_0_rgba(0,0,0,0.2)]"></div>
 
