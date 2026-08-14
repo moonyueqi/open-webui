@@ -1,30 +1,52 @@
 """
-title: 汛期天气周报生成器
-description: 根据「北京市气象台 240h 精细化预报产品」自动生成某区汛期天气周报 Word 文档
-author: weather-tools
+title: 汛期天气周报生成工具
+description: 根据「北京市气象台天气公报」+「北京市气象台未来240h预报产品」自动生成某区汛期天气周报 Word 文档
+author: lyq
 version: 1.0.0
-license: MIT
-
-【数据源官方称呼（用户可见文案、错误信息、模型回执统一使用）】
-  - 240 XML：北京市气象台 240h 精细化预报产品
 """
 
-WF240_OFFICIAL_NAME = "北京市气象台 240h 精细化预报产品"
+WF240_OFFICIAL_NAME = "北京市气象台未来240h预报产品"
+BULLETIN_OFFICIAL_NAME = "北京市气象台天气公报"
 
 import os
 import re
 import io
 import json
 import glob
+import shutil
 import asyncio
 import logging
 import tempfile
+import subprocess
 from datetime import datetime, timedelta
 from typing import Any
 from xml.etree import ElementTree as ET
 from ftplib import FTP, error_perm
 
 from pydantic import BaseModel, Field
+
+
+BULLETIN_DOC_NAME_RE = re.compile(r"MSP2_BJ-MO_MDWB_ME_LNO_BJ_(\d{12})_00000-24012\.doc$")
+_WEEK_SECTION_HEADING_RE = re.compile(r"未来一周.*天气预报")
+_NUMBERED_HEADING_RE = re.compile(r"^[一二三四五六七八九十]、")
+_FORECAST_SECTION_HEADING_RE = re.compile(r"未来.*天气预报")
+_DAY_SEGMENT_HEAD_RE = re.compile(r"^\s*(?P<day>\d{1,2})日(?P<period>[^:：]+)[:：]")
+
+
+class _BulletinParseError(Exception):
+    """公报「未来一周/未来八到十四天天气预报」章节解析失败。"""
+
+
+def _safe_remove(path: str) -> None:
+    if not path:
+        return
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.exists(path):
+            os.unlink(path)
+    except OSError:
+        pass
 
 
 class Tools:
@@ -68,6 +90,33 @@ class Tools:
             ),
             description="汛期天气周报 docx 模板的绝对路径",
         )
+        use_bulletin_for_weather: bool = Field(
+            default=True,
+            description=(
+                "是否用「北京市气象台天气公报」覆盖表格里的天气/风向、风力（气温始终取自 240 XML）。"
+                "关闭后退回纯 240 数据（旧行为），用于公报数据异常时应急回退，无需改代码/重新部署。"
+            ),
+        )
+        bulletin_source_mode: str = Field(
+            default=os.environ.get("BULLETIN_SOURCE_MODE", "ftp"),
+            description="公报 .doc 数据源：local=读 bulletin_local_dir；ftp=登录 FTP 拉取",
+        )
+        bulletin_local_dir: str = Field(
+            default=os.environ.get("BULLETIN_LOCAL_DIR", "/app/data/bulletin"),
+            description="bulletin_source_mode=local 时使用：公报 .doc 所在目录绝对路径",
+        )
+        bulletin_ftp_dir: str = Field(
+            default=os.environ.get("BULLETIN_FTP_DIR", "/cpzz/tqgb"),
+            description="bulletin_source_mode=ftp 时使用：公报 .doc 在 FTP 上的目录",
+        )
+        soffice_bin: str = Field(
+            default=os.environ.get("SOFFICE_BIN", "soffice"),
+            description="LibreOffice 可执行文件名/绝对路径（用于把公报 .doc 转 .docx）",
+        )
+        soffice_timeout: int = Field(
+            default=int(os.environ.get("SOFFICE_TIMEOUT", "60")),
+            description="soffice 转换超时（秒）",
+        )
         summary_model: str = Field(
             default="",
             description="用于生成天气概况文字的模型 ID（留空则自动使用当前对话模型 / 第一个可用模型）",
@@ -97,8 +146,9 @@ class Tools:
         """
         生成某区汛期天气周报 Word 文档，并在聊天中提供下载。
 
-        数据来源固定为「北京市气象台 240h 精细化预报产品」，在向用户介绍数据来源时**必须**使用
-        该全称，严禁简写为「240/BJ-240/模式数据/数值模式」等。
+        数据来源固定为「北京市气象台天气公报」（提供天气/风向、风力）与
+        「北京市气象台未来240h预报产品」（提供气温），在向用户介绍数据来源时**必须**使用
+        这两个全称，严禁简写为「公报/240/BJ-240/模式数据/数值模式」等。
 
         【对调用方/LLM 的回复守则】
         工具调用成功后会返回一个 JSON，里面的 `reply_to_user` 字段已经组装好了给用户看的回复
@@ -108,52 +158,120 @@ class Tools:
         :param district: 行政区名称，如"密云"、"延庆"、"海淀"、"朝阳"等北京各区
         :return: JSON 字符串，包含 status / district / filename / download_url / reply_to_user 等字段
         """
+        use_bulletin = self.valves.use_bulletin_for_weather
+        cleanup_paths: list[str] = []
+
         if __event_emitter__:
             await __event_emitter__(
-                {"type": "status", "data": {"description": "正在读取预报数据...", "done": False}}
-            )
-
-        # 1. 找最新 XML
-        xml_path = self._find_latest_xml()
-        if not xml_path:
-            mode = (self.valves.source_mode or "local").strip().lower()
-            if mode == "ftp":
-                location = f"ftp://{self.valves.ftp_host}:{self.valves.ftp_port}{self.valves.ftp_dir}"
-            else:
-                location = self.valves.xml_dir
-            return json.dumps(
-                {"error": f"在 {location} 未找到{WF240_OFFICIAL_NAME} XML 文件"},
-                ensure_ascii=False,
-            )
-
-        # 2. 解析 XML + 校验地区
-        base_time = self._parse_base_time(xml_path)
-        data_list, available = self._parse_xml(xml_path, district)
-        # FTP 模式下 xml_path 是临时目录下的文件，解析完即可清理
-        if (self.valves.source_mode or "local").strip().lower() == "ftp":
-            try:
-                os.unlink(xml_path)
-            except OSError:
-                pass
-            try:
-                os.rmdir(os.path.dirname(xml_path))
-            except OSError:
-                pass
-        if data_list is None:
-            return json.dumps(
                 {
-                    "error": f"'{district}'不在当前预报数据覆盖范围内。可用地区：{'、'.join(sorted(available))}"
-                },
-                ensure_ascii=False,
+                    "type": "status",
+                    "data": {
+                        "description": (
+                            f"正在读取{BULLETIN_OFFICIAL_NAME}与{WF240_OFFICIAL_NAME}..."
+                            if use_bulletin
+                            else "正在读取预报数据..."
+                        ),
+                        "done": False,
+                    },
+                }
             )
 
-        # 3. 取前14条数据（7天 x 白天/夜间，hour 12~168）
-        forecast_data = [d for d in data_list if d["hour"] <= 168][:14]
-        if len(forecast_data) < 14:
-            return json.dumps(
-                {"error": f"预报数据不足14个时次（当前{len(forecast_data)}条），无法生成汛期周报"},
-                ensure_ascii=False,
-            )
+        try:
+            # 1. 确定要用的时间戳，并取得 240 XML 本地路径
+            if use_bulletin:
+                xml_stamps = self._list_xml_stamps()
+                bulletin_stamps = self._list_bulletin_stamps()
+                if not xml_stamps:
+                    return json.dumps(
+                        {"error": f"未找到任何{WF240_OFFICIAL_NAME} XML 文件（{self._xml_location_hint()}）"},
+                        ensure_ascii=False,
+                    )
+                if not bulletin_stamps:
+                    return json.dumps(
+                        {"error": f"未找到任何{BULLETIN_OFFICIAL_NAME} .doc 文件（{self._bulletin_location_hint()}）"},
+                        ensure_ascii=False,
+                    )
+                stamp = self._resolve_common_stamp(xml_stamps, bulletin_stamps, datetime.now())
+                if not stamp:
+                    return json.dumps(
+                        {
+                            "error": (
+                                f"没有找到{WF240_OFFICIAL_NAME}与{BULLETIN_OFFICIAL_NAME}同一时刻都齐备的版本。"
+                                f"\n  {WF240_OFFICIAL_NAME}已到时间戳：{sorted(xml_stamps)[-6:]}"
+                                f"\n  {BULLETIN_OFFICIAL_NAME}已到时间戳：{sorted(bulletin_stamps)[-6:]}"
+                            )
+                        },
+                        ensure_ascii=False,
+                    )
+                try:
+                    xml_path = self._fetch_xml_by_stamp(stamp)
+                except Exception as e:
+                    return json.dumps({"error": f"下载{WF240_OFFICIAL_NAME}失败：{e}"}, ensure_ascii=False)
+                if (self.valves.source_mode or "local").strip().lower() == "ftp":
+                    cleanup_paths.append(xml_path)
+            else:
+                xml_path = self._find_latest_xml()
+                if not xml_path:
+                    mode = (self.valves.source_mode or "local").strip().lower()
+                    if mode == "ftp":
+                        location = f"ftp://{self.valves.ftp_host}:{self.valves.ftp_port}{self.valves.ftp_dir}"
+                    else:
+                        location = self.valves.xml_dir
+                    return json.dumps(
+                        {"error": f"在 {location} 未找到{WF240_OFFICIAL_NAME} XML 文件"},
+                        ensure_ascii=False,
+                    )
+                if (self.valves.source_mode or "local").strip().lower() == "ftp":
+                    cleanup_paths.append(xml_path)
+
+            # 2. 解析 XML + 校验地区
+            base_time = self._parse_base_time(xml_path)
+            data_list, available = self._parse_xml(xml_path, district)
+            if data_list is None:
+                return json.dumps(
+                    {
+                        "error": f"'{district}'不在当前预报数据覆盖范围内。可用地区：{'、'.join(sorted(available))}"
+                    },
+                    ensure_ascii=False,
+                )
+
+            # 3. 取前14条数据（7天 x 白天/夜间，hour 12~168）
+            forecast_data = [d for d in data_list if d["hour"] <= 168][:14]
+            if len(forecast_data) < 14:
+                return json.dumps(
+                    {"error": f"预报数据不足14个时次（当前{len(forecast_data)}条），无法生成汛期周报"},
+                    ensure_ascii=False,
+                )
+
+            # 3b. 用公报覆盖天气/风向/风力（气温继续用240数据不变）
+            if use_bulletin:
+                if __event_emitter__:
+                    await __event_emitter__(
+                        {
+                            "type": "status",
+                            "data": {"description": f"正在解析{BULLETIN_OFFICIAL_NAME}内容...", "done": False},
+                        }
+                    )
+                try:
+                    bulletin_local = self._fetch_bulletin_by_stamp(stamp)
+                    cleanup_paths.append(bulletin_local)
+                    bulletin_docx = self._doc_to_docx(bulletin_local)
+                    cleanup_paths.append(os.path.dirname(bulletin_docx))
+                    paragraphs = self._read_paragraphs(bulletin_docx)
+                    bulletin_segments = self._extract_day_segments(paragraphs, need_count=14)
+                except Exception as e:
+                    return json.dumps(
+                        {"error": f"解析{BULLETIN_OFFICIAL_NAME}失败：{e}"},
+                        ensure_ascii=False,
+                    )
+                for item, seg in zip(forecast_data, bulletin_segments):
+                    item["wp"] = seg["weather"]
+                    wdir, wspeed = self._split_wind(seg["wind"])
+                    item["wdir"] = wdir
+                    item["wspeed"] = wspeed
+        finally:
+            for p in cleanup_paths:
+                _safe_remove(p)
 
         # 4. 构建表格数据
         table_rows = self._build_table(forecast_data, base_time)
@@ -277,7 +395,11 @@ class Tools:
                     "district": district,
                     "filename": filename,
                     "download_url": url,
-                    "data_sources": [WF240_OFFICIAL_NAME],
+                    "data_sources": (
+                        [BULLETIN_OFFICIAL_NAME, WF240_OFFICIAL_NAME]
+                        if use_bulletin
+                        else [WF240_OFFICIAL_NAME]
+                    ),
                     "reply_to_user": assistant_reply,
                     "message": assistant_reply,
                 },
@@ -359,6 +481,226 @@ class Tools:
         except Exception as e:
             print(f"[generate_flood_weekly_report] FTP 拉取失败: {e}")
             return None
+
+    def _xml_location_hint(self) -> str:
+        mode = (self.valves.source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return f"ftp://{self.valves.ftp_host}:{self.valves.ftp_port}{self.valves.ftp_dir}"
+        return self.valves.xml_dir
+
+    def _bulletin_location_hint(self) -> str:
+        mode = (self.valves.bulletin_source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return f"ftp://{self.valves.ftp_host}:{self.valves.ftp_port}{self.valves.bulletin_ftp_dir}"
+        return self.valves.bulletin_local_dir
+
+    # ========================================================================
+    # 公报接入：列时间戳 / 按精确时间戳取文件 / 转 docx / 解析逐日逐段天气风力
+    # ========================================================================
+    def _list_xml_stamps(self) -> set[str]:
+        mode = (self.valves.source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return self._ftp_list_stamps(self.valves.ftp_dir, self.XML_NAME_RE)
+        if not os.path.isdir(self.valves.xml_dir):
+            return set()
+        out: set[str] = set()
+        for name in os.listdir(self.valves.xml_dir):
+            if self.XML_NAME_RE.search(name):
+                m = re.search(r"_(\d{12})_", name)
+                if m:
+                    out.add(m.group(1))
+        return out
+
+    def _fetch_xml_by_stamp(self, stamp: str) -> str:
+        fname = f"MSP2_BJ-MO_WF_ME_LNO_BJ_{stamp}_00000-24012.xml"
+        mode = (self.valves.source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return self._ftp_download(self.valves.ftp_dir, fname, suffix=".xml", prefix="bj240_")
+        full = os.path.join(self.valves.xml_dir, fname)
+        if not os.path.isfile(full):
+            raise FileNotFoundError(f"本地找不到 240 XML 文件：{full}")
+        return full
+
+    def _list_bulletin_stamps(self) -> set[str]:
+        mode = (self.valves.bulletin_source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return self._ftp_list_stamps(self.valves.bulletin_ftp_dir, BULLETIN_DOC_NAME_RE)
+        if not os.path.isdir(self.valves.bulletin_local_dir):
+            return set()
+        out: set[str] = set()
+        for name in os.listdir(self.valves.bulletin_local_dir):
+            m = BULLETIN_DOC_NAME_RE.search(name)
+            if m:
+                out.add(m.group(1))
+        return out
+
+    def _fetch_bulletin_by_stamp(self, stamp: str) -> str:
+        fname = f"MSP2_BJ-MO_MDWB_ME_LNO_BJ_{stamp}_00000-24012.doc"
+        mode = (self.valves.bulletin_source_mode or "local").strip().lower()
+        if mode == "ftp":
+            return self._ftp_download(self.valves.bulletin_ftp_dir, fname, suffix=".doc", prefix="bulletin_")
+        full = os.path.join(self.valves.bulletin_local_dir, fname)
+        if not os.path.isfile(full):
+            raise FileNotFoundError(f"本地找不到公报文件：{full}")
+        return full
+
+    def _ftp_list_stamps(self, ftp_dir: str, name_re: "re.Pattern") -> set[str]:
+        v = self.valves
+        out: set[str] = set()
+        ftp = FTP(timeout=v.ftp_timeout)
+        ftp.connect(v.ftp_host, v.ftp_port, timeout=v.ftp_timeout)
+        ftp.login(v.ftp_user, v.ftp_password)
+        try:
+            ftp.cwd(ftp_dir)
+            try:
+                names = ftp.nlst()
+            except error_perm as e:
+                if str(e).startswith("550"):
+                    names = []
+                else:
+                    raise
+            for name in names:
+                m = name_re.search(os.path.basename(name))
+                if m:
+                    out.add(m.group(1))
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+        return out
+
+    def _ftp_download(self, ftp_dir: str, filename: str, *, suffix: str, prefix: str) -> str:
+        v = self.valves
+        ftp = FTP(timeout=v.ftp_timeout)
+        ftp.connect(v.ftp_host, v.ftp_port, timeout=v.ftp_timeout)
+        ftp.login(v.ftp_user, v.ftp_password)
+        try:
+            ftp.cwd(ftp_dir)
+            fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
+            os.close(fd)
+            try:
+                with open(tmp_path, "wb") as fp:
+                    ftp.retrbinary(f"RETR {filename}", fp.write)
+            except Exception:
+                _safe_remove(tmp_path)
+                raise
+            return tmp_path
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+
+    def _resolve_common_stamp(
+        self, xml_stamps: set[str], bulletin_stamps: set[str], now: datetime
+    ) -> str | None:
+        common = xml_stamps & bulletin_stamps
+        if not common:
+            return None
+        now_str = now.strftime("%Y%m%d%H%M")
+        past = [s for s in common if s <= now_str]
+        return max(past) if past else max(common)
+
+    def _doc_to_docx(self, doc_path: str) -> str:
+        out_dir = tempfile.mkdtemp(prefix="bulletin_docx_")
+        try:
+            subprocess.run(
+                [
+                    self.valves.soffice_bin,
+                    "--headless",
+                    "--convert-to", "docx",
+                    "--outdir", out_dir,
+                    doc_path,
+                ],
+                check=True,
+                timeout=self.valves.soffice_timeout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as e:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise RuntimeError(
+                f"soffice 转换失败：{e.stderr.decode('utf-8', 'replace') if e.stderr else e}"
+            )
+        except FileNotFoundError:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise RuntimeError(
+                f"找不到 soffice 可执行文件（{self.valves.soffice_bin}）。"
+                "请在 Valves 中配置 soffice_bin，或在系统中安装 LibreOffice。"
+            )
+        produced = glob.glob(os.path.join(out_dir, "*.docx"))
+        if not produced:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise RuntimeError("soffice 没有产出 .docx 文件")
+        return produced[0]
+
+    @staticmethod
+    def _read_paragraphs(docx_path: str) -> list[str]:
+        from docx import Document
+
+        d = Document(docx_path)
+        out: list[str] = []
+        for p in d.paragraphs:
+            out.append(p.text or "")
+        for t in d.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        out.append(p.text or "")
+        return out
+
+    def _extract_day_segments(self, paragraphs: list[str], need_count: int) -> list[dict]:
+        """从「二、未来一周天气预报」开始连续抽取逐日逐时段 {weather, wind}，
+        跳过「三、未来八到十四天天气预报」等仍属预报正文的章节标题继续读，
+        只在遇到「四、上下班天气」等非预报章节标题或段数够用时停止。"""
+        heading_idx = -1
+        for i, raw in enumerate(paragraphs):
+            line = (raw or "").strip()
+            if _WEEK_SECTION_HEADING_RE.search(line):
+                heading_idx = i
+                break
+        if heading_idx < 0:
+            raise _BulletinParseError("未找到「未来一周天气预报」章节标题")
+
+        segments: list[dict] = []
+        for raw in paragraphs[heading_idx + 1:]:
+            line = (raw or "").strip()
+            if not line:
+                continue
+            if _NUMBERED_HEADING_RE.match(line):
+                if _FORECAST_SECTION_HEADING_RE.search(line):
+                    continue
+                break
+            m = _DAY_SEGMENT_HEAD_RE.match(line)
+            if not m:
+                continue
+            rest = line[m.end():].rstrip("。").strip()
+            parts = [s.strip() for s in re.split(r"[；;]", rest) if s.strip()]
+            if not parts:
+                continue
+            segments.append({"weather": parts[0], "wind": parts[1] if len(parts) > 1 else ""})
+            if len(segments) >= need_count:
+                break
+
+        if len(segments) < need_count:
+            raise _BulletinParseError(
+                f"「未来一周/未来八到十四天天气预报」章节合计只识别到 {len(segments)} 段日预报，"
+                f"不足所需的 {need_count} 段"
+            )
+        return segments
+
+    _WIND_SPLIT_RE = re.compile(r"^(?P<wdir>.*?风)(?P<wspeed>.*)$")
+
+    def _split_wind(self, text: str) -> tuple[str, str]:
+        """把公报风力句子拆成 (风向, 风力)，按第一个"风"字切分。"""
+        text = (text or "").strip()
+        if not text:
+            return "", ""
+        m = self._WIND_SPLIT_RE.match(text)
+        if not m:
+            return "", text
+        return m.group("wdir"), m.group("wspeed")
 
     def _parse_base_time(self, xml_path: str) -> datetime:
         m = re.search(r"_(\d{12})_", os.path.basename(xml_path))

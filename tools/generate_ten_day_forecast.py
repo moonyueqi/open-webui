@@ -1,12 +1,18 @@
 """
-title: 未来三天天气预报生成工具
-description: 根据「北京市气象台天气公报」+「北京市气象台未来240h预报产品」自动生成某区未来三天天气预报 Word 文档
+title: 未来十天天气预报生成工具
+description: 根据「北京市气象台天气公报」+「北京市气象台未来240h预报产品」自动生成某区未来十天天气预报 Word 文档
 author: lyq
 version: 1.0.0
 """
 
 WF240_OFFICIAL_NAME = "北京市气象台未来240h预报产品"
 BULLETIN_OFFICIAL_NAME = "北京市气象台天气公报"
+
+# 北京市（全市）版本：district 传入以下别名时，气温改取 240 XML 里的「观象台」站，
+# 标题/文件名/概述里的地名统一显示为「北京市」，不再拼「XX区」。
+CITY_LEVEL_DISTRICT_ALIASES = {"北京市", "全市"}
+CITY_LEVEL_STATION_NAME = "观象台"
+CITY_LEVEL_DISPLAY_NAME = "北京市"
 
 import os
 import re
@@ -27,13 +33,9 @@ from pydantic import BaseModel, Field
 
 
 BULLETIN_DOC_NAME_RE = re.compile(r"MSP2_BJ-MO_MDWB_ME_LNO_BJ_(\d{12})_00000-24012\.doc$")
-# 公报「二、未来一周天气预报」章节标题（容忍空白与编号写法差异）
 _WEEK_SECTION_HEADING_RE = re.compile(r"未来一周.*天气预报")
-# 「一、二、三、四…、」开头的章节标题
 _NUMBERED_HEADING_RE = re.compile(r"^[一二三四五六七八九十]、")
-# 仍属于"逐日天气预报正文"的章节标题（如"二、未来一周天气预报""三、未来八到十四天天气预报"）
 _FORECAST_SECTION_HEADING_RE = re.compile(r"未来.*天气预报")
-# 公报里一条「日预报」段的开头，如"29日白天：""2日傍晚-夜间：""30日夜间："
 _DAY_SEGMENT_HEAD_RE = re.compile(r"^\s*(?P<day>\d{1,2})日(?P<period>[^:：]+)[:：]")
 
 
@@ -89,15 +91,15 @@ class Tools:
         )
         template_path: str = Field(
             default=os.environ.get(
-                "WEATHER_TEMPLATE_THREE_DAY",
-                "/app/weather_templates/three_day/template.docx",
+                "WEATHER_TEMPLATE_TEN_DAY",
+                "/app/weather_templates/ten_day/template.docx",
             ),
-            description="未来三天天气预报 docx 模板的绝对路径",
+            description="未来十天天气预报 docx 模板的绝对路径",
         )
         use_bulletin_for_weather: bool = Field(
             default=True,
             description=(
-                "是否用「北京市气象台天气公报」覆盖表格里的天气/风向/风力（气温始终取自 240 XML）。"
+                "是否用「北京市气象台天气公报」覆盖表格里的天气/风向、风力（气温始终取自 240 XML）。"
                 "关闭后退回纯 240 数据（旧行为），用于公报数据异常时应急回退，无需改代码/重新部署。"
             ),
         )
@@ -126,7 +128,7 @@ class Tools:
             description="用于生成天气概况文字的模型 ID（留空则自动使用当前对话模型 / 第一个可用模型）",
         )
         summary_timeout: int = Field(
-            default=int(os.environ.get("THREE_DAY_SUMMARY_TIMEOUT", "120")),
+            default=int(os.environ.get("TEN_DAY_SUMMARY_TIMEOUT", "120")),
             description="调用模型生成天气概况的最大等待秒数，超时即用本地模板兜底，不阻塞文档生成",
         )
         debug: bool = Field(
@@ -137,7 +139,7 @@ class Tools:
     def __init__(self):
         self.valves = self.Valves()
 
-    async def generate_three_day_forecast(
+    async def generate_ten_day_forecast(
         self,
         district: str,
         __user__: dict = None,
@@ -148,9 +150,9 @@ class Tools:
         __model__: dict = None,
     ) -> str:
         """
-        生成某区未来三天天气预报 Word 文档，并在聊天中提供下载。
+        生成某区未来十天天气预报 Word 文档，并在聊天中提供下载。
 
-        数据来源固定为「北京市气象台天气公报」（提供天气/风向/风力）与
+        数据来源固定为「北京市气象台天气公报」（提供天气/风向、风力）与
         「北京市气象台未来240h预报产品」（提供气温），在向用户介绍数据来源时**必须**使用
         这两个全称，严禁简写为「公报/240/BJ-240/模式数据/数值模式」等。
 
@@ -159,10 +161,16 @@ class Tools:
         （包含真实下载链接 markdown）。你应当**原样**把 `reply_to_user` 输出给用户，不要在
         其中添加/删除/编造任何文件名、链接、起报时间、预报时效等元信息。
 
-        :param district: 行政区名称，如"密云"、"延庆"、"海淀"、"朝阳"等北京各区
+        :param district: 行政区名称，如"密云"、"延庆"、"海淀"、"朝阳"等北京各区；
+            如需生成北京市整体版本，传入"北京市"（气温取自 240 XML 的"观象台"站，
+            标题/文件名/概述里统一显示为"北京市"，不带"区"字）
         :return: JSON 字符串，包含 status / district / filename / download_url / reply_to_user 等字段
         """
         use_bulletin = self.valves.use_bulletin_for_weather
+        is_city_level = district.strip() in CITY_LEVEL_DISTRICT_ALIASES
+        station_name = CITY_LEVEL_STATION_NAME if is_city_level else district
+        display_name = CITY_LEVEL_DISPLAY_NAME if is_city_level else f"{district}区"
+        narrative_name = CITY_LEVEL_DISPLAY_NAME if is_city_level else f"{district}地区"
         cleanup_paths: list[str] = []
 
         if __event_emitter__:
@@ -181,7 +189,6 @@ class Tools:
             )
 
         try:
-            # 1. 确定要用的时间戳，并取得 240 XML 本地路径
             if use_bulletin:
                 xml_stamps = self._list_xml_stamps()
                 bulletin_stamps = self._list_bulletin_stamps()
@@ -228,26 +235,31 @@ class Tools:
                 if (self.valves.source_mode or "local").strip().lower() == "ftp":
                     cleanup_paths.append(xml_path)
 
-            # 2. 解析 XML + 校验地区
             base_time = self._parse_base_time(xml_path)
-            data_list, available = self._parse_xml(xml_path, district)
+            data_list, available = self._parse_xml(xml_path, station_name)
             if data_list is None:
+                hint = f"'{district}'（对应站点'{station_name}'）" if is_city_level else f"'{district}'"
                 return json.dumps(
                     {
-                        "error": f"'{district}'不在当前预报数据覆盖范围内。可用地区：{'、'.join(sorted(available))}"
+                        "error": f"{hint}不在当前预报数据覆盖范围内。可用地区：{'、'.join(sorted(available))}"
                     },
                     ensure_ascii=False,
                 )
 
-            # 3. 取前6条数据（3天 x 白天/夜间）
-            forecast_data = [d for d in data_list if d["hour"] <= 72][:6]
-            if len(forecast_data) < 6:
+            # 十天 = hour<=240，最多 20 个时次（10 天 × 白天/夜间）
+            forecast_data = [d for d in data_list if d["hour"] <= 240][:20]
+            if len(forecast_data) < 20:
                 return json.dumps(
-                    {"error": "预报数据不足6个时次，无法生成未来三天预报"},
+                    {
+                        "error": (
+                            f"预报数据不足 20 个时次（实际 {len(forecast_data)} 个），"
+                            f"无法生成未来十天预报。请确认 240h 预报产品是否完整。"
+                        )
+                    },
                     ensure_ascii=False,
                 )
 
-            # 3b. 用公报覆盖天气/风向/风力（气温继续用240数据不变）
+            # 用公报覆盖天气/风向风力（气温继续用240数据不变）
             if use_bulletin:
                 if __event_emitter__:
                     await __event_emitter__(
@@ -262,7 +274,7 @@ class Tools:
                     bulletin_docx = self._doc_to_docx(bulletin_local)
                     cleanup_paths.append(os.path.dirname(bulletin_docx))
                     paragraphs = self._read_paragraphs(bulletin_docx)
-                    bulletin_segments = self._extract_day_segments(paragraphs, need_count=6)
+                    bulletin_segments = self._extract_day_segments(paragraphs, need_count=20)
                 except Exception as e:
                     return json.dumps(
                         {"error": f"解析{BULLETIN_OFFICIAL_NAME}失败：{e}"},
@@ -277,10 +289,8 @@ class Tools:
             for p in cleanup_paths:
                 _safe_remove(p)
 
-        # 4. 构建表格数据
         table_rows = self._build_table(forecast_data, base_time)
 
-        # 5. 调 LLM 生成概括文字
         if __event_emitter__:
             await __event_emitter__(
                 {
@@ -290,10 +300,9 @@ class Tools:
             )
 
         summary = await self._generate_summary(
-            district, forecast_data, base_time, __request__, __user__, __model__
+            narrative_name, forecast_data, base_time, __request__, __user__, __model__
         )
 
-        # 6. docxtpl 渲染
         if __event_emitter__:
             await __event_emitter__(
                 {
@@ -305,11 +314,11 @@ class Tools:
         from docxtpl import DocxTemplate
 
         now = datetime.now()
-        report_dt = f"{now.year}年{now.month}月{now.day}日{now.hour}时"
+        report_dt = f"{now.year}年{now.month:02d}月{now.day:02d}日{now.hour:02d}时"
 
         doc = DocxTemplate(self.valves.template_path)
         context = {
-            "district": district,
+            "district": display_name,
             "report_datetime": report_dt,
             "summary": summary,
             "table": table_rows,
@@ -319,14 +328,13 @@ class Tools:
         self._merge_date_cells(doc.docx, table_rows)
 
         date_str = datetime.now().strftime("%Y%m%d%H")
-        filename = f"{district}区未来三天天气预报_{date_str}.docx"
+        filename = f"{display_name}未来十天天气预报_{date_str}.docx"
 
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             doc.save(tmp.name)
             tmp_path = tmp.name
 
         try:
-            # 7. 上传文件
             from fastapi import UploadFile
             from open_webui.models.users import Users
             from open_webui.models.chats import Chats
@@ -353,14 +361,11 @@ class Tools:
                 process=False,
                 user=user_obj,
             )
-            # 直接指向后端的绝对 URL（避开前端 dev server 把 /api/v1/files/... 当成页面路由）。
-            # 生产环境前后端同源，base_url 与前端相同；开发环境 base_url 是后端真实地址。
             url = (
                 str(__request__.base_url).rstrip("/")
                 + f"/api/v1/files/{file_item.id}/content"
             )
 
-            # 把文件关联到当前聊天消息（让消息携带可下载附件）
             if __chat_id__ and __message_id__:
                 try:
                     Chats.insert_chat_files(
@@ -373,13 +378,10 @@ class Tools:
                     pass
 
             download_md = f"[📄 下载 {filename}]({url})"
-            # 给 LLM 看的"完成回执"：必须包含真实下载链接，且明确要求按原文输出，
-            # 避免 LLM 自己编造文件名/链接/起报时间等元数据
             assistant_reply = (
-                f"{district}区未来三天天气预报文档已生成，点击下载：{download_md}"
+                f"{display_name}未来十天天气预报文档已生成，点击下载：{download_md}"
             )
 
-            # 8. event_emitter 把下载链接追加到消息（不影响工具 return）
             if __event_emitter__:
                 await __event_emitter__(
                     {
@@ -394,11 +396,6 @@ class Tools:
                     }
                 )
 
-            # 工具返回值会进 LLM 上下文，模型通常会"复述"里面的文字。这里：
-            # 1) 不再放任何元指令（"数据来源固定…严禁简写…"），避免被当成正文播报；
-            # 2) 但**必须**把真实下载链接和文件名放在 message 里，否则模型拿不到链接，
-            #    就会像之前看到的那样自由发挥编造一份假链接 / 假起报时间。
-            # 3) reply_to_user 这个字段是显式信号，告诉模型"原样输出这一句即可"。
             return json.dumps(
                 {
                     "status": "success",
@@ -417,6 +414,8 @@ class Tools:
             )
         finally:
             os.unlink(tmp_path)
+
+    # ---------- XML 取数 ----------
 
     XML_NAME_RE = re.compile(r"MSP2_BJ-MO_WF_ME_LNO_BJ_\d{12}_00000-24012\.xml$")
 
@@ -441,11 +440,6 @@ class Tools:
         return (max(past, key=lambda x: x[0]) if past else max(candidates, key=lambda x: x[0]))[1]
 
     def _find_latest_xml(self) -> str | None:
-        """
-        返回一个**本地可读**的 XML 文件路径。
-        - source_mode=local：直接返回宿主目录下的最新文件路径
-        - source_mode=ftp：登录 FTP 取最新一份 XML，下载到临时文件，返回临时路径
-        """
         mode = (self.valves.source_mode or "local").strip().lower()
         if mode == "ftp":
             return self._fetch_latest_xml_from_ftp()
@@ -475,8 +469,6 @@ class Tools:
                 target = self._pick_latest_name(names)
                 if not target:
                     return None
-                # 临时文件名里保留原始 basename（含 12 位时间戳），
-                # 这样下游 _parse_base_time / _pick_latest_name 等依赖文件名的逻辑都能复用
                 original_basename = os.path.basename(target)
                 tmp_dir = tempfile.mkdtemp(prefix="bj240_")
                 tmp_path = os.path.join(tmp_dir, original_basename)
@@ -489,8 +481,7 @@ class Tools:
                 except Exception:
                     ftp.close()
         except Exception as e:
-            # 让上层把目录信息打到错误里，便于排查
-            print(f"[generate_three_day_forecast] FTP 拉取失败: {e}")
+            print(f"[generate_ten_day_forecast] FTP 拉取失败: {e}")
             return None
 
     def _xml_location_hint(self) -> str:
@@ -509,7 +500,6 @@ class Tools:
     # 公报接入：列时间戳 / 按精确时间戳取文件 / 转 docx / 解析逐日逐段天气风力
     # ========================================================================
     def _list_xml_stamps(self) -> set[str]:
-        """列出所有可用的 240 XML 时间戳（YYYYMMDDHHMM），local/ftp 通用。"""
         mode = (self.valves.source_mode or "local").strip().lower()
         if mode == "ftp":
             return self._ftp_list_stamps(self.valves.ftp_dir, self.XML_NAME_RE)
@@ -524,7 +514,6 @@ class Tools:
         return out
 
     def _fetch_xml_by_stamp(self, stamp: str) -> str:
-        """按精确时间戳取 240 XML，返回本地可读路径（ftp 模式下载到临时文件）。"""
         fname = f"MSP2_BJ-MO_WF_ME_LNO_BJ_{stamp}_00000-24012.xml"
         mode = (self.valves.source_mode or "local").strip().lower()
         if mode == "ftp":
@@ -608,8 +597,6 @@ class Tools:
     def _resolve_common_stamp(
         self, xml_stamps: set[str], bulletin_stamps: set[str], now: datetime
     ) -> str | None:
-        """取 240 与公报都存在的、<=now 的最大公共时间戳；
-        若交集里没有 <=now 的（理论上不该发生），退化为交集里的全局最大值。"""
         common = xml_stamps & bulletin_stamps
         if not common:
             return None
@@ -666,13 +653,9 @@ class Tools:
         return out
 
     def _extract_day_segments(self, paragraphs: list[str], need_count: int) -> list[dict]:
-        """
-        从「二、未来一周天气预报」章节标题开始，按公报正文原有顺序连续抽取逐日逐时段
-        {weather, wind}，直到抽满 need_count 段或没有更多段落。
-
-        会跳过「三、未来八到十四天天气预报」这类仍属于"逐日预报正文"的章节标题继续往下读，
-        只在遇到「四、上下班天气」等真正不相关的章节标题、或段数已经够用时才停止。
-        """
+        """从「二、未来一周天气预报」开始连续抽取逐日逐时段 {weather, wind}，
+        跳过「三、未来八到十四天天气预报」等仍属预报正文的章节标题继续读，
+        只在遇到「四、上下班天气」等非预报章节标题或段数够用时停止。"""
         heading_idx = -1
         for i, raw in enumerate(paragraphs):
             line = (raw or "").strip()
@@ -689,9 +672,7 @@ class Tools:
                 continue
             if _NUMBERED_HEADING_RE.match(line):
                 if _FORECAST_SECTION_HEADING_RE.search(line):
-                    # 「二/三、未来XX天天气预报」之类仍是预报正文的章节标题，跳过继续
                     continue
-                # 「四、上下班天气」等非预报章节，到此为止
                 break
             m = _DAY_SEGMENT_HEAD_RE.match(line)
             if not m:
@@ -714,12 +695,7 @@ class Tools:
     _WIND_SPLIT_RE = re.compile(r"^(?P<wdir>.*?风)(?P<wspeed>.*)$")
 
     def _split_wind(self, text: str) -> tuple[str, str]:
-        """
-        把公报风力句子拆成 (风向, 风力)，按第一个"风"字切分：
-          "北转南风2—3级"              → ("北转南风", "2—3级")
-          "偏南风3级（阵风5—6级）转2级" → ("偏南风", "3级（阵风5—6级）转2级")
-        找不到"风"字时整句归入风力，风向留空。
-        """
+        """把公报风力句子拆成 (风向, 风力)，按第一个"风"字切分。"""
         text = (text or "").strip()
         if not text:
             return "", ""
@@ -753,15 +729,10 @@ class Tools:
                 return sorted(data_list, key=lambda x: x["hour"]), available
         return None, available
 
+    # ---------- 表格构造 ----------
+
     def _get_period_label(self, base_hour: int, hour: int) -> str:
-        """
-        根据起报时刻和 hour 偏移，返回时段标签。
-        规则：
-          - 06/09时起报: hour=12 → "白天"，之后 夜间/白天 交替
-          - 11/14时起报: hour=12 → "下午"，之后 夜间/白天 交替
-          - 17/20时起报: hour=12 → "夜间"，之后 白天/夜间 交替
-          - 23时起报:    hour=12 → "后半夜"，之后 白天/夜间 交替
-        """
+        """白天/夜间判定。"""
         if hour == 12:
             if base_hour in (6, 9):
                 return "白天"
@@ -780,12 +751,10 @@ class Tools:
             return "夜间" if hour % 24 == 12 else "白天"
 
     def _is_max_temp(self, base_hour: int, hour: int) -> bool:
-        """该时次的气温是最高温（白天/下午）还是最低温（夜间/后半夜）"""
         label = self._get_period_label(base_hour, hour)
         return label in ("白天", "下午")
 
     def _get_date_label(self, base_time: datetime, base_hour: int, hour: int) -> str:
-        """计算该时次归属的日期标签（X日）"""
         actual_time = base_time + timedelta(hours=hour)
         label = self._get_period_label(base_hour, hour)
         if label in ("夜间", "后半夜"):
@@ -795,27 +764,24 @@ class Tools:
         return f"{ref_time.day}日"
 
     def _fmt_wdir(self, wdir: str) -> str:
-        """风向格式化：若原值未含"风"字，则末尾追加。
-        例：'东南' → '东南风'，'南转北风' → '南转北风'（不变）。"""
         if not wdir:
             return ""
         return wdir if "风" in wdir else f"{wdir}风"
 
+    def _fmt_wdir_wspeed(self, wdir: str, wspeed: str) -> str:
+        """合并风向 + 风力为单列文本，与示例模板一致，例如「北转南风2、3级」。"""
+        wdir_part = self._fmt_wdir((wdir or "").strip())
+        wspeed_part = (wspeed or "").strip()
+        if wdir_part and wspeed_part:
+            return f"{wdir_part}{wspeed_part}"
+        return wdir_part or wspeed_part
+
     def _build_table(
         self, forecast_data: list[dict], base_time: datetime
     ) -> list[dict]:
-        """
-        按预报数据原始顺序，每个时次产出 1 行（扁平结构），用于模板按行循环：
-          [
-            {"date": "11日", "period": "白天", "weather": "晴",
-             "wdir": "南风", "wspeed": "2级", "t": "31"},
-            {"date": "11日", "period": "夜间", ...},
-            ...
-          ]
-        每个白天/夜间时段本来就只有一个气温值（白天=最高，夜间=最低），模板的气温列
-        已经合并成单列（weather_templates/three_day/template.docx），直接对应单个 `t` 字段。
-        日期列的 vMerge 合并由 _merge_date_cells 在 docxtpl 渲染完之后做。
-        """
+        """模板字段（与 weather_templates/ten_day/template.docx 对应）：
+          date / period / weather / wdir_wspeed / t
+        能见度数据暂无来源，已从表格中移除该列，后续接入后再恢复。"""
         base_hour = base_time.hour
         rows: list[dict] = []
         for item in forecast_data:
@@ -827,19 +793,15 @@ class Tools:
                     "date": date_key,
                     "period": period,
                     "weather": item["wp"],
-                    "wdir": self._fmt_wdir(item["wdir"]),
-                    "wspeed": item["wspeed"],
+                    "wdir_wspeed": self._fmt_wdir_wspeed(item["wdir"], item["wspeed"]),
                     "t": item["t"],
                 }
             )
         return rows
 
     def _merge_date_cells(self, doc, table_rows: list[dict]) -> None:
-        """
-        docxtpl 渲染完成后，把数据表第 1 列里"连续相同日期"的单元格做 vMerge 合并。
-        约定：数据表是文档里第 1 个 table，渲染后表头占 N 行，其后是与 table_rows 一一对应的数据行。
-        直接操作底层 w:tc 元素，避免 python-docx 的 cells 缓存把不同 tc 折叠返回。
-        """
+        """渲染完成后把数据表第 1 列「连续相同日期」的单元格做 vMerge 合并。
+        约定：数据表是文档里第 1 个 table；表头占 N 行（这里 N=1），其后是与 table_rows 一一对应的数据行。"""
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
 
@@ -888,8 +850,9 @@ class Tools:
                     set_vmerge(first_tc(trs[header_count + k]), "continue")
             i = j + 1
 
+    # ---------- 统计与概述 ----------
+
     def _compute_stats(self, forecast_data: list[dict], base_time: datetime) -> dict:
-        """统计：天气次数（高到低）、白天/夜间温度区间、风向/风力序列、按日聚合的天气事实表。"""
         from collections import Counter, OrderedDict
 
         base_hour = base_time.hour
@@ -900,7 +863,6 @@ class Tools:
         wdir_set: set[str] = set()
         wspeed_max_num = 0
         wspeed_max_str = ""
-        # 按日聚合：{"11日": OrderedDict([("白天","晴"),("夜间","多云")]), "12日": ...}
         day_weather_map: "OrderedDict[str, OrderedDict[str, str]]" = OrderedDict()
 
         for item in forecast_data:
@@ -968,7 +930,6 @@ class Tools:
             "narrative": narrative,
         }
 
-    # 天气类型归类：把 wp 文本归到"晴好 / 阴 / 降水"三类，并识别降水形态。
     _PRECIP_KINDS = (
         ("暴雨", "暴雨"),
         ("大雨", "大雨"),
@@ -987,8 +948,6 @@ class Tools:
     )
 
     def _classify_weather(self, wp: str) -> tuple[str, str | None]:
-        """返回 (大类, 降水形态)。大类 ∈ {"晴好","阴","降水"}。
-        只用于"该时段是否算有降水"及降水形态统计：只要文本含降水关键字即判降水。"""
         text = (wp or "").strip()
         if not text:
             return "晴好", None
@@ -1000,40 +959,23 @@ class Tools:
         return "晴好", None
 
     def _main_sky_word(self, wp: str) -> str:
-        """从单元格「天气状况」文本里提取一个用于"以XX为主"统计的主天气短词。
-        规则（贴近预报员读表习惯）：
-          1. 「X转Y…」「X间Y…」「X到Y…」取分隔符后的主导态 Y；
-          2. 形如「晴转多云，傍晚有分散性雷阵雨」这种"主态 + 次要降水修饰"，
-             主短词取主态（多云），不取被「傍晚有/局地有/午后有」修饰的次要降水；
-          3. 若整格主体本身就是降水（如「雷阵雨」「小雨」，文本里没有晴/多云/阴的主态），
-             主短词取该降水形态；
-          4. 否则在「多云 / 晴 / 阴」里按出现情况取（多云优先于晴）。
-        返回值是具体短词，如「多云」「晴」「阴」「雷阵雨」「小雨」。"""
         text = (wp or "").strip()
         if not text:
             return "多云"
-
-        # 取主态部分：以"，/,/；/;/。"切出第一分句
         head = re.split(r"[，,；;。\s]", text, maxsplit=1)[0]
-        # 「X转Y」「X转为Y」表示天气转折，主导态取转折后的 Y；
-        # 「X间Y」「X到Y」表示"以 X 为主、间或 Y"，主导态取前段 X。
         if "转" in head:
             main = re.split(r"转为|转", head)[-1].strip()
         else:
             main = re.split(r"间|到", head)[0].strip()
-
-        # 主态里识别晴雨大类
         if "多云" in main:
             return "多云"
         if "阴" in main:
             return "阴"
         if "晴" in main:
             return "晴"
-        # 主态本身是降水
         for kw, kind in self._PRECIP_KINDS:
             if kw in main:
                 return kind
-        # 兜底：整句里找主态
         if "多云" in text:
             return "多云"
         if "阴" in text:
@@ -1052,7 +994,6 @@ class Tools:
         day_weather_map: "dict",
         day_temps: list[int],
     ) -> dict:
-        """把逐时段预报归纳成"天气过程事实"，供概述生成使用。"""
         from collections import Counter, OrderedDict
 
         base_hour = base_time.hour
@@ -1060,7 +1001,6 @@ class Tools:
         precip_cnt = 0
         precip_kind_counter: Counter = Counter()
         precip_day_set: "OrderedDict[str, None]" = OrderedDict()
-        # 主天气短词计数：sky_mood 直接取出现最多的主短词
         sky_word_counter: Counter = Counter()
 
         for item in forecast_data:
@@ -1068,11 +1008,7 @@ class Tools:
             if not wp:
                 continue
             total += 1
-
-            # 主短词计数（用于"以XX为主"）
             sky_word_counter[self._main_sky_word(wp)] += 1
-
-            # 是否含降水（用于降水日期 / 雨型统计），与主短词独立
             cat, kind = self._classify_weather(wp)
             if cat == "降水":
                 precip_cnt += 1
@@ -1082,7 +1018,6 @@ class Tools:
                 precip_day_set[d] = None
 
         precip_ratio = (precip_cnt / total) if total else 0.0
-
         if precip_cnt == 0:
             precip_density = "none"
         elif precip_ratio >= 0.4:
@@ -1092,8 +1027,6 @@ class Tools:
 
         main_precip_kinds = [k for k, _ in precip_kind_counter.most_common(2)]
 
-        # 主导晴雨基调：严格取主天气短词里出现次数最多者；
-        # 平局时按"多云 > 晴 > 阴 > 其它(降水)"的常见播报优先级打破。
         if sky_word_counter:
             priority = {"多云": 3, "晴": 2, "阴": 1}
             sky_mood = max(
@@ -1137,7 +1070,7 @@ class Tools:
 
     async def _generate_summary(
         self,
-        district: str,
+        area_label: str,
         forecast_data: list[dict],
         base_time: datetime,
         request,
@@ -1147,9 +1080,6 @@ class Tools:
         base_hour = base_time.hour
         stats = self._compute_stats(forecast_data, base_time)
 
-        ranked = stats["weather_ranked"]
-        top_weather = ranked[0][0] if ranked else "晴间多云"
-
         date_labels: list[str] = []
         for item in forecast_data:
             d = self._get_date_label(base_time, base_hour, item["hour"])
@@ -1157,10 +1087,6 @@ class Tools:
                 date_labels.append(d)
         allowed_dates_str = "、".join(date_labels) if date_labels else "（无）"
 
-        other_weathers = [name for name, _ in ranked[1:]]
-        other_weather_str = "、".join(other_weathers) if other_weathers else "无"
-
-        # 按日事实表：仅作为模型的事实依据，不要求逐日照搬
         day_weather_map = stats.get("day_weather_map") or {}
         day_fact_lines = []
         for d, period_map in day_weather_map.items():
@@ -1183,55 +1109,75 @@ class Tools:
         }
         density_str = density_map.get(nv.get("precip_density"), "—")
 
-        # 预报员风格 prompt：天气过程综述而非逐日罗列。
-        # 三天概述聚焦晴雨大势与降水过程，气温信息已在表格里体现，正文不写任何气温。
+        t_day_min = stats.get("t_day_min")
+        t_day_max = stats.get("t_day_max")
+        t_night_min = stats.get("t_night_min")
+        t_night_max = stats.get("t_night_max")
+
+        def _temp_range_str(lo, hi) -> str:
+            if lo is None or hi is None:
+                return "—"
+            if lo == hi:
+                return f"{lo}℃"
+            return f"{lo}～{hi}℃"
+
+        day_temp_str = _temp_range_str(t_day_min, t_day_max)
+        night_temp_str = _temp_range_str(t_night_min, t_night_max)
+
+        # 起报日 + 末日，便于在概述里写出「未来十天（X月X日至Y月Y日）」这种范围短语
+        start_dt = base_time + timedelta(hours=12)
+        end_dt = base_time + timedelta(hours=240)
+        date_range_str = f"{start_dt.month}月{start_dt.day}日至{end_dt.month}月{end_dt.day}日"
+
         prompt = (
-            f"你是资深气象预报员，为{district}地区撰写未来三天天气预报的「天气概况」段落。\n"
-            f"段落会拼接在「天气情况：」后面，请直接以天气描述开头，不要重复「天气情况：」前缀。\n"
-            f"要写成一段连贯、自然、有预报员口吻的总体天气趋势综述，"
-            f"而不是「29日…、30日…」这样逐日罗列流水账。只输出正文，单段不换行，50~90 字。\n\n"
-            f"【未来三天天气过程事实（请据此归纳，不要逐条复述）】\n"
+            f"你是资深气象预报员，为{area_label}撰写「未来十天天气预报」中的「天气综述」段落。\n"
+            f"段落直接拼接在「一、天气综述」标题下，请直接给出正文，不要重复任何标题前缀。\n"
+            f"要写成一段连贯、自然、有预报员口吻的中长期天气趋势综述，"
+            f"重点写晴雨大势、风力情况和气温变化，不要逐日罗列流水账。"
+            f"只输出正文，单段不换行，90~150 字。\n\n"
+            f"【未来十天天气过程事实（请据此归纳，不要逐条复述）】\n"
             f"- 主导晴雨基调（已严格按时段统计得出，必须采用，不得改成其它晴雨词）：{sky_mood}\n"
             f"- 一句话基调参考：{nv.get('dominant_mood', '以多云天气为主')}\n"
             f"- 降水概况：{density_str}\n"
             f"- 主要降水形态（按出现多少排序）：{main_kinds_str}\n"
-            f"- 有降水的日期：{precip_days_str}\n\n"
+            f"- 有降水的日期：{precip_days_str}\n"
+            f"- 白天最高气温区间：{day_temp_str}；夜间最低气温区间：{night_temp_str}\n"
+            f"- 最大风力实况：{stats.get('wspeed_max_str') or '无显著大风'}\n"
+            f"- 时段范围（建议写在开头括号里）：{date_range_str}\n\n"
             f"【可参考的逐日天气（仅供你判断事实，禁止逐日照抄成流水账）】\n"
             f"{day_fact_str}\n\n"
             f"【允许出现在正文里的日期】{allowed_dates_str}\n\n"
             f"【写作要求】\n"
-            f"1. 开头必须写成「预计未来三天{district}地区以{sky_mood}为主」，"
-            f"其中晴雨词只能用上面的「主导晴雨基调」即「{sky_mood}」，"
-            f"严禁自行改成「晴」「多云」「晴间多云」等其它词，也不要在其后加「天气」二字；"
-            f"随后再概括降水过程（用上面的「主要降水形态」，可点出集中在哪几天，但不要逐日罗列）；\n"
-            f"2. 若降水零星，可用「其间有分散性阵雨」「局部时段有阵雨」等书面表达，"
-            f"但只能使用上面「主要降水形态」里出现过的雨型词，不得升级雨量（不许把阵雨写成中雨/大雨/暴雨）；"
-            f"全文使用书面预报语言，不要出现「不过」「但是」「呢」「啦」等口语化转折词或语气词；\n"
-            f"3. 单日写「X日」，连续多日写「X-Y日」（均用阿拉伯数字），"
-            f"严禁「11-日」「i6日」「l3日」等错误写法。\n\n"
+            f"1. 开头建议为「预计未来十天（{date_range_str}）{area_label}以{sky_mood}为主」或类似句式，"
+            f"晴雨词只能用「{sky_mood}」，不要在其后加「天气」二字；\n"
+            f"2. 若有显著大风过程（4 级以上偏北风），仅可做事实陈述，如"
+            f"「期间最大风力可达X级」「X-Y日有X级偏北风」，"
+            f"风力数字不得超过实际最大风力{stats.get('wspeed_max_num') or 0}级；\n"
+            f"3. 末尾必须给出白天最高气温区间 {day_temp_str} 和夜间最低气温区间 {night_temp_str}，"
+            f"使用「该期间白天最高气温X～Y℃，夜间最低气温M～N℃。」这种格式（M、N、X、Y 必须严格等于上述数值，不得编造）；\n"
+            f"4. 全文使用书面预报语言，单日写「X日」，连续多日写「X-Y日」或「X日至Y日」（均用阿拉伯数字）。\n\n"
             f"【绝对禁止】\n"
-            f"- 任何防范建议 / 出行提示 / 生活指数 / 体感类话术（如「注意防范」「请携带雨具」「适宜户外活动」"
-            f"「需关注短时强降水影响」「体感舒适度下降」「闷热」「凉爽」等）—— 概述只客观描述天气，绝不给建议、不写体感；\n"
-            f"- 任何温度描述（「白天最高气温…℃」「整体升温/降温/平稳」等）—— 温度信息在表格里已体现，正文里一律不许出现气温；\n"
-            f"- 编造任何天气系统/环流背景（副热带高压、雨带、冷空气、低涡、切变、台风、西风槽等一律不许出现）；\n"
-            f"- 逐日罗列式流水账（「29日多云、30日阴、31日阵雨…」这种写法）；\n"
-            f"- 任何统计数字（「另有X天Y」「X次Y」等）；\n"
-            f"- 任何数据来源描述（数值预报/模式/EC/ECMWF/GFS/卫星/雷达/集合预报/再分析/根据××资料 等）；\n"
-            f"- 出现「有降水的日期」之外日期的降水，或事实里没有的雨型；\n"
+            f"- 任何防范建议 / 出行提示 / 生活指数 / 体感类话术（「注意防范」「请携带雨具」等）；\n"
+            f"- 编造数据里没有的雨型、风力或风向；\n"
+            f"- 编造任何天气系统 / 环流背景，包括但不限于「冷空气」「弱冷空气」「冷空气活动」「冷空气影响」"
+            f"「副热带高压」「雨带」「台风」「急流」「西风槽」等——本工具没有这类数据依据，"
+            f"不得做任何成因/背景判断，只能客观描述晴雨、风、温度本身；\n"
+            f"- 「受X影响」「受其影响」这类成因措辞一律禁用，只能直接陈述天气事实；\n"
+            f"- 任何数据来源描述（数值预报/模式/EC/ECMWF/GFS/卫星/雷达 等）；\n"
             f"- 超出「允许出现在正文里的日期」之外的日期。\n"
         )
 
         log = logging.getLogger(__name__)
 
         def _fallback(reason: str, exc: BaseException | None = None) -> str:
-            fb = self._fallback_summary(district, stats)
+            fb = self._fallback_summary(area_label, stats, date_range_str)
             if exc is not None:
                 log.warning(
-                    "three_day summary fallback (%s): %s: %s",
+                    "ten_day_forecast summary fallback (%s): %s: %s",
                     reason, type(exc).__name__, exc,
                 )
             else:
-                log.warning("three_day summary fallback (%s)", reason)
+                log.warning("ten_day_forecast summary fallback (%s)", reason)
             if self.valves.debug and exc is not None:
                 return f"{fb}\n[模型调用失败：{type(exc).__name__}: {exc}]"
             if self.valves.debug:
@@ -1251,7 +1197,6 @@ class Tools:
                 await get_all_models(request, user=user_obj)
             models = getattr(request.app.state, "MODELS", {}) or {}
 
-            # 选模型：优先级 valves.summary_model > 当前对话模型 > models 第一个
             requested = (self.valves.summary_model or "").strip()
             model_id = ""
             if requested:
@@ -1259,7 +1204,7 @@ class Tools:
                     model_id = requested
                 else:
                     log.warning(
-                        "three_day: summary_model=%r 不在 app.state.MODELS 中"
+                        "ten_day_forecast: summary_model=%r 不在 app.state.MODELS 中"
                         "（已知 %d 个），忽略该配置",
                         requested, len(models),
                     )
@@ -1269,7 +1214,7 @@ class Tools:
                     model_id = cid
                 else:
                     log.info(
-                        "three_day: 当前对话模型 %r 不在后端代理可见列表中"
+                        "ten_day_forecast: 当前对话模型 %r 不在后端代理可见列表中"
                         "（共 %d 个），将自动改用其它可用模型",
                         cid, len(models),
                     )
@@ -1278,9 +1223,8 @@ class Tools:
                     return _fallback("当前没有任何可用模型")
                 model_id = next(iter(models.keys()))
 
-            log.info("three_day: 使用模型 %r 生成概况（候选 %d 个）", model_id, len(models))
+            log.info("ten_day_forecast: 使用模型 %r 生成概况（候选 %d 个）", model_id, len(models))
 
-            # 关闭推理类模型的 thinking / reasoning（详见周报工具同名注释）
             user_prompt = f"/no_think\n{prompt}"
             form_data = {
                 "model": model_id,
@@ -1291,10 +1235,6 @@ class Tools:
                 "reasoning": {"enabled": False},
             }
 
-            # 外层对话若使用 direct 模式（浏览器中转）调模型，会让 generate_chat_completion
-            # 内部只认 request.state.model 这一个模型，并且通过 socket.io 等浏览器回包
-            # （默认 60s 超时）。这里临时把 direct 关掉，强制走后端代理路径，使用
-            # request.app.state.MODELS 里的模型直接由后端发起调用。
             saved_direct = getattr(request.state, "direct", None)
             timeout_sec = max(10, int(self.valves.summary_timeout or 120))
             try:
@@ -1342,24 +1282,26 @@ class Tools:
                 )
 
             if content:
-                # 兜底：万一上游没识别 /no_think，模型仍返回 <think>...</think>，剥掉
                 content = self._strip_thinking(content)
                 cleaned = self._sanitize_summary(content.strip())
                 if self._validate_summary(cleaned, stats, date_labels):
                     return cleaned
                 log.warning(
-                    "three_day summary failed fact-check, fallback used. raw=%r",
+                    "ten_day_forecast summary failed fact-check, fallback used. raw=%r",
                     cleaned,
                 )
-                return self._fallback_summary(district, stats)
+                return self._fallback_summary(area_label, stats, date_range_str)
             return _fallback("模型返回内容为空")
         except Exception as e:
-            log.exception("generate_three_day_forecast summary failed: %s", e)
+            log.exception("generate_ten_day_forecast summary failed: %s", e)
             return _fallback("模型调用异常", e)
 
-    def _fallback_summary(self, district: str, stats: dict) -> str:
-        """本地兜底：基于过程事实拼一段预报员风格的大势综述（不含任何气温信息）。
-        开头晴雨词严格采用按时段统计得出的 sky_mood。"""
+    def _fallback_summary(self, area_label: str, stats: dict, date_range_str: str = "") -> str:
+        """本地兜底：参考示例文本风格——
+          「预计未来十天（X月X日至Y月Y日），<area_label>以XX为主。
+           该期间白天最高气温X～Y℃，夜间最低气温M～N℃。」
+        晴雨词严格使用按时段统计得出的 sky_mood。area_label 已由调用方拼好后缀
+        （如"海淀地区"或"北京市"），这里不再额外拼"地区"。"""
         nv = stats.get("narrative") or {}
         density = nv.get("precip_density", "none")
         kinds = nv.get("main_precip_kinds") or []
@@ -1367,28 +1309,42 @@ class Tools:
         days = nv.get("precip_days") or []
         sky_mood = nv.get("sky_mood") or "多云"
 
-        def fmt_days(ds: list[str]) -> str:
-            if not ds:
-                return ""
-            return "、".join(ds) if len(ds) <= 3 else "部分时段"
-
-        # sky_mood 是否本身就是降水类（如雷阵雨/小雨）
-        mood_is_precip = sky_mood not in ("晴", "多云", "阴", "晴间多云")
+        range_prefix = f"（{date_range_str}）" if date_range_str else ""
 
         if density == "none":
-            return f"预计未来三天{district}地区以{sky_mood}为主，大部分时间无明显降水。"
-        day_hint = fmt_days(days)
-        if mood_is_precip:
-            # 主导就是降水：直接写"以X为主"，再点出集中日
-            if day_hint:
-                return f"预计未来三天{district}地区以{sky_mood}为主，降水主要集中在{day_hint}。"
-            return f"预计未来三天{district}地区以{sky_mood}为主。"
-        # 主导是晴/多云/阴，降水是次要过程
-        tail = f"其间{day_hint}有分散性{kind_word}。" if day_hint else f"其间多分散性{kind_word}。"
-        return f"预计未来三天{district}地区大部分时间以{sky_mood}为主，{tail}"
+            head = f"预计未来十天{range_prefix}{area_label}以{sky_mood}为主"
+        elif density == "frequent":
+            day_hint = "、".join(days) if 0 < len(days) <= 4 else "部分时段"
+            head = f"预计未来十天{range_prefix}{area_label}以{sky_mood}为主，{day_hint}有{kind_word}"
+        else:
+            day_hint = "、".join(days) if 0 < len(days) <= 4 else "部分时段"
+            head = f"预计未来十天{range_prefix}{area_label}以{sky_mood}为主，{day_hint}有分散性{kind_word}"
 
-    # 数据来源相关的"幻觉"词：本工具的数据都来自北京市气象台官方发布的 BJ-240 XML，
-    # 模型不应在正文中提及任何"数值预报产品/模式/EC/卫星/雷达"等来源描述。
+        max_n = stats.get("wspeed_max_num") or 0
+        if max_n >= 4:
+            head += f"，期间最大风力可达{stats.get('wspeed_max_str') or f'{max_n}级'}"
+
+        t_day_min = stats.get("t_day_min")
+        t_day_max = stats.get("t_day_max")
+        t_night_min = stats.get("t_night_min")
+        t_night_max = stats.get("t_night_max")
+        tail_parts = []
+        if t_day_min is not None and t_day_max is not None:
+            if t_day_min == t_day_max:
+                tail_parts.append(f"白天最高气温{t_day_max}℃")
+            else:
+                tail_parts.append(f"白天最高气温{t_day_min}～{t_day_max}℃")
+        if t_night_min is not None and t_night_max is not None:
+            if t_night_min == t_night_max:
+                tail_parts.append(f"夜间最低气温{t_night_min}℃")
+            else:
+                tail_parts.append(f"夜间最低气温{t_night_min}～{t_night_max}℃")
+        if tail_parts:
+            return head + "。该期间" + "，".join(tail_parts) + "。"
+        return head + "。"
+
+    # ---------- 概述校验（允许出现气温） ----------
+
     _FORBIDDEN_SOURCE_TERMS = (
         "数值预报产品", "数值预报", "数值模式", "模式预报", "模式资料",
         "集合预报", "再分析", "卫星云图", "雷达回波", "雷达图",
@@ -1396,62 +1352,54 @@ class Tools:
         "WRF", "wrf", "T639", "T1280",
     )
 
-    # 数据里没有、模型却可能凭空编造的"天气系统/环流背景"词。
     _FORBIDDEN_SYNOPTIC_TERMS = (
-        "副热带高压", "副高", "雨带", "冷空气", "暖湿气流", "低涡", "切变",
+        "冷空气",
+        "副热带高压", "副高", "雨带", "暖湿气流", "低涡", "切变",
         "台风", "热带", "西风槽", "高空槽", "低压槽", "锋面", "冷锋", "暖锋",
         "高压脊", "季风", "急流", "环流", "气旋", "反气旋",
     )
 
-    # 概述只描述天气事实，不得出现任何防范建议 / 出行提示 / 生活指数 / 体感类话术。
+    _FORBIDDEN_CAUSATION_PATTERNS = (
+        "受其影响", "受影响", "受冷空气", "受弱冷", "受其",
+    )
+
     _FORBIDDEN_ADVICE_TERMS = (
         "防范", "防御", "注意", "建议", "提示", "提醒", "请", "需注意", "谨防",
         "出行", "户外", "适宜", "不宜", "做好", "防护", "防雷", "防汛", "防暑",
-        "添衣", "保暖", "携带", "雨具", "影响", "防止", "警惕", "关注",
+        "添衣", "保暖", "携带", "雨具", "防止", "警惕",
         "体感", "舒适度", "舒适", "闷热", "凉爽", "炎热", "寒冷", "湿热",
     )
 
-    # 口语化转折词 / 语气词：概述要用书面预报语言，命中即判失败走兜底。
     _FORBIDDEN_COLLOQUIAL_TERMS = (
         "不过", "但是", "可是", "然而", "呢", "啦", "哦", "呀", "嘛",
     )
 
     def _validate_summary(self, text: str, stats: dict, allowed_dates: list[str]) -> bool:
-        """事实校验（适配预报员综述风格）：
-        - 不得提及数据来源（数值模式/卫星雷达等）；
-        - 不得凭空编造天气系统/环流背景；
-        - 不得升级雨量到数据里没有的更强雨型；
-        - 不得超过实际最大风力；
-        - 三天概述正文中一律不得出现任何气温数字（℃/…度）。
-        命中任何一条即判失败，外层会改用 fallback。"""
         if not text:
             return False
 
-        # 0) 禁止提及数据来源相关字眼
         for term in self._FORBIDDEN_SOURCE_TERMS:
             if term in text:
                 return False
 
-        # 0b) 禁止凭空编造天气系统 / 环流背景
         for term in self._FORBIDDEN_SYNOPTIC_TERMS:
             if term in text:
                 return False
 
-        # 0b2) 禁止防范建议 / 出行提示 / 生活指数类话术（概述只描述天气）
+        for term in self._FORBIDDEN_CAUSATION_PATTERNS:
+            if term in text:
+                return False
+        if re.search(r"受[\u4e00-\u9fa5]{1,6}影响", text):
+            return False
+
         for term in self._FORBIDDEN_ADVICE_TERMS:
             if term in text:
                 return False
 
-        # 0b3) 禁止口语化转折词 / 语气词（要求书面预报语言）
         for term in self._FORBIDDEN_COLLOQUIAL_TERMS:
             if term in text:
                 return False
 
-        # 0c) 三天概述正文一律不写气温
-        if "℃" in text or "°C" in text or re.search(r"\d+\s*度", text):
-            return False
-
-        # 0d) 开头主导晴雨基调必须与按时段统计得出的 sky_mood 一致
         nv = stats.get("narrative") or {}
         sky_mood = nv.get("sky_mood")
         if sky_mood:
@@ -1462,7 +1410,6 @@ class Tools:
         ranked = stats.get("weather_ranked") or []
         appeared_weather = {name for name, _ in ranked}
 
-        # 1) 禁止出现数据中没有的降水/雨型（防止把阵雨升级成中雨/大雨/暴雨等）
         suspicious_weather = [
             "雷阵雨", "雷雨", "阵雨", "小雨", "中雨", "大雨", "暴雨",
             "雨夹雪", "雪", "冰雹", "雾", "霾", "沙尘",
@@ -1471,9 +1418,7 @@ class Tools:
             if w in text and not any(w in name for name in appeared_weather):
                 return False
 
-        # 2) 风向：禁止出现数据中未出现的风向
         wdir_set = stats.get("wdir_set") or set()
-        # 把数据里的风向拆成单字集合，例如 {"南风","东南风","西南风"} → {"南","东","西"}
         appeared_dir_chars: set[str] = set()
         for w in wdir_set:
             for ch in w:
@@ -1482,28 +1427,36 @@ class Tools:
         suspicious_dirs = ["偏北风", "偏东风", "北风"]
         for d in suspicious_dirs:
             if d in text:
-                # 取该词里的方位字，至少要在数据里出现过才允许
                 key_chars = [ch for ch in d if ch in "东南西北"]
                 if any(ch not in appeared_dir_chars for ch in key_chars):
                     return False
 
-        # 3) 风力：禁止超过实际最大风力
         max_num = stats.get("wspeed_max_num") or 0
         for m in re.finditer(r"(\d+)\s*(?:～|~|-)?\s*(\d+)?\s*级", text):
             a = int(m.group(1))
             b = int(m.group(2)) if m.group(2) else a
-            if max(a, b) > max_num + 0:  # 允许等于最大值
+            if max(a, b) > max_num:
+                return False
+
+        t_day_min = stats.get("t_day_min")
+        t_day_max = stats.get("t_day_max")
+        t_night_min = stats.get("t_night_min")
+        t_night_max = stats.get("t_night_max")
+        allowed_temps: set[int] = set()
+        for v in (t_day_min, t_day_max, t_night_min, t_night_max):
+            if v is not None:
+                allowed_temps.add(int(v))
+        for m in re.finditer(r"(-?\d+)\s*℃", text):
+            if int(m.group(1)) not in allowed_temps:
                 return False
 
         return True
 
-    # qwen3 / deepseek-r1 等"思考型"模型在 thinking 启用时，会在最终内容前/中
-    # 输出形如「<think> 这里是思维链 </think>」的块。本工具只想要最终回答，
-    # 这里把所有 <think>…</think> 整体剥掉；如果整段都是思考没有正式答案，则取空。
+    # ---------- thinking / 形近字纠正 ----------
+
     _THINK_BLOCK_RE = re.compile(
         r"<\s*think\s*>.*?<\s*/\s*think\s*>", re.IGNORECASE | re.DOTALL
     )
-    # 兜底：万一模型只输出了 <think> 开头但忘了闭合，直接把 <think>... 之后到结尾全部丢掉
     _THINK_OPEN_TAIL_RE = re.compile(
         r"<\s*think\s*>.*\Z", re.IGNORECASE | re.DOTALL
     )
@@ -1515,33 +1468,21 @@ class Tools:
         text = self._THINK_OPEN_TAIL_RE.sub("", text)
         return text.strip()
 
-    # 形近字 → 数字 的映射，用于纠正模型把数字写成 i / I / l / L / o / O 的情况
     _SANITIZE_CHAR_MAP = str.maketrans(
         {"i": "1", "I": "1", "l": "1", "L": "1", "o": "0", "O": "0"}
     )
 
-    # 数字与「日」之间多余的连字符 / 破折号（半角-、全角—、连字符–、全角－等）：
-    # 形如「11-日」「13—日」「16–日」「i6—日」，
-    # 但保留「11-12日」「16—17日」这种合法日期段（中间还有数字时不匹配）
     _SANITIZE_DASH_RE = re.compile(
         r"([0-9iIlLoO]{1,2})[\-\u2010-\u2015\uFF0D]+(?=日)"
     )
 
-    # 匹配「日」字之前 1~2 位、由数字或形近字母（i/I/l/L/o/O）混合组成的片段
-    # 经过 _SANITIZE_DASH_RE 处理后，再把片段里的形近字母还原为数字
     _SANITIZE_DATE_RE = re.compile(
         r"(?<![A-Za-z0-9])([0-9iIlLoO]{1,2})(?=日)"
     )
 
     def _sanitize_summary(self, text: str) -> str:
-        """修正模型常见的日期书写错误：
-        1) 把「11-日 / 13—日 / 16–日 / i6—日」这类「数字-日」之间多余的连字符去掉
-           （日期段「11-12日」中的连字符不会被去掉，因为它中间还有数字）；
-        2) 把「i1日 / l3日 / I2日」这类形近字误写还原成阿拉伯数字。
-        """
         if not text:
             return text
-
         text = self._SANITIZE_DASH_RE.sub(lambda m: m.group(1), text)
 
         def fix_digits(m: "re.Match[str]") -> str:

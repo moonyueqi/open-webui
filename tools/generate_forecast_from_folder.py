@@ -2,9 +2,8 @@
 title: 天气形势分析（按预报时效取图）
 description: 根据用户指定的「未来多少小时」预报时效，从挂载目录中分别取 EC 与 GRAPES 的多要素气象图，
              一次性交给视觉模型综合分析，返回完整的会商预报文本
-author: weather-tools
+author: lyq
 version: 2.0.0
-license: MIT
 """
 
 import os

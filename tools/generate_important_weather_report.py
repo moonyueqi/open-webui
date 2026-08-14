@@ -1,9 +1,8 @@
 """
-title: 重要天气报告生成器
+title: 重要天气报告生成工具
 description: 根据用户上传的"北京市降水预报图"，自动生成某区重要天气报告 Word 文档
-author: weather-tools
+author: lyq
 version: 1.0.0
-license: MIT
 """
 
 import os
@@ -16,6 +15,12 @@ import tempfile
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+
+
+# 北京市（全市）版本：district 传入以下别名时，不再局限于单一区的行政边界，
+# 而是针对整张图分析北京全市范围的降水过程；标题/文件名统一显示为「北京市」。
+CITY_LEVEL_DISTRICT_ALIASES = {"北京市", "全市"}
+CITY_LEVEL_DISPLAY_NAME = "北京市"
 
 
 class Tools:
@@ -83,7 +88,9 @@ class Tools:
         （包含真实下载链接 markdown）。你应当**原样**把 `reply_to_user` 输出给用户，不要改写成
         "点击此处下载文件"之类的通用文案，也不要添加/删除/编造任何文件名、链接等元信息。
 
-        :param district: 行政区名称，如"密云"、"延庆"、"海淀"、"朝阳"等北京各区
+        :param district: 行政区名称，如"密云"、"延庆"、"海淀"、"朝阳"等北京各区；
+            如需针对全市降水过程做分析，传入"北京市"（不再局限于单一区的边界，
+            而是分析整张图上北京全市的降水分布，标题/文件名统一显示为"北京市"）
         :return: JSON 字符串，包含 status / district / filename / download_url / reply_to_user 等字段
         """
         return await _generate_report(
@@ -136,6 +143,8 @@ async def _generate_report(
 ) -> str:
     cfg = KIND_CONFIG[kind]
     label = cfg["label"]
+    is_city_level = district.strip() in CITY_LEVEL_DISTRICT_ALIASES
+    display_name = CITY_LEVEL_DISPLAY_NAME if is_city_level else f"{district}区"
 
     if event_emitter:
         await event_emitter(
@@ -232,7 +241,7 @@ async def _generate_report(
         await event_emitter(
             {
                 "type": "status",
-                "data": {"description": f"正在分析{district}区{phase_label}情况...", "done": False},
+                "data": {"description": f"正在分析{display_name}{phase_label}情况...", "done": False},
             }
         )
 
@@ -240,6 +249,7 @@ async def _generate_report(
         image_bytes=image_bytes,
         mime=mime,
         district=district,
+        is_city_level=is_city_level,
         period_info=period_info,
         request=request,
         user=user,
@@ -271,7 +281,7 @@ async def _generate_report(
     try:
         doc = DocxTemplate(tool.valves.template_path)
         context = {
-            "district": district,
+            "district": display_name,
             "report_datetime": report_dt,
             "title": title,
             "summary": summary,
@@ -281,7 +291,7 @@ async def _generate_report(
         doc.render(context)
 
         date_str = datetime.now().strftime("%Y%m%d%H")
-        filename = f"{district}区{cfg['filename_prefix']}_{date_str}.docx"
+        filename = f"{display_name}{cfg['filename_prefix']}_{date_str}.docx"
 
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             doc.save(tmp.name)
@@ -347,7 +357,7 @@ async def _generate_report(
         # 给 LLM 看的"完成回执"：必须包含真实下载链接，且要求模型原样输出，
         # 避免模型把链接改写成"点击此处下载文件"之类的通用文案或编造假链接。
         assistant_reply = (
-            f"已为您生成{district}区{label}文档，点击下载：{download_md}"
+            f"已为您生成{display_name}{label}文档，点击下载：{download_md}"
         )
 
         if event_emitter:
@@ -1207,14 +1217,20 @@ async def _describe_precipitation(
     user: dict,
     valves,
     model_id: str,
+    is_city_level: bool = False,
 ) -> tuple[str, str]:
     """让模型读图，输出 (summary, title)。失败时给一个安全的兜底。
     根据 period_info 中的 phase 字段（rain/snow/mixed），自动切换到相应的
     "降雨 / 降雪 / 雨夹雪" 写作分支与量级标准。
 
+    is_city_level=True 时（district 为"北京市"/"全市"），改用
+    _build_city_precipitation_prompt：不再局限于单一区的行政边界，而是
+    针对整张图分析北京全市范围的降水分布，且允许在正文中点出具体区名/方位。
+
     流程：调一次 → 若解析到的红色数字 < 3 或缺关键字段，再调一次重试；
     取并集后用 max_value 做客观锚点驱动 _enforce_levels。
     """
+    label = CITY_LEVEL_DISPLAY_NAME if is_city_level else f"{district}区"
     period_str = _period_brief(period_info, district)
     p_hours = _period_hours(period_info)
     phase = (period_info.get("phase") or "rain").strip().lower()
@@ -1222,13 +1238,21 @@ async def _describe_precipitation(
         phase = "rain"
     which_std, level_table, levels = _phase_level_table(phase, p_hours)
 
-    prompt = _build_precipitation_prompt(
-        district=district,
-        period_str=period_str,
-        which_std=which_std,
-        level_table=level_table,
-        phase=phase,
-    )
+    if is_city_level:
+        prompt = _build_city_precipitation_prompt(
+            period_str=period_str,
+            which_std=which_std,
+            level_table=level_table,
+            phase=phase,
+        )
+    else:
+        prompt = _build_precipitation_prompt(
+            district=district,
+            period_str=period_str,
+            which_std=which_std,
+            level_table=level_table,
+            phase=phase,
+        )
 
     async def _ask_once() -> dict:
         try:
@@ -1265,16 +1289,16 @@ async def _describe_precipitation(
     if not title and not summary:
         if valves.debug and merged.get("_error"):
             return (
-                f"[模型调用失败：{merged['_error']}] 预计{district}区有降水。",
-                f"{district}区降水预报",
+                f"[模型调用失败：{merged['_error']}] 预计{label}有降水。",
+                f"{label}降水预报",
             )
-        return _fallback_summary(district, phase), _fallback_title(district, phase)
+        return _fallback_summary(label, phase), _fallback_title(label, phase)
 
-    summary = _filter_summary(summary, district)
+    summary = _filter_summary(summary, district, is_city_level=is_city_level)
     summary, title = _enforce_levels(
         summary,
         title,
-        district,
+        label,
         levels,
         phase,
         max_value=merged.get("max_value"),
@@ -1282,9 +1306,9 @@ async def _describe_precipitation(
         main_range_hi=merged.get("main_range_hi"),
     )
     if not title:
-        title = _fallback_title(district, phase)
+        title = _fallback_title(label, phase)
     if not summary:
-        summary = _fallback_summary(district, phase)
+        summary = _fallback_summary(label, phase)
     return summary, title
 
 
@@ -1528,6 +1552,146 @@ def _build_precipitation_prompt(
     )
     return prompt
 
+
+def _build_city_precipitation_prompt(
+    *,
+    period_str: str,
+    which_std: str,
+    level_table: str,
+    phase: str,
+) -> str:
+    """北京市（全市）版本的提示词：不再局限于单一区的行政边界，而是通读整张
+    《北京市降水预报图》，分析全市范围的降水/降雪分布过程，允许在正文中点出
+    具体区名/方位来说明分布差异。JSON 输出字段与 _build_precipitation_prompt
+    保持一致，便于复用 _parse_precip_json / _enforce_levels 等下游逻辑。
+    """
+    label = CITY_LEVEL_DISPLAY_NAME  # "北京市"
+
+    if phase == "snow":
+        kind_word = "降雪"
+        amount_word = "降雪量"
+        cum_word = "累计降雪量"
+        end_char = "雪"
+        levels_hint = "小雪/中雪/大雪/暴雪/大暴雪/特大暴雪"
+        legend_intro = (
+            "图例右下角为三组并排 colorbar；地图主色调为黑灰色，"
+            "判定为『纯降雪』，红色数字代表降雪量（毫米，融化水当量）。"
+        )
+        title_examples = (
+            f"【有局地强降水】「{label}南部将出现大雪」「{label}局地暴雪」\n"
+            f"          【全市一致】「{label}将出现中雪」「{label}有小雪」"
+            f"「{label}基本无明显降雪」"
+        )
+        extra_elements = (
+            f"━━━ 降雪可选要素（酌情写 1 项，必须以降雪量为锚） ━━━\n"
+            f"- 积雪：1毫米雪量约对应 0.5~1厘米积雪；可写「平原积雪不足 1 厘米」「山区 1~2 厘米」。\n"
+            f"- 交通：可写「道面湿滑，局地积雪结冰，影响交通出行」。\n\n"
+        )
+    elif phase == "mixed":
+        kind_word = "雨雪"
+        amount_word = "降水量"
+        cum_word = "累计降水量"
+        end_char = "雪"
+        levels_hint = "（按降雪标准）小雪/中雪/大雪/暴雪/大暴雪/特大暴雪"
+        legend_intro = (
+            "图例右下角为三组并排 colorbar；地图同时出现彩色与黑灰色填色，"
+            "判定为『雨雪混合』，红色数字代表降水量（毫米）。"
+        )
+        title_examples = (
+            f"「{label}有雨夹雪或小雪」「{label}将出现雨转雪，量级中雪」"
+            f"「{label}南部有大雪」"
+        )
+        extra_elements = (
+            f"━━━ 雨雪混合可选要素（酌情写 1~2 项） ━━━\n"
+            f"- 相态（最重要）：例如「山区以雪为主，平原由雨或雨夹雪转雪」。\n"
+            f"- 积雪：1毫米雪量约对应 0.5~1厘米积雪。\n"
+            f"- 交通：可写「道面湿滑，局地积雪结冰」。\n\n"
+        )
+    else:
+        phase = "rain"
+        kind_word = "降雨"
+        amount_word = "降水量"
+        cum_word = "累计降水量"
+        end_char = "雨"
+        levels_hint = "小雨/中雨/大雨/暴雨/大暴雨/特大暴雨"
+        legend_intro = (
+            "图例右下角为单一彩色 colorbar（最大 250 毫米），"
+            "判定为『纯降雨』，红色数字代表降雨量（毫米）。"
+        )
+        title_examples = (
+            f"【有局地强降水】「{label}南部将出现大雨」「{label}局地暴雨」\n"
+            f"          【全市一致】「{label}将出现中雨」「{label}有小雨」"
+            f"「{label}基本无明显降水」"
+        )
+        extra_elements = ""
+
+    prompt = (
+        f"你是北京市气象台首席预报员，正在分析《北京市降水预报图》，"
+        f"这次需要针对**北京全市范围**（而非单一区）做整体{kind_word}过程分析。\n"
+        f"{legend_intro}\n"
+        f"预报时段：{period_str}（{which_std}）。\n\n"
+        f"━━━ 量级标准 ━━━\n"
+        f"{level_table}\n\n"
+        f"━━━ 工作流程（按顺序完成，禁止跳步） ━━━\n"
+        f"第 1 步：通读整张地图，扫描北京全市范围内所有红色加粗数字（含小数），"
+        f"逐个记录，覆盖城区、平原、山区等各处，不要只盯着某一小块区域。\n"
+        f"第 2 步：从第 1 步的数字中识别——\n"
+        f"   · main_range_lo / main_range_hi：绝大多数数字的下界 / 上界（毫米）\n"
+        f"   · max_value：全市所有数字中的最大值（毫米）\n"
+        f"   · 注意：max_value 通常 ≥ main_range_hi，必须分开计算\n"
+        f"第 3 步：查上表，把 main_range_lo / main_range_hi / max_value 各自归档"
+        f"（档位：{levels_hint}），得到 L_lo / L_hi / L_max。\n"
+        f"第 4 步：主导量级——\n"
+        f"   · L_lo == L_hi → 写单档；L_lo ≠ L_hi → 必须写「{{L_lo 去末字}}到{{L_hi}}」跨档。\n"
+        f"第 5 步：局地量级 + 方位——\n"
+        f"   · 若 L_max 严格高于 L_hi → 必须在 title 与 summary 都写出「局地{{L_max}}」，"
+        f"并指明大致方位或区域（如『南部』『西部山区』『通州』等，此时**允许**点出具体区名）；\n"
+        f"   · 若 L_max == L_hi → 不写「局地{{L_max}}」，可写「最大可达 max_value 毫米」。\n\n"
+        f"━━━ JSON 输出（严格遵守，不要 markdown 代码块） ━━━\n"
+        f"{{\n"
+        f'  "district_red_numbers": [全市所有红色数字数组，含小数，从大到小排序],\n'
+        f'  "max_value": 最大值（float，毫米；必须取自 district_red_numbers）,\n'
+        f'  "main_range_lo": 主流下界（float，毫米）,\n'
+        f'  "main_range_hi": 主流上界（float，毫米）,\n'
+        f'  "title": "12~22 字一句话总结，无标点结尾，无引号",\n'
+        f'  "summary": "90~150 字正文，2~4 句"\n'
+        f"}}\n\n"
+        f"━━━ title 写法（预报员口吻，直接以最严重情况定调） ━━━\n"
+        f"- **title 必须直接以 L_max（最严重那档）定调**，绝对禁止使用「以…为主」「主要…」"
+        f"「整体…」等需要『加局地修饰』的折中句式。\n"
+        f"- 若 L_max 高于 L_hi（有局地强降水）：title 直接写「{label}{{方位/区名}}将出现"
+        f"{{L_max}}」或「{label}局地{{L_max}}」。\n"
+        f"- 若 L_max == L_hi（全市一致）：title 写「{label}将出现{{L_hi}}」或「{label}有{{L_hi}}」。\n"
+        f"- title 句型参考：\n"
+        f"{title_examples}\n\n"
+        f"━━━ summary 写法（按预报员习惯，围绕全市展开） ━━━\n"
+        f"- 第 1 句：复述「预计{period_str}」+ 概述全市{kind_word}过程 + "
+        f"{amount_word}范围（lo~max_value 毫米）。\n"
+        f"- 第 2 句起：点出{kind_word}偏强/偏弱的方位或具体区域（可直接点名区，"
+        f"如『通州』『房山』『延庆』等，也可用『南部』『西部山区』等方位/地形词），"
+        f"**直接以最严重情况定调**——\n"
+        f"   · 若有局地强降水：句式如「{label}{cum_word}多在 lo 至 hi 毫米，"
+        f"其中{{方位/区名}}偏强，局地可达 L_max，最大 max_value 毫米」；\n"
+        f"   · 若全市较为一致：句式如「{label}{cum_word}多在 lo 至 hi 毫米，量级{{L_hi}}」。\n\n"
+        f"{extra_elements}"
+        f"━━━ 红线禁忌 ━━━\n"
+        f"1. 这是全市分析，**允许**点出具体区名或方位来说明降水分布差异（与单区版本不同）。\n"
+        f"2. 不出现「格点 / 网格 / 数值预报 / 模式 / EC / ECMWF / GFS / 雷达 / 再分析」等技术字眼。\n"
+        f"3. 不编造能见度、气温、风、湿度、气压等图上没有的要素。\n"
+        f"4. 不用 markdown / emoji / 括号注释 / 换行。\n"
+        f"5. 数字用阿拉伯数字 + 毫米，范围用「至」或「—」连接（如「6至12毫米」）。\n"
+        f"6. title 与 summary 的量级表述必须一致；「局地{end_char}」前缀加更高档"
+        f"（如「局地大{end_char}」）只能在 L_max 真正跨档时使用。\n"
+        f"7. **严禁使用学究腔/AI 腔词**：禁止出现「主导量级」「主流量级」「主要降水量」"
+        f"「主要在 X 至 Y 毫米」「值得注意的是」「请注意防范」「带来的不利影响」"
+        f"「呈现 X 趋势」「整体降水分布」等冗余表达。\n"
+        f"8. **严禁出现 max_value 以外的极值数字**：summary 中提到的所有毫米数必须 ≤ max_value；"
+        f"严禁凭空写出 9.9 / 14.9 / 24.9 / 29.9 / 49.9 / 99.9 / 249.9 等量级阈值数字"
+        f"（这些是 GB/T 28592 档位上限，不是图上读数）。"
+    )
+    return prompt
+
+
 def _clean_oneliner(s: str) -> str:
     s = (s or "").strip().strip("\"'，。；！？!?")
     s = re.sub(r"\s+", "", s)
@@ -1584,11 +1748,12 @@ def _has_offlimit_element(sentence: str) -> bool:
     return False
 
 
-def _filter_summary(text: str, district: str) -> str:
+def _filter_summary(text: str, district: str, is_city_level: bool = False) -> str:
     """对模型生成的 summary 做最后一道兜底清洗：
       1) 把"{district}区位于北京××部，"「{district}区地处××，」「北京××部的{district}区」
          等方位定语**就地删除**（保留同一子句中的数值/天气描述）。
       2) 删除整段提及目标区之外其它北京区名的子句（专业预报员只聚焦目标区）。
+         is_city_level=True 时跳过这一步——全市分析本来就需要点出具体区名说明分布差异。
       3) 末尾若残留孤立的「，」「；」之类标点，自动收尾。
 
     切分粒度：按"，。；！？"分子句。
@@ -1644,12 +1809,13 @@ def _filter_summary(text: str, district: str) -> str:
         if not s.strip():
             continue
         other_district_in_s = False
-        for d in _BJ_DISTRICTS:
-            if d == target:
-                continue
-            if re.search(rf"{re.escape(d)}(?:区|地区|一带|等地|及|、|，|。|；)", s):
-                other_district_in_s = True
-                break
+        if not is_city_level:
+            for d in _BJ_DISTRICTS:
+                if d == target:
+                    continue
+                if re.search(rf"{re.escape(d)}(?:区|地区|一带|等地|及|、|，|。|；)", s):
+                    other_district_in_s = True
+                    break
         if other_district_in_s:
             continue
         if _has_offlimit_element(s):
@@ -1674,7 +1840,7 @@ def _filter_summary(text: str, district: str) -> str:
 def _enforce_levels(
     summary: str,
     title: str,
-    district: str,
+    label: str,
     levels: list[tuple[float, float | None, str]],
     phase: str = "rain",
     *,
@@ -1705,7 +1871,7 @@ def _enforce_levels(
     # 锚点缺失时，从 summary 抽 X 至 Y 毫米作为兜底
     if lo is None or hi is None:
         range_pat = re.compile(
-            rf"{re.escape(district)}\s*区(?:[^，。；]{{0,12}}?)"
+            rf"{re.escape(label)}(?:[^，。；]{{0,12}}?)"
             r"(\d+(?:\.\d+)?)\s*(?:至|到|-|—|~|～)\s*(\d+(?:\.\d+)?)\s*毫米"
         )
         m = range_pat.search(summary or "")
@@ -1842,7 +2008,7 @@ def _enforce_levels(
         # 3d) title 重写：把折中句式「X 区以小到中雨为主，南部局地大雨」
         #     直接改写为预报员定调句「X 区南部将出现大雨」/「X 区局地大雨」。
         new_title = _rewrite_title_assertive(
-            new_title, district=district, max_level=max_level, end_char=end_char
+            new_title, label=label, max_level=max_level, end_char=end_char
         )
         # 3e) summary 折中句式正常化：把"小雨到局地大雨天气过程"这类拼接也
         #     正常化为定调式（与 title 保持一致风格）。
@@ -1958,7 +2124,7 @@ _DIRECTION_WORDS = (
 
 
 def _rewrite_title_assertive(
-    text: str, *, district: str, max_level: str, end_char: str
+    text: str, *, label: str, max_level: str, end_char: str
 ) -> str:
     """把折中口吻的 title 重写为预报员定调式（以最严重情况开门见山）。
 
@@ -1973,11 +2139,11 @@ def _rewrite_title_assertive(
     规则：
       1. 找出 title 中的方位词（南部 / 东部 / 山区 …）
       2. 检测是否包含折中句式特征
-      3. 若是 → 重写为「区 + 方位（可选）+ 将出现 / 局地 + max_level」
+      3. 若是 → 重写为「label（已含区/市后缀）+ 方位（可选）+ 将出现 / 局地 + max_level」
     """
     if not text:
         return text
-    target = district.strip()
+    target = label.strip()
 
     # 1) 抽取方位词（保留第一个出现的）
     direction = ""
@@ -1992,9 +2158,9 @@ def _rewrite_title_assertive(
 
     # 2) 重写：以方位为主语 / 用「局地」开口
     if direction:
-        new_title = f"{target}区{direction}将出现{max_level}"
+        new_title = f"{target}{direction}将出现{max_level}"
     else:
-        new_title = f"{target}区局地{max_level}"
+        new_title = f"{target}局地{max_level}"
     return new_title
 
 
@@ -2175,29 +2341,23 @@ def _strip_bureaucratic_phrases(text: str) -> str:
     return text
 
 
-def _fallback_title(district: str, phase: str = "rain") -> str:
+def _fallback_title(label: str, phase: str = "rain") -> str:
     if phase == "snow":
-        return f"{district}区降雪预报"
+        return f"{label}降雪预报"
     if phase == "mixed":
-        return f"{district}区雨雪预报"
-    return f"{district}区降水预报"
+        return f"{label}雨雪预报"
+    return f"{label}降水预报"
 
 
-def _fallback_summary(district: str, phase: str = "rain") -> str:
+def _fallback_summary(label: str, phase: str = "rain") -> str:
     if phase == "snow":
-        return (
-            f"根据最新降水预报图，北京地区将出现降雪过程，"
-            f"{district}区受其影响有相应降雪，请关注后续天气变化及交通出行影响。"
-        )
+        return f"根据最新降水预报图，{label}将出现降雪过程，请关注后续天气变化及交通出行影响。"
     if phase == "mixed":
         return (
-            f"根据最新降水预报图，北京地区将出现雨雪天气过程，相态较为复杂，"
-            f"{district}区受其影响出现降水，请关注相态变化及对交通出行的影响。"
+            f"根据最新降水预报图，{label}将出现雨雪天气过程，相态较为复杂，"
+            f"请关注相态变化及对交通出行的影响。"
         )
-    return (
-        f"根据最新降水预报图，北京地区将出现降水过程，"
-        f"{district}区受其影响有相应降水，请关注后续天气变化。"
-    )
+    return f"根据最新降水预报图，{label}将出现降水过程，请关注后续天气变化。"
 
 
 # ---------------------------------------------------------------------
