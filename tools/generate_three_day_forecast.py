@@ -619,11 +619,19 @@ class Tools:
 
     def _doc_to_docx(self, doc_path: str) -> str:
         out_dir = tempfile.mkdtemp(prefix="bulletin_docx_")
+        # 每次调用都用独立的 LibreOffice 用户配置目录（-env:UserInstallation），避免
+        # 多次/连续调用共享同一份 profile 抢同一把锁：上一次调用退出后 soffice.bin
+        # 有时不会立刻释放锁，导致紧接着的下一次调用卡死在"等锁"上——这个等待不受
+        # 下面 subprocess.run 的 timeout 约束（卡的是等锁，不是真的在转换文档），
+        # 会直接把整个后端事件循环拖住（工具是同步阻塞调用，不在线程池里跑）。
+        profile_dir = tempfile.mkdtemp(prefix="lo_profile_")
         try:
             subprocess.run(
                 [
                     self.valves.soffice_bin,
                     "--headless",
+                    "--norestore",
+                    f"-env:UserInstallation=file://{profile_dir}",
                     "--convert-to", "docx",
                     "--outdir", out_dir,
                     doc_path,
@@ -644,6 +652,8 @@ class Tools:
                 f"找不到 soffice 可执行文件（{self.valves.soffice_bin}）。"
                 "请在 Valves 中配置 soffice_bin，或在系统中安装 LibreOffice。"
             )
+        finally:
+            shutil.rmtree(profile_dir, ignore_errors=True)
         produced = glob.glob(os.path.join(out_dir, "*.docx"))
         if not produced:
             shutil.rmtree(out_dir, ignore_errors=True)
