@@ -1911,7 +1911,7 @@ def _enforce_levels(
         r"(?P<lead>，|；|。|\s)"
         r"(?P<phrase>(?:普遍|主要|大部|大都|多|整体|总体)?\s*"
         r"(?:为|是|以)?\s*"
-        r"(?P<level>(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+        r"(?P<level>(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
         + end_char
         + r")"
         r"(?:为主)?)"
@@ -1935,13 +1935,13 @@ def _enforce_levels(
 
     new_summary = quantifier_pat.sub(fix_phrase, new_summary, count=2)
     new_summary = re.sub(
-        r"主导量级(?:为|是)\s*(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+        r"主导量级(?:为|是)\s*(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
         + end_char,
         f"主导量级为{correct_label}",
         new_summary,
     )
     new_summary = re.sub(
-        r"将出现\s*(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+        r"将出现\s*(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
         + end_char,
         f"将出现{correct_label}",
         new_summary,
@@ -1953,7 +1953,7 @@ def _enforce_levels(
     #    correct_label（基于 main_range）覆盖，否则会把 "局地大雨" 改成 "局地小雨"。
     if new_title:
         title_level_pat = re.compile(
-            r"(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+            r"(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
             + end_char
         )
         is_assertive_title = bool(
@@ -2094,7 +2094,7 @@ def _dedup_title_local(text: str) -> str:
         return text
     pat = re.compile(
         r"(?:，|,|、)?\s*局地(?:有|可达|达|为|出现)?\s*"
-        r"((?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?[雨雪])"
+        r"((?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?[雨雪])"
     )
     matches = list(pat.finditer(text))
     if len(matches) < 2:
@@ -2174,7 +2174,7 @@ def _is_compromise_phrase(text: str, end_char: str) -> bool:
     """
     if not text:
         return False
-    level_re = r"(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+    level_re = r"(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
     ec = re.escape(end_char)
     patterns = (
         # 「以 X 雨为主」
@@ -2206,7 +2206,7 @@ def _normalize_compromise_in_summary(text: str, *, max_level: str, end_char: str
     if not text:
         return text
     ec = re.escape(end_char)
-    level_re = r"(?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?"
+    level_re = r"(?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?"
     # 1) 「X{雨/雪}到局地Y{雨/雪}(天气过程)?」 → 「局地Y{雨/雪}」
     text = re.sub(
         rf"{level_re}{ec}?\s*到\s*局地\s*{level_re}{ec}\s*(?:天气过程|过程)?",
@@ -2320,7 +2320,7 @@ _BUREAUCRATIC_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"[，,。；;]\s*请(?:注意|关注|做好)[^。]{0,40}(?:防范|准备|影响)[^。]{0,40}(?=[。！？]|$)"), ""),
     (re.compile(r"[，,。；;]\s*(?:可能)?带来[^。]{0,30}(?:不利)?影响[^。]{0,20}(?=[。！？]|$)"), ""),
     # 「达到大雨级别」「达到大雨量级」→「达到大雨」（保留语义，去掉冗余「级别 / 量级」）
-    (re.compile(r"达到((?:小|中|大|暴|大暴|特大暴)(?:到(?:小|中|大|暴|大暴|特大暴))?[雨雪])(?:级别|量级|等级)"), r"达到\1"),
+    (re.compile(r"达到((?:小|中|大|暴|大暴|特大暴)(?:雨|雪)?(?:到(?:小|中|大|暴|大暴|特大暴))?[雨雪])(?:级别|量级|等级)"), r"达到\1"),
 )
 
 
