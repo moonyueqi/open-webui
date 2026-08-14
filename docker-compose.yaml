@@ -43,6 +43,11 @@ services:
       #    暂不切换到 common 的 /pic_data + WEATHER_DATA_ROOT，避免与
       #    现存 tools/*.py 里硬编码的路径冲突。
       - ${WEATHER_PICS_HOST_DIR:-./weather_pics}:/app/data/weather_pics:ro
+      #
+      # 5) 监测预警数据：FTP 实时推送落地目录，结构为
+      #    年(4)/月(2)/日(2)/单位/产品/文件名，目录按需创建（当天没预警就没有对应目录）。
+      #    宿主机路径按实际部署改，例如 /data/AIuser。
+      # - ${MONITORING_DATA_HOST_DIR:-/data/AIuser}:/app/data/alarm:ro
     ports:
       - ${OPEN_WEBUI_PORT:-3000}:8080
     # === 从 .env 加载完整业务配置 ===
@@ -80,6 +85,10 @@ services:
       # 与上面 volumes 段的挂载点一致；正常运维不需要改 .env 里的这一项。
       # dev-bj 沿用旧的 WEATHER_PICS_ROOT，未跟进 common 的 WEATHER_DATA_ROOT。
       - WEATHER_PICS_ROOT=${WEATHER_PICS_ROOT:-/app/data/weather_pics}
+      # 监测预警数据接入（地面自动站报警 + 高空闪电跃增预警），与上面 volumes 段挂载点一致。
+      - MONITORING_DATA_ROOT=${MONITORING_DATA_ROOT:-/app/data/alarm}
+      - MONITORING_SCAN_INTERVAL_SECONDS=${MONITORING_SCAN_INTERVAL_SECONDS:-60}
+      - MONITORING_INGEST_ENABLED=${MONITORING_INGEST_ENABLED:-true}
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
