@@ -1816,8 +1816,8 @@ def validate_cors_origin(origin):
 # 注意：之前为本地调试硬编码成 ["http://localhost:5173", "http://localhost:8080"]
 # 会导致部署到非 localhost 时 Socket.IO 报 "is not an accepted origin"。
 # 现已恢复为读取环境变量，.env 里 CORS_ALLOW_ORIGIN=* 即可放行内网任意来源。
-# CORS_ALLOW_ORIGIN = ["http://localhost:5173", "http://localhost:8080"]
-CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*").split(";")
+CORS_ALLOW_ORIGIN = ["http://localhost:5173", "http://localhost:8080"]
+# CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*").split(";")
 
 # Allows custom URL schemes (e.g., app://) to be used as origins for CORS.
 # Useful for local development or desktop clients with schemes like app:// or other custom protocols.
@@ -2991,10 +2991,14 @@ ENABLE_ASYNC_EMBEDDING = PersistentConfig(
     os.environ.get("ENABLE_ASYNC_EMBEDDING", "True").lower() == "true",
 )
 
+# 0 表示不限制并发；但配合默认 batch_size=1，大文档会把所有分块的请求
+# 一次性全部并发打给 embedding 接口，很容易触发第三方 API 的限流（HTTP 429），
+# 导致大量批次失败、向量数量对不上。默认给一个保守的并发上限，
+# 已在管理后台显式配置过的部署不受影响（PersistentConfig 优先读库里的值）。
 RAG_EMBEDDING_CONCURRENT_REQUESTS = PersistentConfig(
     "RAG_EMBEDDING_CONCURRENT_REQUESTS",
     "rag.embedding_concurrent_requests",
-    int(os.getenv("RAG_EMBEDDING_CONCURRENT_REQUESTS", "0")),
+    int(os.getenv("RAG_EMBEDDING_CONCURRENT_REQUESTS", "3")),
 )
 
 RAG_EMBEDDING_QUERY_PREFIX = os.environ.get("RAG_EMBEDDING_QUERY_PREFIX", None)
