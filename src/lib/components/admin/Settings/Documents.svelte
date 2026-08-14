@@ -1526,13 +1526,29 @@
 							</button>
 						</div>
 					</div>
-					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">
-							{$i18n.t('Reindex Knowledge Base Vectors')}
-						</div>
-						<div class="flex items-center relative">
+				</div>
+				{/if}
+
+				<!-- 单独恢复"重建索引"（更换嵌入模型后需要用），改用和其他嵌入选项一致的卡片样式；
+				     危险区域里"重置上传目录/重置向量库"这两个真正破坏性的操作继续保持隐藏 -->
+				<div class="rounded-xl border border-gray-100 dark:border-gray-800 px-4 py-3.5 mt-2">
+					<div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+						{$i18n.t('Index Maintenance')}
+					</div>
+					<div class="divide-y divide-gray-100 dark:divide-gray-800">
+						<div class="flex items-center justify-between py-2.5">
+							<div class="text-xs font-medium">
+								<Tooltip
+									content={$i18n.t(
+										'After updating or changing the embedding model, you must reindex the knowledge base for the changes to take effect. You can do this using the "Reindex" button below.'
+									)}
+									placement="top-start"
+								>
+									{$i18n.t('Reindex Knowledge Base Vectors')}
+								</Tooltip>
+							</div>
 							<button
-								class="text-xs"
+								class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition"
 								type="button"
 								on:click={() => {
 									showReindexConfirm = true;
@@ -1543,7 +1559,6 @@
 						</div>
 					</div>
 				</div>
-				{/if}
 		</div>
 		<div class="flex justify-end pt-3 text-sm font-medium">
 			<button

@@ -2932,7 +2932,6 @@
 								class="absolute bottom-6 left-0 right-0 flex flex-col items-center justify-center text-center gap-0 leading-tight text-[10px] text-gray-400 dark:text-gray-500 pointer-events-none z-10"
 							>
 								<div>© 北京市气象局人工智能模型研发团队</div>
-								<div>联系邮箱：yqliu@ium.cn</div>
 							</div>
 							<div class="flex items-center h-full">
 								<Placeholder
