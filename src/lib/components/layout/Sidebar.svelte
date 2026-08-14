@@ -1180,6 +1180,7 @@
 						<AlertTicker alerts={monitoringAlerts} />
 					</div>
 				{/if}
+				</div>
 
 				<div class="mx-3 my-1.5 border-t border-gray-200/80 dark:border-gray-800/80 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_0_rgba(0,0,0,0.2)]"></div>
 
