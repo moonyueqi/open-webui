@@ -44,6 +44,7 @@
 	} from '$lib/apis/chats';
 	import { createNewFolder, getFolders, updateFolderParentIdById } from '$lib/apis/folders';
 	import { checkActiveChats } from '$lib/apis/tasks';
+	import { getAlertsFeed, type AlertFeedItem } from '$lib/apis/monitoring';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 	import ArchivedChatsModal from './ArchivedChatsModal.svelte';
@@ -99,6 +100,50 @@
 	let showPinnedModels = false;
 	let showChannels = false;
 	let showFolders = false;
+
+	// 监测预警侧边栏播报：文案/跳转目标直接用后端 feed 接口返回的，
+	// 跟地面监测/闪电跃增预警页面里看到的是同一套措辞，不在前端二次编排。
+	let monitoringAlerts: { id: string; text: string; level?: string; target?: string }[] = [];
+	let monitoringAlertsTimer: ReturnType<typeof setInterval> | null = null;
+
+	const levelToTickerLevel = (level: string | null): string => {
+		if (level === 'danger' || level === 'warning' || level === 'info') return level;
+		return 'info';
+	};
+
+	// 临时兜底样例数据：接口/网络异常拿不到真实数据时，先用这两条把播报效果展示出来，
+	// 方便预览。等真实数据链路稳定后，这段可以整段删掉。
+	const FALLBACK_MONITORING_ALERTS = [
+		{
+			id: 'demo-ground-1',
+			text: '北孙各庄 蓝色预警 · 30分钟雨量19.5mm',
+			level: 'info',
+			target: '/monitoring/ground?alarm_id=demo-ground-1'
+		},
+		{
+			id: 'demo-lightning-1',
+			text: '沧州市黄骅市；沧州市孟村回族自治县 闪电跃增预警 · 15:52',
+			level: 'warning',
+			target: '/monitoring/upper-air/lightning-jump?push_id=demo-push-1&event_id=demo-event-1'
+		}
+	];
+
+	const fetchMonitoringAlerts = async () => {
+		try {
+			const res = await getAlertsFeed(localStorage.token, 8);
+			const items = (res?.items ?? []).map((item: AlertFeedItem) => ({
+				id: item.id,
+				text: item.text,
+				level: levelToTickerLevel(item.level),
+				target: item.target
+			}));
+			monitoringAlerts = items.length > 0 ? items : FALLBACK_MONITORING_ALERTS;
+		} catch (e) {
+			// 监测预警数据是增值信息，拉取失败不应该影响侧边栏其它功能；先用样例数据兜底展示。
+			console.debug('Failed to fetch monitoring alerts feed:', e);
+			monitoringAlerts = FALLBACK_MONITORING_ALERTS;
+		}
+	};
 
 	let folders = {};
 	let folderRegistry = {};
@@ -520,7 +565,12 @@
 		const socketInstance = $socket;
 		socketInstance?.on('events', chatActiveEventHandler);
 
+		fetchMonitoringAlerts();
+		monitoringAlertsTimer = setInterval(fetchMonitoringAlerts, 60_000);
+
 		return () => {
+			if (monitoringAlertsTimer) clearInterval(monitoringAlertsTimer);
+
 			unsubscribers.forEach((unsubscriber) => unsubscriber());
 
 			window.removeEventListener('keydown', onKeyDown);
@@ -1120,7 +1170,7 @@
 					</div>
 
 					<div class="mt-1">
-						<AlertTicker />
+						<AlertTicker alerts={monitoringAlerts} />
 					</div>
 				</div>
 

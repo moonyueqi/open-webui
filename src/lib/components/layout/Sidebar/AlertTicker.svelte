@@ -1,53 +1,40 @@
 <script lang="ts">
 	import { onMount, onDestroy, getContext, createEventDispatcher } from 'svelte';
 	import { fly, slide } from 'svelte/transition';
+	import { goto } from '$app/navigation';
 
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
 
-	// 预警消息列表（后续接入真实数据时替换这里）
+	// 真实数据由 Sidebar.svelte 从 /api/v1/monitoring/alerts/feed 拉取后传入。
 	// level: 'info' | 'warning' | 'danger'，用于文字颜色
-	// target: 后续要跳转到的监测预警栏目路径，例如 '/monitoring/ground'（当前数据未就绪，先不跳转）
-	export let alerts: { id: string; text: string; level?: string; target?: string }[] = [
-		{
-			id: 'demo-1',
-			text: '示例：地面监测站点风速偏高，请关注',
-			level: 'warning',
-			target: '/monitoring/ground'
-		},
-		{
-			id: 'demo-2',
-			text: '示例：高空温度骤降，注意后续变化',
-			level: 'info',
-			target: '/monitoring/upper-air'
-		},
-		{
-			id: 'demo-3',
-			text: '示例：局地能见度下降，达到预警阈值',
-			level: 'danger',
-			target: '/monitoring/ground'
-		},
-		{
-			id: 'demo-4',
-			text: '示例：地面湿度异常升高，请核查设备',
-			level: 'warning',
-			target: '/monitoring/ground'
-		},
-		{
-			id: 'demo-5',
-			text: '示例：高空气压变化明显，持续观察',
-			level: 'info',
-			target: '/monitoring/upper-air'
-		}
-	];
+	// target: 点击后跳转的监测预警栏目路径（带上具体记录的定位参数，例如 '/monitoring/ground?alarm_id=xxx'）
+	export let alerts: { id: string; text: string; level?: string; target?: string }[] = [];
 
 	// 单条停留时长（毫秒）
 	export let interval = 4000;
 
-	// 已读消息的 id 集合
+	const READ_IDS_STORAGE_KEY = 'monitoringAlertReadIds';
+	// 已读消息的 id 集合，按 localStorage 持久化，跨会话/刷新依然记得已读过的。
 	let readIds = new Set<string>();
 	// 是否展开未读消息列表
 	let expanded = false;
+
+	const loadReadIds = (): Set<string> => {
+		try {
+			const raw = localStorage.getItem(READ_IDS_STORAGE_KEY);
+			return raw ? new Set(JSON.parse(raw)) : new Set();
+		} catch {
+			return new Set();
+		}
+	};
+
+	const persistReadIds = (ids: Set<string>) => {
+		try {
+			// 只保留最近 200 个，避免 localStorage 无限增长。
+			localStorage.setItem(READ_IDS_STORAGE_KEY, JSON.stringify([...ids].slice(-200)));
+		} catch {}
+	};
 
 	let currentIndex = 0;
 	let timer: ReturnType<typeof setInterval> | null = null;
@@ -107,16 +94,19 @@
 	const markAsRead = (alert: { id: string; target?: string } | null) => {
 		if (!alert) return;
 		readIds = new Set(readIds).add(alert.id);
+		persistReadIds(readIds);
 		dispatch('read', { id: alert.id });
 
-		// 监测预警各栏目数据尚未就绪，暂不跳转。
-		// 待数据接入后，可在此处使用 goto(alert.target) 跳转到对应栏目。
+		if (alert.target) {
+			goto(alert.target);
+		}
 	};
 
 	const markAllAsRead = () => {
 		const next = new Set(readIds);
 		for (const a of unread) next.add(a.id);
 		readIds = next;
+		persistReadIds(readIds);
 		dispatch('readAll');
 	};
 
@@ -125,6 +115,7 @@
 	};
 
 	onMount(() => {
+		readIds = loadReadIds();
 		startTimer();
 	});
 
