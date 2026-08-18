@@ -558,6 +558,33 @@ async def query_collection_with_hybrid_search(
     return merge_and_sort_query_results(results, k=k)
 
 
+# 嵌入接口偶发限流(429)/瞬时 5xx 很常见，尤其是并发批量请求同时打到同一个
+# 第三方 API 时。批次一旦失败，该批次里的文本向量会被上层直接丢弃（不重试、
+# 不报错终止），最终只在数量校验时才暴露成一个笼统的"数量不一致"错误。
+# 这里给异步批量 embedding 调用加有限次数的退避重试，尽量把偶发限流/网络抖动
+# 消化在这一层，减少"部分文本块向量丢失"的情况。
+EMBEDDING_BATCH_MAX_RETRIES = int(os.environ.get("RAG_EMBEDDING_BATCH_MAX_RETRIES", "3"))
+EMBEDDING_BATCH_RETRY_BASE_DELAY = 1.0  # 秒，指数退避基数
+EMBEDDING_BATCH_RETRY_MAX_DELAY = 20.0  # 秒，单次等待上限
+
+
+def _is_retryable_embedding_status(status: int) -> bool:
+    """429（限流）与 5xx（服务端瞬时错误）值得重试；4xx（参数/鉴权错误）不值得。"""
+    return status == 429 or status >= 500
+
+
+async def _sleep_before_embedding_retry(
+    attempt: int, retry_after_header: Optional[str] = None
+) -> None:
+    delay = EMBEDDING_BATCH_RETRY_BASE_DELAY * (2**attempt)
+    if retry_after_header:
+        try:
+            delay = max(delay, float(retry_after_header))
+        except (TypeError, ValueError):
+            pass
+    await asyncio.sleep(min(delay, EMBEDDING_BATCH_RETRY_MAX_DELAY))
+
+
 def generate_openai_batch_embeddings(
     model: str,
     texts: list[str],
@@ -605,44 +632,68 @@ async def agenerate_openai_batch_embeddings(
     prefix: str = None,
     user: UserModel = None,
 ) -> Optional[list[list[float]]]:
-    try:
-        log.debug(
-            f"agenerate_openai_batch_embeddings:model {model} batch size: {len(texts)}"
-        )
-        form_data = {"input": texts, "model": model}
-        if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
-            form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
+    form_data = {"input": texts, "model": model}
+    if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
+        form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        }
-        if ENABLE_FORWARD_USER_INFO_HEADERS and user:
-            headers = include_user_info_headers(headers, user)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {key}",
+    }
+    if ENABLE_FORWARD_USER_INFO_HEADERS and user:
+        headers = include_user_info_headers(headers, user)
 
-        async with aiohttp.ClientSession(
-            trust_env=True, timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT)
-        ) as session:
-            async with session.post(
-                f"{url}/embeddings",
-                headers=headers,
-                json=form_data,
-                ssl=AIOHTTP_CLIENT_SESSION_SSL,
-            ) as r:
-                if r.status != 200:
-                    error_body = await r.text()
-                    log.error(
-                        f"Embedding API returned status {r.status}: {error_body}"
-                    )
-                    r.raise_for_status()
-                data = await r.json()
-                if "data" in data:
-                    return [item["embedding"] for item in data["data"]]
-                else:
-                    raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
-    except Exception as e:
-        log.exception(f"Error generating openai batch embeddings: {e}")
-        return None
+    for attempt in range(EMBEDDING_BATCH_MAX_RETRIES + 1):
+        try:
+            log.debug(
+                f"agenerate_openai_batch_embeddings:model {model} batch size: {len(texts)} "
+                f"(attempt {attempt + 1}/{EMBEDDING_BATCH_MAX_RETRIES + 1})"
+            )
+            async with aiohttp.ClientSession(
+                trust_env=True,
+                timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
+            ) as session:
+                async with session.post(
+                    f"{url}/embeddings",
+                    headers=headers,
+                    json=form_data,
+                    ssl=AIOHTTP_CLIENT_SESSION_SSL,
+                ) as r:
+                    if r.status != 200:
+                        error_body = await r.text()
+                        log.error(
+                            f"Embedding API returned status {r.status}: {error_body}"
+                        )
+                        if (
+                            _is_retryable_embedding_status(r.status)
+                            and attempt < EMBEDDING_BATCH_MAX_RETRIES
+                        ):
+                            await _sleep_before_embedding_retry(
+                                attempt, r.headers.get("Retry-After")
+                            )
+                            continue
+                        # 非重试状态码（如 400/401 参数或鉴权错误）或重试次数已耗尽：
+                        # 直接判失败返回，不要走下面的网络异常分支再被重试一次
+                        return None
+                    data = await r.json()
+                    if "data" in data:
+                        return [item["embedding"] for item in data["data"]]
+                    else:
+                        raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < EMBEDDING_BATCH_MAX_RETRIES:
+                log.warning(
+                    f"Embedding request network error (attempt {attempt + 1}/"
+                    f"{EMBEDDING_BATCH_MAX_RETRIES + 1})，将重试：{e}"
+                )
+                await _sleep_before_embedding_retry(attempt)
+                continue
+            log.exception(f"Error generating openai batch embeddings: {e}")
+            return None
+        except Exception as e:
+            log.exception(f"Error generating openai batch embeddings: {e}")
+            return None
+    return None
 
 
 def generate_azure_openai_batch_embeddings(
@@ -702,41 +753,68 @@ async def agenerate_azure_openai_batch_embeddings(
     prefix: str = None,
     user: UserModel = None,
 ) -> Optional[list[list[float]]]:
-    try:
-        log.debug(
-            f"agenerate_azure_openai_batch_embeddings:deployment {model} batch size: {len(texts)}"
-        )
-        form_data = {"input": texts}
-        if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
-            form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
+    form_data = {"input": texts}
+    if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
+        form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
 
-        full_url = f"{url}/openai/deployments/{model}/embeddings?api-version={version}"
+    full_url = f"{url}/openai/deployments/{model}/embeddings?api-version={version}"
 
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": key,
-        }
-        if ENABLE_FORWARD_USER_INFO_HEADERS and user:
-            headers = include_user_info_headers(headers, user)
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": key,
+    }
+    if ENABLE_FORWARD_USER_INFO_HEADERS and user:
+        headers = include_user_info_headers(headers, user)
 
-        async with aiohttp.ClientSession(
-            trust_env=True, timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT)
-        ) as session:
-            async with session.post(
-                full_url,
-                headers=headers,
-                json=form_data,
-                ssl=AIOHTTP_CLIENT_SESSION_SSL,
-            ) as r:
-                r.raise_for_status()
-                data = await r.json()
-                if "data" in data:
-                    return [item["embedding"] for item in data["data"]]
-                else:
-                    raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
-    except Exception as e:
-        log.exception(f"Error generating azure openai batch embeddings: {e}")
-        return None
+    for attempt in range(EMBEDDING_BATCH_MAX_RETRIES + 1):
+        try:
+            log.debug(
+                f"agenerate_azure_openai_batch_embeddings:deployment {model} batch size: {len(texts)} "
+                f"(attempt {attempt + 1}/{EMBEDDING_BATCH_MAX_RETRIES + 1})"
+            )
+            async with aiohttp.ClientSession(
+                trust_env=True,
+                timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
+            ) as session:
+                async with session.post(
+                    full_url,
+                    headers=headers,
+                    json=form_data,
+                    ssl=AIOHTTP_CLIENT_SESSION_SSL,
+                ) as r:
+                    if r.status != 200:
+                        error_body = await r.text()
+                        log.error(
+                            f"Azure embedding API returned status {r.status}: {error_body}"
+                        )
+                        if (
+                            _is_retryable_embedding_status(r.status)
+                            and attempt < EMBEDDING_BATCH_MAX_RETRIES
+                        ):
+                            await _sleep_before_embedding_retry(
+                                attempt, r.headers.get("Retry-After")
+                            )
+                            continue
+                        return None
+                    data = await r.json()
+                    if "data" in data:
+                        return [item["embedding"] for item in data["data"]]
+                    else:
+                        raise Exception(ERROR_MESSAGES.EMBEDDING_MODEL_UNAVAILABLE)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < EMBEDDING_BATCH_MAX_RETRIES:
+                log.warning(
+                    f"Azure embedding request network error (attempt {attempt + 1}/"
+                    f"{EMBEDDING_BATCH_MAX_RETRIES + 1})，将重试：{e}"
+                )
+                await _sleep_before_embedding_retry(attempt)
+                continue
+            log.exception(f"Error generating azure openai batch embeddings: {e}")
+            return None
+        except Exception as e:
+            log.exception(f"Error generating azure openai batch embeddings: {e}")
+            return None
+    return None
 
 
 def generate_ollama_batch_embeddings(
@@ -787,39 +865,66 @@ async def agenerate_ollama_batch_embeddings(
     prefix: str = None,
     user: UserModel = None,
 ) -> Optional[list[list[float]]]:
-    try:
-        log.debug(
-            f"agenerate_ollama_batch_embeddings:model {model} batch size: {len(texts)}"
-        )
-        form_data = {"input": texts, "model": model}
-        if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
-            form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
+    form_data = {"input": texts, "model": model}
+    if isinstance(RAG_EMBEDDING_PREFIX_FIELD_NAME, str) and isinstance(prefix, str):
+        form_data[RAG_EMBEDDING_PREFIX_FIELD_NAME] = prefix
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        }
-        if ENABLE_FORWARD_USER_INFO_HEADERS and user:
-            headers = include_user_info_headers(headers, user)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {key}",
+    }
+    if ENABLE_FORWARD_USER_INFO_HEADERS and user:
+        headers = include_user_info_headers(headers, user)
 
-        async with aiohttp.ClientSession(
-            trust_env=True, timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT)
-        ) as session:
-            async with session.post(
-                f"{url}/api/embed",
-                headers=headers,
-                json=form_data,
-                ssl=AIOHTTP_CLIENT_SESSION_SSL,
-            ) as r:
-                r.raise_for_status()
-                data = await r.json()
-                if "embeddings" in data:
-                    return data["embeddings"]
-                else:
-                    raise Exception("Something went wrong :/")
-    except Exception as e:
-        log.exception(f"Error generating ollama batch embeddings: {e}")
-        return None
+    for attempt in range(EMBEDDING_BATCH_MAX_RETRIES + 1):
+        try:
+            log.debug(
+                f"agenerate_ollama_batch_embeddings:model {model} batch size: {len(texts)} "
+                f"(attempt {attempt + 1}/{EMBEDDING_BATCH_MAX_RETRIES + 1})"
+            )
+            async with aiohttp.ClientSession(
+                trust_env=True,
+                timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT),
+            ) as session:
+                async with session.post(
+                    f"{url}/api/embed",
+                    headers=headers,
+                    json=form_data,
+                    ssl=AIOHTTP_CLIENT_SESSION_SSL,
+                ) as r:
+                    if r.status != 200:
+                        error_body = await r.text()
+                        log.error(
+                            f"Ollama embedding API returned status {r.status}: {error_body}"
+                        )
+                        if (
+                            _is_retryable_embedding_status(r.status)
+                            and attempt < EMBEDDING_BATCH_MAX_RETRIES
+                        ):
+                            await _sleep_before_embedding_retry(
+                                attempt, r.headers.get("Retry-After")
+                            )
+                            continue
+                        return None
+                    data = await r.json()
+                    if "embeddings" in data:
+                        return data["embeddings"]
+                    else:
+                        raise Exception("Something went wrong :/")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < EMBEDDING_BATCH_MAX_RETRIES:
+                log.warning(
+                    f"Ollama embedding request network error (attempt {attempt + 1}/"
+                    f"{EMBEDDING_BATCH_MAX_RETRIES + 1})，将重试：{e}"
+                )
+                await _sleep_before_embedding_retry(attempt)
+                continue
+            log.exception(f"Error generating ollama batch embeddings: {e}")
+            return None
+        except Exception as e:
+            log.exception(f"Error generating ollama batch embeddings: {e}")
+            return None
+    return None
 
 
 def get_embedding_function(

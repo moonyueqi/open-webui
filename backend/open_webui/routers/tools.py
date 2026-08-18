@@ -52,9 +52,14 @@ def _user_has_tool_access(
 ) -> bool:
     """Check whether a user has the given permission on a tool.
 
-    Access is fully inherited from the parent tool category. A user is granted
-    access if they are the owner of the tool, an admin, or have the
+    Access is primarily inherited from the parent tool category. A user is
+    granted access if they are the owner of the tool, an admin, or have the
     corresponding access_grant on the tool's parent category.
+
+    As a fallback (mainly for tools left without a category_id, e.g. right
+    after upgrading before the backfill migration has run), we also honor
+    any legacy tool-level access_grant (resource_type="tool") that predates
+    the category feature.
     """
     if user.role == "admin":
         return True
@@ -64,6 +69,15 @@ def _user_has_tool_access(
         user_id=user.id,
         resource_type="tool_category",
         resource_id=tool.category_id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    if AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="tool",
+        resource_id=tool.id,
         permission=permission,
         user_group_ids=user_group_ids,
         db=db,

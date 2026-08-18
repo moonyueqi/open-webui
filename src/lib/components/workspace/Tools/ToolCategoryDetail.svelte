@@ -580,6 +580,10 @@
 													registerTool = tool;
 													showRegisterModal = true;
 												}}
+												valvesHandler={() => {
+													selectedTool = tool;
+													showValvesModal = true;
+												}}
 												deleteHandler={async () => {
 													selectedTool = tool;
 													showDeleteConfirm = true;

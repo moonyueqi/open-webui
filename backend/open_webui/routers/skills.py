@@ -41,9 +41,14 @@ def _user_has_skill_access(
 ) -> bool:
     """Check whether a user has the given permission on a skill.
 
-    Access is fully inherited from the parent skill category. A user is granted
-    access if they are the owner of the skill, an admin, or have the
+    Access is primarily inherited from the parent skill category. A user is
+    granted access if they are the owner of the skill, an admin, or have the
     corresponding access_grant on the skill's parent category.
+
+    As a fallback (mainly for skills left without a category_id, e.g. right
+    after upgrading before the backfill migration has run), we also honor
+    any legacy skill-level access_grant (resource_type="skill") that predates
+    the category feature.
     """
     if user.role == "admin":
         return True
@@ -53,6 +58,15 @@ def _user_has_skill_access(
         user_id=user.id,
         resource_type="skill_category",
         resource_id=skill.category_id,
+        permission=permission,
+        user_group_ids=user_group_ids,
+        db=db,
+    ):
+        return True
+    if AccessGrants.has_access(
+        user_id=user.id,
+        resource_type="skill",
+        resource_id=skill.id,
         permission=permission,
         user_group_ids=user_group_ids,
         db=db,

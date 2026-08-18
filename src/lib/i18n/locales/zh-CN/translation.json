@@ -1090,6 +1090,7 @@
 	"Include `--api` flag when running stable-diffusion-webui": "运行 stable-diffusion-webui 时包含 `--api` 参数",
 	"Includes SharePoint": "包含 SharePoint",
 	"Increase UI Scale": "增加界面缩放比例",
+	"Index Maintenance": "索引维护",
 	"Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive.": "影响算法对生成文本反馈的响应速度。较低的学习率会导致调整过程较慢，而较高的学习率将使算法反应更灵敏。",
 	"Info": "信息",
 	"Initials": "姓名缩写",
