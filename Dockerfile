@@ -185,12 +185,18 @@ ENV NLTK_DATA="/opt/cache/nltk_data"
 # （历史教训：uv pip install 失败但构建继续，导致 nltk/tiktoken 这类纯 Python 包都没装上）
 RUN set -eux; \
     pip3 install --no-cache-dir uv; \
+    # 重要：requirements.txt 里锁了 torch==2.10.0（不带 +cpu 后缀）。如果不剔除这一行，
+    # 下面 `uv pip install -r requirements.txt` 会发现版本跟前面装的 CPU/CUDA 专属 wheel
+    # 对不上，转而从 PyPI 镜像重新拉一份"官方默认"的 torch —— 而官方 Linux wheel 默认
+    # 自带完整 CUDA 运行时（nvidia-cublas/cudnn/nccl...），会把体积正常的 CPU 版整个覆盖掉，
+    # 单这一层能暴涨 8~9GB，内网部署机 docker load 时很容易直接把磁盘写满。
+    grep -vE '^torch\b' requirements.txt > requirements.no-torch.txt; \
     if [ "$USE_CUDA" = "true" ]; then \
         # CUDA：torch 走阿里云 pytorch-wheels 镜像；其他依赖走清华 PyPI
         pip3 install 'torch<=2.9.1' torchvision torchaudio \
             --find-links https://mirrors.aliyun.com/pytorch-wheels/$USE_CUDA_DOCKER_VER/ \
             --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir; \
-        uv pip install --system -r requirements.txt --no-cache-dir \
+        uv pip install --system -r requirements.no-torch.txt --no-cache-dir \
             --index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
         python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')"; \
         python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')"; \
@@ -200,8 +206,12 @@ RUN set -eux; \
         pip3 install 'torch<=2.9.1' torchvision torchaudio \
             --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
             --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir; \
-        uv pip install --system -r requirements.txt --no-cache-dir \
+        uv pip install --system -r requirements.no-torch.txt --no-cache-dir \
             --index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
+        # 校验：CPU 构建必须装到 CPU-only 的 torch，否则说明前面的过滤/mirror 逻辑又失效了，
+        # 与其等部署机磁盘写满才发现，不如构建期直接失败。
+        python -c "import torch, sys; sys.exit(1 if torch.version.cuda else 0)" || \
+            (echo '[FATAL] CPU 构建却装成了 CUDA 版 torch（requirements.txt 是否又新增/改动了未过滤的 torch 依赖？），已中止构建'; exit 1); \
         if [ "$USE_SLIM" != "true" ]; then \
             python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')"; \
             python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ.get('AUXILIARY_EMBEDDING_MODEL', 'TaylorAI/bge-micro-v2'), device='cpu')"; \
@@ -211,6 +221,7 @@ RUN set -eux; \
     # 强制验证关键依赖是否真的装上（uv 偶发静默吞错的最后一道防线）
     python -c "import nltk, tiktoken, fastapi, uvicorn" && echo "core deps OK"; \
     mkdir -p /app/backend/data && chown -R $UID:$GID /app/backend/data/; \
+    rm -f requirements.no-torch.txt; \
     rm -rf /var/lib/apt/lists/*
 
 # === 离线注入 NLTK 数据（RAG 文档分块 + unstructured pptx/docx 解析必需） ===
