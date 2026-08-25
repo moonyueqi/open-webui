@@ -37,6 +37,11 @@ class Tool(Base):
 class ToolMeta(BaseModel):
     description: Optional[str] = None
     manifest: Optional[dict] = {}
+    # Persisted so the tools list can report it without loading the tool
+    # module: the in-memory module cache (app.state.TOOLS) is emptied on
+    # every restart, which used to make the chat-side valves button
+    # disappear until each tool was touched once (upstream #26256).
+    has_user_valves: bool = False
 
 
 class ToolModel(BaseModel):
