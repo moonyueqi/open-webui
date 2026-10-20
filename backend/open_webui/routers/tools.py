@@ -63,27 +63,13 @@ def _user_has_tool_access(
     """
     if user.role == "admin":
         return True
-    if tool.user_id == user.id:
-        return True
-    if getattr(tool, "category_id", None) and AccessGrants.has_access(
+    return Tools.has_access(
         user_id=user.id,
-        resource_type="tool_category",
-        resource_id=tool.category_id,
+        tool=tool,
         permission=permission,
         user_group_ids=user_group_ids,
         db=db,
-    ):
-        return True
-    if AccessGrants.has_access(
-        user_id=user.id,
-        resource_type="tool",
-        resource_id=tool.id,
-        permission=permission,
-        user_group_ids=user_group_ids,
-        db=db,
-    ):
-        return True
-    return False
+    )
 
 
 def get_tool_module(request, tool_id, load_from_db=True):

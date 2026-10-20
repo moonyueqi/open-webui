@@ -13,7 +13,7 @@ import logging
 import os
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -64,6 +64,59 @@ def validate_rrule(s: str) -> None:
         raise ValueError('RRULE has no future occurrences')
 
 
+_FAST_INTERVAL_UNITS = {
+    'MINUTELY': 'minutes',
+    'HOURLY': 'hours',
+}
+
+# Must match the epoch DTSTART that _parse_rule anchors MINUTELY/HOURLY
+# rules to. DAILY (and lower frequencies) are intentionally excluded: they
+# have no fixed epoch here (dateutil defaults DTSTART to "now" at parse
+# time when omitted), so a closed-form shortcut could change their
+# effective time-of-day. They also have few enough occurrences since 2000
+# that dateutil's walk is already fast.
+_INTERVAL_EPOCH = datetime(2000, 1, 1, 0, 0, 0)
+
+
+def _fast_interval_after(s: str, now: datetime) -> Optional[datetime]:
+    """Closed-form "next occurrence after now" for plain FREQ;INTERVAL rules.
+
+    dateutil's rrule computes .after() by walking every occurrence from
+    DTSTART forward. For a bare "every N minutes/hours" rule anchored at a
+    fixed epoch (see _parse_rule), that walk gets longer every year (e.g.
+    MINUTELY has ~13M+ occurrences to skip past by 2026), which is the
+    root cause of automation scheduling taking seconds. Rules using only
+    FREQ/INTERVAL have a simple arithmetic next-occurrence, so we
+    special-case them here and fall back to dateutil for anything with
+    BYDAY/BYHOUR/COUNT/UNTIL/etc.
+    """
+    raw = s.replace('RRULE:', '')
+    parts = dict(p.split('=', 1) for p in raw.split(';') if '=' in p)
+    freq = parts.get('FREQ', '')
+    unit = _FAST_INTERVAL_UNITS.get(freq)
+    if unit is None:
+        return None
+    if set(parts.keys()) - {'FREQ', 'INTERVAL'}:
+        # Has COUNT/UNTIL/BYDAY/BYHOUR/etc — needs real RRULE semantics.
+        return None
+
+    try:
+        interval = int(parts.get('INTERVAL', '1'))
+    except ValueError:
+        return None
+    if interval <= 0:
+        return None
+
+    step = timedelta(**{unit: interval})
+    dtstart = _INTERVAL_EPOCH
+
+    if now < dtstart:
+        return dtstart
+
+    steps = (now - dtstart) // step + 1
+    return dtstart + steps * step
+
+
 def next_run_ns(s: str, tz: str = None) -> Optional[int]:
     """Next occurrence as epoch nanoseconds, respecting user timezone.
 
@@ -75,7 +128,11 @@ def next_run_ns(s: str, tz: str = None) -> Optional[int]:
     differs from the user's.
     """
     now = datetime.now(ZoneInfo(tz)) if tz else datetime.now()
-    dt = _parse_rule(s).after(now.replace(tzinfo=None))
+    now_naive = now.replace(tzinfo=None)
+
+    dt = _fast_interval_after(s, now_naive)
+    if dt is None:
+        dt = _parse_rule(s).after(now_naive)
     if dt is None:
         return None
     if tz:
@@ -85,9 +142,23 @@ def next_run_ns(s: str, tz: str = None) -> Optional[int]:
 
 def next_n_runs_ns(s: str, n: int = 5, tz: str = None) -> list[int]:
     """Compute next N occurrences for UI preview."""
-    rule = _parse_rule(s)
     result = []
     dt = datetime.now()
+
+    fast_next = _fast_interval_after(s, dt)
+    if fast_next is not None:
+        # Arithmetic fast path handles the whole preview list too — no
+        # need to fall back to dateutil's occurrence walk per step.
+        for _ in range(n):
+            if tz:
+                dt_tz = fast_next.replace(tzinfo=ZoneInfo(tz))
+                result.append(int(dt_tz.timestamp() * 1_000_000_000))
+            else:
+                result.append(int(fast_next.timestamp() * 1_000_000_000))
+            fast_next = _fast_interval_after(s, fast_next)
+        return result
+
+    rule = _parse_rule(s)
     for _ in range(n):
         dt = rule.after(dt)
         if not dt:

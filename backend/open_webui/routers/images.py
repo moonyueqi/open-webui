@@ -478,10 +478,12 @@ GenerateImageForm = CreateImageForm  # Alias for backward compatibility
 def get_image_data(data: str, headers=None):
     try:
         if data.startswith("http://") or data.startswith("https://"):
+            # Disallow redirects to guard against SSRF via a malicious/compromised
+            # image backend redirecting this server-side fetch to an internal URL.
             if headers:
-                r = requests.get(data, headers=headers)
+                r = requests.get(data, headers=headers, allow_redirects=False)
             else:
-                r = requests.get(data)
+                r = requests.get(data, allow_redirects=False)
 
             r.raise_for_status()
             if r.headers["content-type"].split("/")[0] == "image":

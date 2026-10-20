@@ -1767,6 +1767,56 @@ ENABLE_COMMUNITY_SHARING = PersistentConfig(
     os.environ.get("ENABLE_COMMUNITY_SHARING", "True").lower() == "true",
 )
 
+# When enabled, shared chat links (/s/{share_id}) are viewable by anyone who
+# has the link, without needing to sign in. Off by default — an admin must
+# opt in. Viewing still requires an unguessable share_id; this only removes
+# the "must be a logged-in user of this instance" requirement.
+ENABLE_CHAT_OPEN_SHARING = PersistentConfig(
+    "ENABLE_CHAT_OPEN_SHARING",
+    "ui.enable_chat_open_sharing",
+    os.environ.get("ENABLE_CHAT_OPEN_SHARING", "False").lower() == "true",
+)
+
+# When enabled, chat-attached files (non-"full context" mode) are exposed to the
+# model via builtin tools (list/query/grep/view) instead of auto-injecting RAG
+# chunks into the prompt. Requires native function calling.
+ENABLE_CHAT_FILES_TOOLS = PersistentConfig(
+    "ENABLE_CHAT_FILES_TOOLS",
+    "ui.enable_chat_files_tools",
+    os.environ.get("ENABLE_CHAT_FILES_TOOLS", "False").lower() == "true",
+)
+
+# Sub-agents: model delegates sub-tasks via delegate_task builtin tool.
+ENABLE_SUBAGENTS = PersistentConfig(
+    "ENABLE_SUBAGENTS",
+    "subagents.enable",
+    os.environ.get("ENABLE_SUBAGENTS", "False").lower() == "true",
+)
+
+SUBAGENTS_MAX_CONCURRENT = PersistentConfig(
+    "SUBAGENTS_MAX_CONCURRENT",
+    "subagents.max_concurrent",
+    int(os.environ.get("SUBAGENTS_MAX_CONCURRENT", "20")),
+)
+
+SUBAGENTS_MAX_ITERATIONS = PersistentConfig(
+    "SUBAGENTS_MAX_ITERATIONS",
+    "subagents.max_iterations",
+    int(os.environ.get("SUBAGENTS_MAX_ITERATIONS", "30")),
+)
+
+SUBAGENTS_MAX_OUTPUT = PersistentConfig(
+    "SUBAGENTS_MAX_OUTPUT",
+    "subagents.max_output",
+    int(os.environ.get("SUBAGENTS_MAX_OUTPUT", "30000")),
+)
+
+SUBAGENTS_SYSTEM_PROMPT = PersistentConfig(
+    "SUBAGENTS_SYSTEM_PROMPT",
+    "subagents.system_prompt",
+    os.environ.get("SUBAGENTS_SYSTEM_PROMPT", ""),
+)
+
 ENABLE_MESSAGE_RATING = PersistentConfig(
     "ENABLE_MESSAGE_RATING",
     "ui.enable_message_rating",

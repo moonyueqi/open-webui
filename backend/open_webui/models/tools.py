@@ -208,6 +208,55 @@ class ToolsTable:
                 )
             return tools
 
+    def has_access(
+        self,
+        user_id: str,
+        tool,
+        permission: str = "read",
+        user_group_ids: Optional[set] = None,
+        db: Optional[Session] = None,
+    ) -> bool:
+        """Check whether ``user_id`` has ``permission`` on ``tool``.
+
+        Tool access is primarily inherited from the parent tool category
+        (``resource_type="tool_category"``). Owners always have access. As a
+        fallback for tools without a ``category_id`` (or data created before
+        the category feature), legacy tool-level grants
+        (``resource_type="tool"``) are still honored.
+
+        Admin bypass is intentionally NOT handled here; callers decide whether
+        to short-circuit for admins (see ``BYPASS_ADMIN_ACCESS_CONTROL``).
+        """
+        if tool is None:
+            return False
+        if tool.user_id == user_id:
+            return True
+
+        if user_group_ids is None:
+            user_group_ids = {
+                group.id for group in Groups.get_groups_by_member_id(user_id, db=db)
+            }
+
+        category_id = getattr(tool, "category_id", None)
+        if category_id and AccessGrants.has_access(
+            user_id=user_id,
+            resource_type="tool_category",
+            resource_id=category_id,
+            permission=permission,
+            user_group_ids=user_group_ids,
+            db=db,
+        ):
+            return True
+
+        return AccessGrants.has_access(
+            user_id=user_id,
+            resource_type="tool",
+            resource_id=tool.id,
+            permission=permission,
+            user_group_ids=user_group_ids,
+            db=db,
+        )
+
     def get_tools_by_user_id(
         self,
         user_id: str,
@@ -223,11 +272,9 @@ class ToolsTable:
         return [
             tool
             for tool in tools
-            if tool.user_id == user_id
-            or AccessGrants.has_access(
+            if self.has_access(
                 user_id=user_id,
-                resource_type="tool",
-                resource_id=tool.id,
+                tool=tool,
                 permission=permission,
                 user_group_ids=user_group_ids,
                 db=db,

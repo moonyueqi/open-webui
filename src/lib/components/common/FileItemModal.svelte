@@ -325,11 +325,7 @@
 										)}
 							>
 								<div class="flex items-center gap-1.5 text-xs">
-									{#if enableFullContent}
-										{$i18n.t('Using Entire Document')}
-									{:else}
-										{$i18n.t('Using Focused Retrieval')}
-									{/if}
+									{$i18n.t('Read Entire Document')}
 									<Switch
 										bind:state={enableFullContent}
 										on:change={(e) => {

@@ -394,6 +394,13 @@ from open_webui.config import (
     ENABLE_NOTES,
     ENABLE_USER_STATUS,
     ENABLE_COMMUNITY_SHARING,
+    ENABLE_CHAT_OPEN_SHARING,
+    ENABLE_CHAT_FILES_TOOLS,
+    ENABLE_SUBAGENTS,
+    SUBAGENTS_MAX_CONCURRENT,
+    SUBAGENTS_MAX_ITERATIONS,
+    SUBAGENTS_MAX_OUTPUT,
+    SUBAGENTS_SYSTEM_PROMPT,
     ENABLE_MESSAGE_RATING,
     ENABLE_USER_WEBHOOKS,
     ENABLE_EVALUATION_ARENA_MODELS,
@@ -875,6 +882,13 @@ app.state.config.ENABLE_CHANNELS = ENABLE_CHANNELS
 app.state.config.ENABLE_CALENDAR = ENABLE_CALENDAR
 app.state.config.ENABLE_NOTES = ENABLE_NOTES
 app.state.config.ENABLE_COMMUNITY_SHARING = ENABLE_COMMUNITY_SHARING
+app.state.config.ENABLE_CHAT_OPEN_SHARING = ENABLE_CHAT_OPEN_SHARING
+app.state.config.ENABLE_CHAT_FILES_TOOLS = ENABLE_CHAT_FILES_TOOLS
+app.state.config.ENABLE_SUBAGENTS = ENABLE_SUBAGENTS
+app.state.config.SUBAGENTS_MAX_CONCURRENT = SUBAGENTS_MAX_CONCURRENT
+app.state.config.SUBAGENTS_MAX_ITERATIONS = SUBAGENTS_MAX_ITERATIONS
+app.state.config.SUBAGENTS_MAX_OUTPUT = SUBAGENTS_MAX_OUTPUT
+app.state.config.SUBAGENTS_SYSTEM_PROMPT = SUBAGENTS_SYSTEM_PROMPT
 app.state.config.ENABLE_MESSAGE_RATING = ENABLE_MESSAGE_RATING
 app.state.config.ENABLE_USER_WEBHOOKS = ENABLE_USER_WEBHOOKS
 app.state.config.ENABLE_USER_STATUS = ENABLE_USER_STATUS
@@ -2180,6 +2194,10 @@ async def get_app_config(request: Request):
             "enable_version_update_check": ENABLE_VERSION_UPDATE_CHECK,
             "enable_public_active_users_count": ENABLE_PUBLIC_ACTIVE_USERS_COUNT,
             "enable_easter_eggs": ENABLE_EASTER_EGGS,
+            # Exposed unauthenticated (unlike most feature flags below) so the
+            # frontend can decide whether to skip the login redirect for /s/
+            # shared-chat links before it knows who — if anyone — is viewing.
+            "enable_chat_open_sharing": app.state.config.ENABLE_CHAT_OPEN_SHARING,
             **(
                 {
                     "enable_direct_connections": app.state.config.ENABLE_DIRECT_CONNECTIONS,

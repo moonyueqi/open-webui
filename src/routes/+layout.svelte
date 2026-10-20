@@ -824,12 +824,17 @@
 					} else {
 						// Redirect Invalid Session User to /auth Page
 						localStorage.removeItem('token');
-						await goto(`/auth?redirect=${encodedUrl}`);
+						if (!$page.url.pathname.startsWith('/s/')) {
+							await goto(`/auth?redirect=${encodedUrl}`);
+						}
 					}
 				} else {
 					// Don't redirect if we're already on the auth page
 					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// Also skip for public shared-chat links (/s/[id]): when the admin has
+					// enabled open chat sharing, those are viewable without an account, so
+					// visitors should land on the chat instead of being bounced to /auth.
+					if ($page.url.pathname !== '/auth' && !$page.url.pathname.startsWith('/s/')) {
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}

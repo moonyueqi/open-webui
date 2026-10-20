@@ -4,6 +4,7 @@ import uuid
 import time
 import datetime
 import logging
+import jwt
 from aiohttp import ClientSession
 import urllib
 
@@ -40,6 +41,7 @@ from open_webui.env import (
     WEBUI_AUTH_SIGNOUT_REDIRECT_URL,
     ENABLE_INITIAL_ADMIN_SIGNUP,
     ENABLE_OAUTH_TOKEN_EXCHANGE,
+    OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS,
     AIOHTTP_CLIENT_SESSION_SSL,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -994,6 +996,8 @@ async def get_admin_config(request: Request, user=Depends(get_admin_user)):
         "DEFAULT_GROUP_ID": request.app.state.config.DEFAULT_GROUP_ID,
         "JWT_EXPIRES_IN": request.app.state.config.JWT_EXPIRES_IN,
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
+        "ENABLE_CHAT_OPEN_SHARING": request.app.state.config.ENABLE_CHAT_OPEN_SHARING,
+        "ENABLE_CHAT_FILES_TOOLS": request.app.state.config.ENABLE_CHAT_FILES_TOOLS,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
         "ENABLE_FOLDERS": request.app.state.config.ENABLE_FOLDERS,
         "FOLDER_MAX_FILE_COUNT": request.app.state.config.FOLDER_MAX_FILE_COUNT,
@@ -1021,6 +1025,8 @@ class AdminConfig(BaseModel):
     DEFAULT_GROUP_ID: str
     JWT_EXPIRES_IN: str
     ENABLE_COMMUNITY_SHARING: bool
+    ENABLE_CHAT_OPEN_SHARING: bool = False
+    ENABLE_CHAT_FILES_TOOLS: bool = False
     ENABLE_MESSAGE_RATING: bool
     ENABLE_FOLDERS: bool
     FOLDER_MAX_FILE_COUNT: Optional[int | str] = None
@@ -1075,6 +1081,12 @@ async def update_admin_config(
     request.app.state.config.ENABLE_COMMUNITY_SHARING = (
         form_data.ENABLE_COMMUNITY_SHARING
     )
+    request.app.state.config.ENABLE_CHAT_OPEN_SHARING = (
+        form_data.ENABLE_CHAT_OPEN_SHARING
+    )
+    request.app.state.config.ENABLE_CHAT_FILES_TOOLS = (
+        form_data.ENABLE_CHAT_FILES_TOOLS
+    )
     request.app.state.config.ENABLE_MESSAGE_RATING = form_data.ENABLE_MESSAGE_RATING
 
     request.app.state.config.ENABLE_USER_WEBHOOKS = form_data.ENABLE_USER_WEBHOOKS
@@ -1101,6 +1113,8 @@ async def update_admin_config(
         "DEFAULT_GROUP_ID": request.app.state.config.DEFAULT_GROUP_ID,
         "JWT_EXPIRES_IN": request.app.state.config.JWT_EXPIRES_IN,
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
+        "ENABLE_CHAT_OPEN_SHARING": request.app.state.config.ENABLE_CHAT_OPEN_SHARING,
+        "ENABLE_CHAT_FILES_TOOLS": request.app.state.config.ENABLE_CHAT_FILES_TOOLS,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
         "ENABLE_FOLDERS": request.app.state.config.ENABLE_FOLDERS,
         "FOLDER_MAX_FILE_COUNT": request.app.state.config.FOLDER_MAX_FILE_COUNT,
@@ -1113,6 +1127,44 @@ async def update_admin_config(
         "PENDING_USER_OVERLAY_TITLE": request.app.state.config.PENDING_USER_OVERLAY_TITLE,
         "PENDING_USER_OVERLAY_CONTENT": request.app.state.config.PENDING_USER_OVERLAY_CONTENT,
         "RESPONSE_WATERMARK": request.app.state.config.RESPONSE_WATERMARK,
+    }
+
+
+class SubagentsConfigForm(BaseModel):
+    ENABLE_SUBAGENTS: bool = False
+    SUBAGENTS_MAX_CONCURRENT: int = 20
+    SUBAGENTS_MAX_ITERATIONS: int = 30
+    SUBAGENTS_MAX_OUTPUT: int = 30000
+    SUBAGENTS_SYSTEM_PROMPT: str = ""
+
+
+@router.get("/admin/subagents/config")
+async def get_subagents_config(request: Request, user=Depends(get_admin_user)):
+    return {
+        "ENABLE_SUBAGENTS": request.app.state.config.ENABLE_SUBAGENTS,
+        "SUBAGENTS_MAX_CONCURRENT": request.app.state.config.SUBAGENTS_MAX_CONCURRENT,
+        "SUBAGENTS_MAX_ITERATIONS": request.app.state.config.SUBAGENTS_MAX_ITERATIONS,
+        "SUBAGENTS_MAX_OUTPUT": request.app.state.config.SUBAGENTS_MAX_OUTPUT,
+        "SUBAGENTS_SYSTEM_PROMPT": request.app.state.config.SUBAGENTS_SYSTEM_PROMPT,
+    }
+
+
+@router.post("/admin/subagents/config")
+async def update_subagents_config(
+    request: Request, form_data: SubagentsConfigForm, user=Depends(get_admin_user)
+):
+    request.app.state.config.ENABLE_SUBAGENTS = form_data.ENABLE_SUBAGENTS
+    request.app.state.config.SUBAGENTS_MAX_CONCURRENT = form_data.SUBAGENTS_MAX_CONCURRENT
+    request.app.state.config.SUBAGENTS_MAX_ITERATIONS = form_data.SUBAGENTS_MAX_ITERATIONS
+    request.app.state.config.SUBAGENTS_MAX_OUTPUT = form_data.SUBAGENTS_MAX_OUTPUT
+    request.app.state.config.SUBAGENTS_SYSTEM_PROMPT = form_data.SUBAGENTS_SYSTEM_PROMPT
+
+    return {
+        "ENABLE_SUBAGENTS": request.app.state.config.ENABLE_SUBAGENTS,
+        "SUBAGENTS_MAX_CONCURRENT": request.app.state.config.SUBAGENTS_MAX_CONCURRENT,
+        "SUBAGENTS_MAX_ITERATIONS": request.app.state.config.SUBAGENTS_MAX_ITERATIONS,
+        "SUBAGENTS_MAX_OUTPUT": request.app.state.config.SUBAGENTS_MAX_OUTPUT,
+        "SUBAGENTS_SYSTEM_PROMPT": request.app.state.config.SUBAGENTS_SYSTEM_PROMPT,
     }
 
 
@@ -1327,6 +1379,43 @@ async def token_exchange(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="令牌无效或无法通过提供方验证，请重新登录后重试。",
         )
+
+    # Restrict which OAuth clients' tokens may be exchanged. Without this,
+    # any valid token from the same IdP — even one issued to an unrelated
+    # third-party app — could be exchanged for a session here as long as
+    # its subject/email matches an existing local user.
+    if OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS:
+        token_client_id = None
+        try:
+            unverified = jwt.decode(
+                form_data.token, options={"verify_signature": False}
+            )
+            token_client_id = (
+                unverified.get("azp")
+                or unverified.get("client_id")
+                or unverified.get("aud")
+            )
+            if isinstance(token_client_id, list):
+                token_client_id = next(
+                    (
+                        cid
+                        for cid in token_client_id
+                        if cid in OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS
+                    ),
+                    token_client_id[0] if token_client_id else None,
+                )
+        except Exception as e:
+            log.warning(f"Token exchange failed: could not parse token claims: {e}")
+
+        if token_client_id not in OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS:
+            log.warning(
+                f"Token exchange rejected: client_id '{token_client_id}' is not in "
+                "OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="该令牌对应的客户端未被授权进行令牌交换，请联系管理员。",
+            )
 
     # Extract user information from the token claims
     email_claim = request.app.state.config.OAUTH_EMAIL_CLAIM
