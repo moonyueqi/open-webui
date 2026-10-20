@@ -605,11 +605,33 @@ OAUTH_SESSION_TOKEN_ENCRYPTION_KEY = os.environ.get(
 # This prevents unbounded session growth while allowing multi-device usage
 OAUTH_MAX_SESSIONS_PER_USER = int(os.environ.get("OAUTH_MAX_SESSIONS_PER_USER", "10"))
 
+# Upper bound on matching lines returned by the file grep tools
+KNOWLEDGE_GREP_MAX_MATCHES = int(os.environ.get("KNOWLEDGE_GREP_MAX_MATCHES", "50"))
+
+# Characters returned by view_file / view_knowledge_file.
+VIEW_FILE_MAX_CHARS = int(os.environ.get("VIEW_FILE_MAX_CHARS", "100000"))
+VIEW_FILE_DEFAULT_MAX_CHARS = int(
+    os.environ.get("VIEW_FILE_DEFAULT_MAX_CHARS", "10000")
+)
+
 # Token Exchange Configuration
 # Allows external apps to exchange OAuth tokens for OpenWebUI tokens
 ENABLE_OAUTH_TOKEN_EXCHANGE = (
     os.environ.get("ENABLE_OAUTH_TOKEN_EXCHANGE", "False").lower() == "true"
 )
+
+# Restricts /oauth/{provider}/token/exchange to tokens issued to these client_ids
+# (matched against the token's aud/azp/client_id claim). Without this allowlist,
+# ANY valid access token from the same IdP — including one issued to an unrelated
+# third-party app — can be exchanged for a session on this instance, as long as
+# its subject/email matches an existing local user (a confused-deputy risk).
+# Comma-separated. Leave empty to keep the pre-0.11 behavior (not recommended
+# once ENABLE_OAUTH_TOKEN_EXCHANGE is on).
+OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS = [
+    cid.strip()
+    for cid in os.environ.get("OAUTH_TOKEN_EXCHANGE_TRUSTED_CLIENT_IDS", "").split(",")
+    if cid.strip()
+]
 
 ####################################
 # SCIM Configuration

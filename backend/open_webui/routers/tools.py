@@ -52,24 +52,24 @@ def _user_has_tool_access(
 ) -> bool:
     """Check whether a user has the given permission on a tool.
 
-    Access is fully inherited from the parent tool category. A user is granted
-    access if they are the owner of the tool, an admin, or have the
+    Access is primarily inherited from the parent tool category. A user is
+    granted access if they are the owner of the tool, an admin, or have the
     corresponding access_grant on the tool's parent category.
+
+    As a fallback (mainly for tools left without a category_id, e.g. right
+    after upgrading before the backfill migration has run), we also honor
+    any legacy tool-level access_grant (resource_type="tool") that predates
+    the category feature.
     """
     if user.role == "admin":
         return True
-    if tool.user_id == user.id:
-        return True
-    if getattr(tool, "category_id", None) and AccessGrants.has_access(
+    return Tools.has_access(
         user_id=user.id,
-        resource_type="tool_category",
-        resource_id=tool.category_id,
+        tool=tool,
         permission=permission,
         user_group_ids=user_group_ids,
         db=db,
-    ):
-        return True
-    return False
+    )
 
 
 def get_tool_module(request, tool_id, load_from_db=True):
@@ -100,13 +100,19 @@ async def get_tools(
             if hasattr(request.app.state, "TOOLS")
             else None
         )
+        # The module cache is emptied on every restart; fall back to the
+        # value persisted in tool.meta so the valves button doesn't
+        # disappear until the tool has been loaded once (upstream #26256).
+        has_user_valves = (
+            hasattr(tool_module, "UserValves")
+            if tool_module
+            else (tool.meta.has_user_valves if tool.meta else False)
+        )
         tools.append(
             ToolUserResponse(
                 **{
                     **tool.model_dump(),
-                    "has_user_valves": (
-                        hasattr(tool_module, "UserValves") if tool_module else False
-                    ),
+                    "has_user_valves": has_user_valves,
                 }
             )
         )
@@ -451,6 +457,7 @@ async def create_new_tools(
                 form_data.id, content=form_data.content
             )
             form_data.meta.manifest = frontmatter
+            form_data.meta.has_user_valves = hasattr(tool_module, "UserValves")
 
             TOOLS = request.app.state.TOOLS
             TOOLS[form_data.id] = tool_module
@@ -576,6 +583,7 @@ async def update_tools_by_id(
         form_data.content = replace_imports(form_data.content)
         tool_module, frontmatter = load_tool_module_by_id(id, content=form_data.content)
         form_data.meta.manifest = frontmatter
+        form_data.meta.has_user_valves = hasattr(tool_module, "UserValves")
 
         TOOLS = request.app.state.TOOLS
         TOOLS[id] = tool_module

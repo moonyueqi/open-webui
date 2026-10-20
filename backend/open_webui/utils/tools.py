@@ -90,6 +90,10 @@ from open_webui.tools.builtin import (
     view_file,
     view_knowledge_file,
     view_skill,
+    list_chat_files,
+    query_chat_files,
+    grep_chat_files,
+    delegate_task,
     search_calendar_events,
     create_calendar_event,
     update_calendar_event,
@@ -156,6 +160,47 @@ def get_updated_tool_function(function: Callable, extra_params: dict):
     return function
 
 
+def has_tool_server_access(
+    user: UserModel,
+    connection: dict,
+    user_group_ids: Optional[set] = None,
+) -> bool:
+    """Check whether a user may invoke an OpenAPI/MCP tool server.
+
+    Tool server visibility is inherited from the tool category referenced by
+    ``config.category_id`` (same rule as the ``GET /api/v1/tools/`` listing):
+
+    - Admin with ``BYPASS_ADMIN_ACCESS_CONTROL`` → always allowed
+    - ``category_id`` set → requires ``read`` on that ``tool_category``
+    - No ``category_id`` → honor legacy ``config.access_grants`` if present,
+      otherwise visible to every verified user (backward compatible fallback)
+    """
+    if user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL:
+        return True
+
+    if user_group_ids is None:
+        user_group_ids = {
+            group.id for group in Groups.get_groups_by_member_id(user.id)
+        }
+
+    config = (connection or {}).get("config") or {}
+    category_id = config.get("category_id")
+    if category_id:
+        return AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="tool_category",
+            resource_id=category_id,
+            permission="read",
+            user_group_ids=user_group_ids,
+        )
+
+    access_grants = config.get("access_grants") or []
+    if access_grants:
+        return has_access(user.id, "read", access_grants, user_group_ids)
+
+    return True
+
+
 async def get_tools(
     request: Request, tool_ids: list[str], user: UserModel, extra_params: dict
 ) -> dict[str, dict]:
@@ -171,17 +216,16 @@ async def get_tools(
     for tool_id in tool_ids:
         tool = Tools.get_tool_by_id(tool_id)
         if tool:
-            # Check access control for local tools
-            if (
-                not (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                and tool.user_id != user.id
-                and not AccessGrants.has_access(
-                    user_id=user.id,
-                    resource_type="tool",
-                    resource_id=tool.id,
-                    permission="read",
-                    user_group_ids=user_group_ids,
-                )
+            # Check access control for local tools. Access is inherited from
+            # the tool's category (with legacy tool-level grants as fallback),
+            # mirroring the visibility rules of the tools list endpoint.
+            if not (
+                user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL
+            ) and not Tools.has_access(
+                user_id=user.id,
+                tool=tool,
+                permission="read",
+                user_group_ids=user_group_ids,
             ):
                 log.warning(f"Access denied to tool {tool_id} for user {user.id}")
                 continue
@@ -293,8 +337,9 @@ async def get_tools(
                         ]
                     )
 
-                    # Check access control for tool server
-                    if not has_connection_access(
+                    # Check access control for tool server (inherited from
+                    # the tool category set on the connection)
+                    if not has_tool_server_access(
                         user, tool_server_connection, user_group_ids
                     ):
                         log.warning(
@@ -580,9 +625,49 @@ def get_builtin_tools(
             ]
         )
 
+    # Chat attached files — let the model list/search/read attachments on demand
+    metadata = extra_params.get("__metadata__") or {}
+    chat_files = metadata.get("files") or extra_params.get("__files__") or []
+    has_chat_files = any(
+        isinstance(item, dict)
+        and item.get("type", "file") == "file"
+        and (item.get("id") or item.get("url"))
+        and not str(item.get("id") or item.get("url")).startswith(
+            ("http://", "https://", "data:")
+        )
+        for item in chat_files
+    )
+
+    if (
+        request.app.state.config.ENABLE_CHAT_FILES_TOOLS
+        and is_builtin_tool_enabled("files")
+        and has_chat_files
+    ):
+        for fn in (list_chat_files, query_chat_files, grep_chat_files, view_file):
+            if fn not in builtin_functions:
+                builtin_functions.append(fn)
+
+    # Sub-agents — delegate_task
+    if (
+        request.app.state.config.ENABLE_SUBAGENTS
+        and is_builtin_tool_enabled("subagents")
+        and getattr(request.state, "internal", False) is not True
+        and getattr(request.state, "direct", False) is not True
+    ):
+        builtin_functions.append(delegate_task)
+
     # Skills tools - view_skill allows model to load full skill instructions on demand
     if extra_params.get("__skill_ids__"):
         builtin_functions.append(view_skill)
+
+    if getattr(request.state, "internal", False) is True:
+        from open_webui.utils.subagents import MUTATING_MEMORY_TOOLS
+
+        builtin_functions = [
+            func
+            for func in builtin_functions
+            if func.__name__ not in MUTATING_MEMORY_TOOLS
+        ]
 
     for func in builtin_functions:
         callable = get_async_tool_function_and_apply_extra_params(
@@ -596,6 +681,7 @@ def get_builtin_tools(
                 "__chat_id__": extra_params.get("__chat_id__"),
                 "__message_id__": extra_params.get("__message_id__"),
                 "__model_knowledge__": model_knowledge,
+                "__files__": chat_files,
             },
         )
 

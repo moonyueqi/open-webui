@@ -406,6 +406,23 @@ def get_current_user_by_api_key(request, api_key: str):
     return user
 
 
+async def get_current_user_optional(
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    auth_token: HTTPAuthorizationCredentials = Depends(bearer_security),
+):
+    """Best-effort current user for endpoints that also allow anonymous access
+    (e.g. open chat sharing). Returns None instead of raising when there is
+    no credential, an invalid/expired token, or a disallowed role — callers
+    are responsible for deciding what an anonymous request is allowed to do.
+    """
+    try:
+        return await get_current_user(request, response, background_tasks, auth_token)
+    except HTTPException:
+        return None
+
+
 def get_verified_user(user=Depends(get_current_user)):
     if user.role not in {"user", "admin"}:
         raise HTTPException(

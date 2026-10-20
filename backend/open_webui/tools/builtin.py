@@ -14,6 +14,11 @@ from typing import Optional
 
 from fastapi import Request
 
+from open_webui.env import (
+    KNOWLEDGE_GREP_MAX_MATCHES,
+    VIEW_FILE_DEFAULT_MAX_CHARS,
+    VIEW_FILE_MAX_CHARS,
+)
 from open_webui.models.users import UserModel
 from open_webui.routers.retrieval import search_web as _search_web
 from open_webui.retrieval.utils import get_content_from_url
@@ -1605,17 +1610,147 @@ async def search_knowledge_files(
         return json.dumps({"error": str(e)})
 
 
-async def view_file(
-    file_id: str,
+# =============================================================================
+# CHAT ATTACHED FILES
+# =============================================================================
+
+
+def _has_read_access_to_file(
+    file,
+    user_id: str,
+    user_role: str,
+    model_knowledge: Optional[list[dict]] = None,
+) -> bool:
+    """Check if a user can read a file via ownership, admin role, model attachment, or access grants."""
+    if file.user_id == user_id or user_role == "admin":
+        return True
+    if model_knowledge and any(
+        item.get("type") == "file" and item.get("id") == file.id
+        for item in model_knowledge
+    ):
+        return True
+    from open_webui.utils.access_control.files import has_access_to_file
+
+    return has_access_to_file(
+        file_id=file.id,
+        access_type="read",
+        user=UserModel(**{"id": user_id, "role": user_role}),
+    )
+
+
+def _get_accessible_chat_files(
+    files: Optional[list[dict]],
+    user: dict,
+    file_id: Optional[str] = None,
+) -> list[tuple[dict, object]]:
+    from open_webui.models.files import Files
+
+    user_id = user.get("id")
+    user_role = user.get("role", "user")
+    accessible = []
+    seen = set()
+
+    for item in files or []:
+        if not isinstance(item, dict) or item.get("type", "file") != "file":
+            continue
+        fid = item.get("id") or item.get("url") or ""
+        if (
+            not isinstance(fid, str)
+            or not fid
+            or fid in seen
+            or fid.startswith(("http://", "https://", "data:"))
+            or (file_id and fid != file_id)
+        ):
+            continue
+        normalized = {**item, "id": fid, "type": "file"}
+        if "name" not in normalized and item.get("filename"):
+            normalized["name"] = item.get("filename")
+        seen.add(fid)
+
+        file = Files.get_file_by_id(fid)
+        if file and _has_read_access_to_file(file, user_id, user_role):
+            accessible.append((normalized, file))
+
+    return accessible
+
+
+def _chat_attached_file_ids(files: Optional[list[dict]]) -> set:
+    attached_ids = set()
+    for item in files or []:
+        if not isinstance(item, dict) or item.get("type", "file") != "file":
+            continue
+        fid = item.get("id") or item.get("url")
+        if (
+            isinstance(fid, str)
+            and fid
+            and not fid.startswith(("http://", "https://", "data:"))
+        ):
+            attached_ids.add(fid)
+    return attached_ids
+
+
+def _grep_file_models(
+    files_to_search: list,
+    pattern: str,
+    case_insensitive: bool = False,
+    count_only: bool = False,
+) -> str:
+    from open_webui.tools.knowledge_fs import build_matcher
+
+    matches, err = build_matcher(pattern, case_insensitive)
+    if err:
+        return json.dumps({"error": err})
+
+    results = []
+    total_matches = 0
+    counts = []
+
+    for file in files_to_search:
+        content = ""
+        if file.data:
+            content = file.data.get("content", "")
+        if not content:
+            continue
+
+        lines = content.split("\n")
+        file_matches = 0
+
+        for i, line in enumerate(lines, 1):
+            if matches(line):
+                file_matches += 1
+                total_matches += 1
+                if not count_only and len(results) < KNOWLEDGE_GREP_MAX_MATCHES:
+                    results.append(f"{file.id}  {file.filename}:{i}: {line}")
+
+        if file_matches > 0 and count_only:
+            counts.append(f"{file.id}  {file.filename}: {file_matches}")
+
+    if count_only:
+        if not counts:
+            return f'No matches for "{pattern}"'
+        return "\n".join(counts) + f"\n[{total_matches} total matches]"
+
+    if not results:
+        return f'No matches for "{pattern}"'
+
+    output = "\n".join(results)
+    if total_matches > KNOWLEDGE_GREP_MAX_MATCHES:
+        output += (
+            f"\n[{KNOWLEDGE_GREP_MAX_MATCHES} of {total_matches} matches shown "
+            "- use file_id to narrow]"
+        )
+    return output
+
+
+async def list_chat_files(
     __request__: Request = None,
     __user__: dict = None,
-    __model_knowledge__: Optional[list[dict]] = None,
+    __files__: list[dict] = None,
 ) -> str:
     """
-    Get the full content of a file by its ID.
+    List files attached to the current chat.
 
-    :param file_id: The ID of the file to retrieve
-    :return: JSON with the file's id, filename, and full text content
+    :return: JSON with attached chat files containing id, filename, content type, size, and updated time when available
     """
     if __request__ is None:
         return json.dumps({"error": "Request context not available"})
@@ -1624,8 +1759,290 @@ async def view_file(
         return json.dumps({"error": "User context not available"})
 
     try:
+        files = []
+        for item, file in _get_accessible_chat_files(__files__, __user__):
+            file_info = {
+                "id": file.id,
+                "filename": file.filename,
+                "name": item.get("name") or file.filename,
+                "type": item.get("type", "file"),
+                "updated_at": file.updated_at,
+            }
+            content_type = item.get("content_type") or (file.meta or {}).get(
+                "content_type"
+            )
+            size = item.get("size") or (file.meta or {}).get("size")
+            if content_type:
+                file_info["content_type"] = content_type
+            if size:
+                file_info["size"] = size
+            files.append(file_info)
+
+        return json.dumps(files, ensure_ascii=False)
+    except Exception as e:
+        log.exception(f"list_chat_files error: {e}")
+        return json.dumps({"error": str(e)})
+
+
+async def grep_chat_files(
+    pattern: str,
+    file_id: Optional[str] = None,
+    case_insensitive: bool = False,
+    count_only: bool = False,
+    __request__: Request = None,
+    __user__: dict = None,
+    __files__: list[dict] = None,
+) -> str:
+    """
+    Search exact text across files attached to the current chat.
+    Pass file_id from the attached_files block to search one file.
+
+    :param pattern: The text pattern to search for
+    :param file_id: Optional attached file ID to search within a single file
+    :param case_insensitive: If true, ignore case when matching
+    :param count_only: If true, return only match counts per file
+    :return: Matching lines with file IDs, filenames, and line numbers
+    """
+    if __request__ is None:
+        return json.dumps({"error": "Request context not available"})
+
+    if not __user__:
+        return json.dumps({"error": "User context not available"})
+
+    if not pattern or not pattern.strip():
+        return json.dumps({"error": "Pattern is required"})
+
+    if isinstance(file_id, str) and file_id.lower() in ("none", "null", ""):
+        file_id = None
+
+    try:
+        attached_ids = _chat_attached_file_ids(__files__)
+
+        if not attached_ids:
+            return json.dumps({"error": "No files are attached to this chat"})
+        if file_id and file_id not in attached_ids:
+            return json.dumps({"error": "File not found"})
+
+        files_to_search = [
+            file for _, file in _get_accessible_chat_files(__files__, __user__, file_id)
+        ]
+        if not files_to_search:
+            return json.dumps({"error": "No accessible files found"})
+
+        return _grep_file_models(
+            files_to_search, pattern, case_insensitive, count_only
+        )
+    except Exception as e:
+        log.exception(f"grep_chat_files error: {e}")
+        return json.dumps({"error": str(e)})
+
+
+async def query_chat_files(
+    query: str,
+    file_id: Optional[str] = None,
+    count: Optional[int] = None,
+    __request__: Request = None,
+    __user__: dict = None,
+    __files__: list[dict] = None,
+) -> str:
+    """
+    Search files attached to the current chat using semantic/vector search.
+    Pass file_id from the attached_files block to search one file, or omit it to search all attached chat files.
+
+    :param query: The search query to find semantically relevant content
+    :param file_id: Optional attached file ID to search within a single file
+    :param count: Maximum number of results to return, capped by the server RAG top k
+    :return: JSON with relevant chunks containing content, source filename, and relevance score
+    """
+    if __request__ is None:
+        return json.dumps({"error": "Request context not available"})
+
+    if not __user__:
+        return json.dumps({"error": "User context not available"})
+
+    if isinstance(file_id, str) and file_id.lower() in ("none", "null", ""):
+        file_id = None
+    if isinstance(count, str):
+        if count.lower() in ("none", "null", ""):
+            count = None
+        else:
+            try:
+                count = int(count)
+            except ValueError:
+                count = None
+
+    try:
+        from open_webui.retrieval.utils import get_sources_from_items
+
+        attached_ids = _chat_attached_file_ids(__files__)
+
+        if not attached_ids:
+            return json.dumps({"error": "No files are attached to this chat"})
+        if file_id and file_id not in attached_ids:
+            return json.dumps({"error": "File not found"})
+
+        accessible = _get_accessible_chat_files(__files__, __user__, file_id)
+        if not accessible:
+            return json.dumps({"error": "No accessible files found"})
+
+        file_items = [{**item} for item, _ in accessible]
+        config = __request__.app.state.config
+
+        top_k = config.TOP_K or 5
+        count = top_k if count is None else max(1, min(count, top_k))
+        full_context = (
+            all(item.get("context") == "full" for item in file_items)
+            or config.RAG_FULL_CONTEXT
+        )
+
+        embedding_function = getattr(__request__.app.state, "EMBEDDING_FUNCTION", None)
+        if not embedding_function and not full_context:
+            return json.dumps({"error": "Embedding function not configured"})
+
+        user_model = UserModel.model_construct(
+            id=__user__.get("id"),
+            role=__user__.get("role", "user"),
+        )
+        sources = await get_sources_from_items(
+            request=__request__,
+            items=file_items,
+            queries=[query],
+            embedding_function=(
+                lambda queries, prefix: (
+                    embedding_function(queries, prefix=prefix, user=user_model)
+                    if embedding_function
+                    else None
+                )
+            ),
+            k=count,
+            reranking_function=(
+                (
+                    lambda q, docs: __request__.app.state.RERANKING_FUNCTION(
+                        q, docs, user=user_model
+                    )
+                )
+                if getattr(__request__.app.state, "RERANKING_FUNCTION", None)
+                else None
+            ),
+            k_reranker=config.TOP_K_RERANKER,
+            r=config.RELEVANCE_THRESHOLD,
+            hybrid_bm25_weight=config.HYBRID_BM25_WEIGHT,
+            hybrid_search=config.ENABLE_RAG_HYBRID_SEARCH,
+            full_context=full_context,
+            user=user_model,
+        )
+
+        chunks = []
+        for source in sources or []:
+            documents = source.get("document") or []
+            metadatas = source.get("metadata") or []
+            distances = source.get("distances") or []
+            source_info = source.get("source") or {}
+
+            for idx, doc in enumerate(documents):
+                metadata = (
+                    metadatas[idx]
+                    if idx < len(metadatas) and isinstance(metadatas[idx], dict)
+                    else {}
+                )
+                chunk = {
+                    "content": doc,
+                    "source": metadata.get(
+                        "source",
+                        metadata.get("name", source_info.get("name", "Unknown")),
+                    ),
+                    "file_id": metadata.get("file_id", source_info.get("id", "")),
+                }
+                if idx < len(distances):
+                    chunk["distance"] = distances[idx]
+                chunks.append(chunk)
+
+        return json.dumps(chunks[:count], ensure_ascii=False)
+    except Exception as e:
+        log.exception(f"query_chat_files error: {e}")
+        return json.dumps({"error": str(e)})
+
+
+async def delegate_task(
+    task: str,
+    context: str = "",
+    __request__: Request = None,
+    __user__: dict = None,
+    __metadata__: dict = None,
+    __chat_id__: str = None,
+    __message_id__: str = None,
+) -> str:
+    """
+    Delegate focused work to a parallel sub-agent using the current model and tools.
+
+    :param task: The specific task for the sub-agent to complete
+    :param context: Relevant context, decisions, or file paths for the task
+    :return: The sub-agent's result text
+    """
+    if __request__ is None:
+        return "Error: request context not available."
+    if getattr(__request__.state, "internal", False) is True:
+        return "Error: sub-agents cannot delegate recursively."
+
+    from open_webui.utils.subagents import delegate
+
+    return await delegate(
+        task,
+        context,
+        request=__request__,
+        user_data=__user__ or {},
+        metadata=__metadata__ or {},
+        parent_chat_id=__chat_id__ or "",
+        parent_message_id=__message_id__,
+    )
+
+
+async def view_file(
+    file_id: str,
+    offset: int = 0,
+    max_chars: int = VIEW_FILE_DEFAULT_MAX_CHARS,
+    line_numbers: bool = False,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+    __request__: Request = None,
+    __user__: dict = None,
+    __model_knowledge__: Optional[list[dict]] = None,
+) -> str:
+    """
+    Get the content of a file by its ID. Supports pagination for large files.
+
+    :param file_id: The ID of the file to retrieve
+    :param offset: Character offset to start reading from (default: 0)
+    :param max_chars: Maximum characters to return (a server-side hard cap applies)
+    :param line_numbers: If true, prefix each line with its 1-indexed line number
+    :param start_line: Optional 1-indexed start line (overrides offset/max_chars when set)
+    :param end_line: Optional 1-indexed end line (inclusive)
+    :return: JSON with the file's id, filename, content, and pagination metadata if truncated
+    """
+    if __request__ is None:
+        return json.dumps({"error": "Request context not available"})
+
+    if not __user__:
+        return json.dumps({"error": "User context not available"})
+
+    # Coerce parameters from LLM tool calls (may come as strings)
+    if isinstance(offset, str):
+        try:
+            offset = int(offset)
+        except ValueError:
+            offset = 0
+    if isinstance(max_chars, str):
+        try:
+            max_chars = int(max_chars)
+        except ValueError:
+            max_chars = VIEW_FILE_DEFAULT_MAX_CHARS
+
+    # Enforce hard cap
+    max_chars = min(max(max_chars, 1), VIEW_FILE_MAX_CHARS)
+    offset = max(offset, 0)
+
+    try:
         from open_webui.models.files import Files
-        from open_webui.utils.access_control.files import has_access_to_file
 
         user_id = __user__.get("id")
         user_role = __user__.get("role", "user")
@@ -1634,18 +2051,8 @@ async def view_file(
         if not file:
             return json.dumps({"error": "File not found"})
 
-        if (
-            file.user_id != user_id
-            and user_role != "admin"
-            and not any(
-                item.get("type") == "file" and item.get("id") == file_id
-                for item in (__model_knowledge__ or [])
-            )
-            and not has_access_to_file(
-                file_id=file_id,
-                access_type="read",
-                user=UserModel(**__user__),
-            )
+        if not _has_read_access_to_file(
+            file, user_id, user_role, __model_knowledge__
         ):
             return json.dumps({"error": "File not found"})
 
@@ -1653,16 +2060,60 @@ async def view_file(
         if file.data:
             content = file.data.get("content", "")
 
-        return json.dumps(
-            {
+        total_chars = len(content)
+
+        # Line-based addressing (overrides char-based offset/max_chars)
+        if start_line is not None:
+            all_lines = content.split("\n")
+            total_lines = len(all_lines)
+            s = max(1, int(start_line)) - 1  # 1-indexed to 0-indexed
+            e = min(total_lines, int(end_line) if end_line else s + 100)
+            selected = all_lines[s:e]
+            sliced = "\n".join(
+                f"{s + i + 1}: {line}" for i, line in enumerate(selected)
+            )
+            is_truncated = e < total_lines
+            result = {
                 "id": file.id,
                 "filename": file.filename,
-                "content": content,
+                "content": sliced,
                 "updated_at": file.updated_at,
                 "created_at": file.created_at,
-            },
-            ensure_ascii=False,
-        )
+                "total_lines": total_lines,
+                "showing_lines": f"{s + 1}-{e}",
+            }
+            if is_truncated:
+                result["truncated"] = True
+                result["next_start_line"] = e + 1
+            return json.dumps(result, ensure_ascii=False)
+
+        sliced = content[offset : offset + max_chars]
+        is_truncated = (offset + len(sliced)) < total_chars
+
+        if line_numbers:
+            start_ln = content[:offset].count("\n") + 1
+            lines = sliced.split("\n")
+            sliced = "\n".join(
+                f"{start_ln + i}: {line}" for i, line in enumerate(lines)
+            )
+
+        result = {
+            "id": file.id,
+            "filename": file.filename,
+            "content": sliced,
+            "updated_at": file.updated_at,
+            "created_at": file.created_at,
+        }
+
+        if is_truncated or offset > 0:
+            result["truncated"] = is_truncated
+            result["total_chars"] = total_chars
+            result["returned_chars"] = len(sliced)
+            result["offset"] = offset
+            if is_truncated:
+                result["next_offset"] = offset + len(sliced)
+
+        return json.dumps(result, ensure_ascii=False)
     except Exception as e:
         log.exception(f"view_file error: {e}")
         return json.dumps({"error": str(e)})

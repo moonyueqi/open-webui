@@ -33,7 +33,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 
-from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.auth import (
+    get_admin_user,
+    get_verified_user,
+    get_current_user_optional,
+)
 from open_webui.utils.access_control import require_permission
 
 log = logging.getLogger(__name__)
@@ -889,8 +893,28 @@ async def get_shared_session_user_chat_list(
 
 @router.get("/share/{share_id}", response_model=Optional[ChatResponse])
 async def get_shared_chat_by_id(
-    share_id: str, user=Depends(get_verified_user), db: Session = Depends(get_session)
+    request: Request,
+    share_id: str,
+    user=Depends(get_current_user_optional),
+    db: Session = Depends(get_session),
 ):
+    if user is None:
+        # Anonymous viewer — only allowed when the admin has turned on
+        # "open" chat sharing. A valid share_id is still required; this
+        # just drops the "must be a logged-in user of this instance" gate.
+        if not request.app.state.config.ENABLE_CHAT_OPEN_SHARING:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.NOT_FOUND,
+            )
+
+        chat = Chats.get_chat_by_share_id(share_id, db=db)
+        if chat:
+            return ChatResponse(**chat.model_dump())
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.NOT_FOUND
+        )
+
     if user.role == "pending":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.NOT_FOUND

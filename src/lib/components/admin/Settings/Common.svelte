@@ -6,6 +6,7 @@
 	import { getAdminConfig, updateAdminConfig } from '$lib/apis/auths';
 	import { config } from '$lib/stores';
 	import Switch from '$lib/components/common/Switch.svelte';
+	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -56,6 +57,36 @@
 						</div>
 
 						<Switch bind:state={adminConfig.ENABLE_MEMORIES} />
+					</div>
+
+					<div class=" mb-2.5 flex w-full justify-between pr-2">
+						<Tooltip
+							content={$i18n.t(
+								'Open the sharing link to everyone: people who receive it can read the chat without signing in. Only chats you actively share are affected.'
+							)}
+							placement="top-start"
+						>
+							<div class=" self-center text-xs font-medium">
+								{$i18n.t('Enable Chat Open Sharing')}
+							</div>
+						</Tooltip>
+
+						<Switch bind:state={adminConfig.ENABLE_CHAT_OPEN_SHARING} />
+					</div>
+
+					<div class=" mb-2.5 flex w-full justify-between pr-2">
+						<Tooltip
+							content={$i18n.t(
+								'The model reads only the parts of an attachment it needs, instead of putting the whole file into the conversation. Requires a model that supports tool calling.'
+							)}
+							placement="top-start"
+						>
+							<div class=" self-center text-xs font-medium">
+								{$i18n.t('Enable Chat Files Tools')}
+							</div>
+						</Tooltip>
+
+						<Switch bind:state={adminConfig.ENABLE_CHAT_FILES_TOOLS} />
 					</div>
 				</div>
 			</div>
