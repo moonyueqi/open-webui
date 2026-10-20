@@ -160,6 +160,47 @@ def get_updated_tool_function(function: Callable, extra_params: dict):
     return function
 
 
+def has_tool_server_access(
+    user: UserModel,
+    connection: dict,
+    user_group_ids: Optional[set] = None,
+) -> bool:
+    """Check whether a user may invoke an OpenAPI/MCP tool server.
+
+    Tool server visibility is inherited from the tool category referenced by
+    ``config.category_id`` (same rule as the ``GET /api/v1/tools/`` listing):
+
+    - Admin with ``BYPASS_ADMIN_ACCESS_CONTROL`` → always allowed
+    - ``category_id`` set → requires ``read`` on that ``tool_category``
+    - No ``category_id`` → honor legacy ``config.access_grants`` if present,
+      otherwise visible to every verified user (backward compatible fallback)
+    """
+    if user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL:
+        return True
+
+    if user_group_ids is None:
+        user_group_ids = {
+            group.id for group in Groups.get_groups_by_member_id(user.id)
+        }
+
+    config = (connection or {}).get("config") or {}
+    category_id = config.get("category_id")
+    if category_id:
+        return AccessGrants.has_access(
+            user_id=user.id,
+            resource_type="tool_category",
+            resource_id=category_id,
+            permission="read",
+            user_group_ids=user_group_ids,
+        )
+
+    access_grants = config.get("access_grants") or []
+    if access_grants:
+        return has_access(user.id, "read", access_grants, user_group_ids)
+
+    return True
+
+
 async def get_tools(
     request: Request, tool_ids: list[str], user: UserModel, extra_params: dict
 ) -> dict[str, dict]:
@@ -175,17 +216,16 @@ async def get_tools(
     for tool_id in tool_ids:
         tool = Tools.get_tool_by_id(tool_id)
         if tool:
-            # Check access control for local tools
-            if (
-                not (user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL)
-                and tool.user_id != user.id
-                and not AccessGrants.has_access(
-                    user_id=user.id,
-                    resource_type="tool",
-                    resource_id=tool.id,
-                    permission="read",
-                    user_group_ids=user_group_ids,
-                )
+            # Check access control for local tools. Access is inherited from
+            # the tool's category (with legacy tool-level grants as fallback),
+            # mirroring the visibility rules of the tools list endpoint.
+            if not (
+                user.role == "admin" and BYPASS_ADMIN_ACCESS_CONTROL
+            ) and not Tools.has_access(
+                user_id=user.id,
+                tool=tool,
+                permission="read",
+                user_group_ids=user_group_ids,
             ):
                 log.warning(f"Access denied to tool {tool_id} for user {user.id}")
                 continue
@@ -297,8 +337,9 @@ async def get_tools(
                         ]
                     )
 
-                    # Check access control for tool server
-                    if not has_connection_access(
+                    # Check access control for tool server (inherited from
+                    # the tool category set on the connection)
+                    if not has_tool_server_access(
                         user, tool_server_connection, user_group_ids
                     ):
                         log.warning(

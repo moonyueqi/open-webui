@@ -100,8 +100,8 @@ from open_webui.utils.tools import (
     get_tools,
     get_updated_tool_function,
     get_terminal_tools,
+    has_tool_server_access,
 )
-from open_webui.utils.access_control import has_connection_access
 from open_webui.utils.plugin import load_function_module_by_id
 from open_webui.utils.filter import (
     get_sorted_filter_ids,
@@ -2504,8 +2504,9 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                             log.error(f"MCP server with id {server_id} not found")
                             continue
 
-                        # Check access control for MCP server
-                        if not has_connection_access(user, mcp_server_connection):
+                        # Check access control for MCP server (inherited from
+                        # the tool category set on the connection)
+                        if not has_tool_server_access(user, mcp_server_connection):
                             log.warning(
                                 f"Access denied to MCP server {server_id} for user {user.id}"
                             )
