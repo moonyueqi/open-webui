@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { getChatById, shareChatById } from '$lib/apis/chats';
 	import { copyToClipboard, createMessagesList } from '$lib/utils';
+	import { config } from '$lib/stores';
 
 	import Modal from '../common/Modal.svelte';
 	import Link from '../icons/Link.svelte';
@@ -135,9 +136,9 @@
 				{/if}
 
 				<div class="text-xs text-gray-400 dark:text-gray-500 mb-2">
-					{$i18n.t(
-						'Users with the URL will be able to view the shared chat.'
-					)}
+					{$config?.features?.enable_chat_open_sharing
+						? $i18n.t('Anyone with the URL will be able to view the shared chat, no sign-in required.')
+						: $i18n.t('Users with the URL will be able to view the shared chat.')}
 				</div>
 
 				<div class="flex items-center gap-2">

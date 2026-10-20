@@ -8,7 +8,7 @@
 	import { getBackendConfig } from '$lib/apis';
 	import Database from './Settings/Database.svelte';
 
-	import General from './Settings/General.svelte';
+	import Subagents from './Settings/Subagents.svelte';
 	import Pipelines from './Settings/Pipelines.svelte';
 	import Audio from './Settings/Audio.svelte';
 	import Images from './Settings/Images.svelte';
@@ -36,6 +36,7 @@
 		const tabFromPath = pathParts[pathParts.length - 1];
 		selectedTab = [
 			'general',
+			'subagents',
 			'connections',
 			// 'models', // Models tab hidden — per-model access control is bypassed via BYPASS_MODEL_ACCESS_CONTROL
 			'evaluations',
@@ -72,7 +73,13 @@
 			id: 'general',
 			title: 'General',
 			route: '/admin/settings/general',
-			keywords: ['general', 'signup', 'sign up', 'registration']
+			keywords: ['general', 'signup', 'sign up', 'registration', 'sharing', 'files']
+		},
+		{
+			id: 'subagents',
+			title: 'Sub-agents',
+			route: '/admin/settings/subagents',
+			keywords: ['subagents', 'sub-agents', 'delegate', 'agent']
 		},
 		{
 			id: 'connections',
@@ -311,6 +318,19 @@
 								clip-rule="evenodd"
 							/>
 						</svg>
+					{:else if tab.id === 'subagents'}
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="currentColor"
+							class="w-4 h-4"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M4.5 3.75a3 3 0 0 0-3 3v10.5a3 3 0 0 0 3 3h15a3 3 0 0 0 3-3V6.75a3 3 0 0 0-3-3h-15Zm4.125 3a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5Zm-3.873 8.703a4.126 4.126 0 0 1 7.746 0 .75.75 0 0 1-.351.92 7.47 7.47 0 0 1-3.522.877 7.47 7.47 0 0 1-3.522-.877.75.75 0 0 1-.351-.92ZM15 8.25a.75.75 0 0 0 0 1.5h3.75a.75.75 0 0 0 0-1.5H15ZM14.25 12a.75.75 0 0 1 .75-.75h3.75a.75.75 0 0 1 0 1.5H15a.75.75 0 0 1-.75-.75Zm.75 2.25a.75.75 0 0 0 0 1.5h3.75a.75.75 0 0 0 0-1.5H15Z"
+								clip-rule="evenodd"
+							/>
+						</svg>
 					{:else if tab.id === 'connections'}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -475,6 +495,15 @@
 	>
 		{#if selectedTab === 'general'}
 			<Common
+				saveHandler={async () => {
+					toast.success($i18n.t('Settings saved successfully!'));
+
+					await tick();
+					await config.set(await getBackendConfig());
+				}}
+			/>
+		{:else if selectedTab === 'subagents'}
+			<Subagents
 				saveHandler={async () => {
 					toast.success($i18n.t('Settings saved successfully!'));
 

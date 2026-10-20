@@ -170,7 +170,7 @@ def get_citation_source_from_tool_result(
     - document: list of document contents
     - metadata: list of metadata objects with source, file_id, name fields
 
-    Returns a list of sources (usually one, but query_knowledge_files may return multiple).
+    Returns a list of sources (usually one, but query_knowledge_files/query_chat_files may return multiple).
     """
     try:
         try:
@@ -208,7 +208,7 @@ def get_citation_source_from_tool_result(
                 }
             ]
 
-        elif tool_name == "view_knowledge_file":
+        elif tool_name in ("view_knowledge_file", "view_file"):
             file_data = tool_result
             filename = file_data.get("filename", "Unknown File")
             file_id = file_data.get("id", "")
@@ -256,7 +256,7 @@ def get_citation_source_from_tool_result(
                 }
             ]
 
-        elif tool_name == "query_knowledge_files":
+        elif tool_name in ("query_knowledge_files", "query_chat_files"):
             chunks = tool_result
 
             # Group chunks by source for better citation display
@@ -1816,6 +1816,28 @@ async def chat_completion_files_handler(
     sources = []
 
     if files := body.get("metadata", {}).get("files", None):
+        # When chat file tools are enabled under native function calling,
+        # non-full-context attachments are handled via builtin tools instead
+        # of auto-injecting RAG chunks into the prompt.
+        params = (body.get("metadata") or {}).get("params") or {}
+        use_chat_file_tools = (
+            request.app.state.config.ENABLE_CHAT_FILES_TOOLS
+            and params.get("function_calling") == "native"
+        )
+        if use_chat_file_tools:
+            rag_files = [
+                f
+                for f in files
+                if not (
+                    f.get("type") == "file"
+                    and f.get("context") != "full"
+                    and f.get("id")
+                )
+            ]
+            if not rag_files:
+                return body, {"sources": []}
+            files = rag_files
+
         # Check if all files are in full context mode
         all_full_context = all(item.get("context") == "full" for item in files)
 
@@ -2431,10 +2453,17 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     metadata = {
         **metadata,
         "tool_ids": tool_ids,
+        # Popped off form_data above, but sub-agents need it to inherit the
+        # user's per-chat skill selection.
+        "skill_ids": list(user_skill_ids),
         "terminal_id": terminal_id,
         "files": files,
     }
     form_data["metadata"] = metadata
+    # Re-point extra_params at the rebuilt dict; tools receive __metadata__ by
+    # reference and would otherwise keep the pre-rebuild copy, missing entries
+    # added later such as the resolved "tools" registry.
+    extra_params["__metadata__"] = metadata
 
     # When the caller provides an explicit OpenAI-style `tools` array in the
     # request body, skip all server-side tool resolution and pass the caller's
@@ -2664,6 +2693,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                     "__skill_ids__": [
                         s.id for s in available_skills if s.id not in user_skill_ids
                     ],
+                    "__files__": metadata.get("files", []),
                 },
                 features,
                 model,
@@ -4177,9 +4207,17 @@ async def streaming_chat_response_handler(response, ctx):
                 all_tool_call_sources = []  # Accumulated sources across all iterations
                 user_message = get_last_user_message(form_data["messages"])
 
+                # Sub-agents lower this per request so one delegation cannot spend
+                # the whole global budget.
+                max_tool_call_iterations = getattr(
+                    request.state,
+                    "max_tool_call_iterations",
+                    CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES,
+                )
+
                 while (
                     len(tool_calls) > 0
-                    and tool_call_retries < CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES
+                    and tool_call_retries < max_tool_call_iterations
                 ):
 
                     tool_call_retries += 1
@@ -4335,8 +4373,10 @@ async def streaming_chat_response_handler(response, ctx):
                             in [
                                 "search_web",
                                 "fetch_url",
+                                "view_file",
                                 "view_knowledge_file",
                                 "query_knowledge_files",
+                                "query_chat_files",
                             ]
                             and tool_result
                         ):
@@ -4482,13 +4522,10 @@ async def streaming_chat_response_handler(response, ctx):
                 # If the loop exited because the iteration cap was hit (rather
                 # than the model finishing its tool calls), surface a visible
                 # error instead of silently stopping.
-                if (
-                    len(tool_calls) > 0
-                    and tool_call_retries >= CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES
-                ):
+                if len(tool_calls) > 0 and tool_call_retries >= max_tool_call_iterations:
                     limit_error = (
                         f"Tool-call limit reached "
-                        f"({CHAT_RESPONSE_MAX_TOOL_CALL_RETRIES} iterations)."
+                        f"({max_tool_call_iterations} iterations)."
                     )
                     log.warning(limit_error)
                     if metadata.get("chat_id") and metadata.get("message_id"):

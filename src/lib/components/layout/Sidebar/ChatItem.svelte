@@ -36,6 +36,7 @@
 	import ShareChatModal from '$lib/components/chat/ShareChatModal.svelte';
 	import GarbageBin from '$lib/components/icons/GarbageBin.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import { createMessagesList } from '$lib/utils';
 	import ArchiveBox from '$lib/components/icons/ArchiveBox.svelte';
 	import DragGhost from '$lib/components/common/DragGhost.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
@@ -85,6 +86,85 @@
 			chat = await getChatById(localStorage.token, id);
 			draggable = true;
 		}
+	};
+
+	//////////////////////////
+	// Sidebar hover preview
+	//////////////////////////
+
+	const escapeHtml = (text: string) =>
+		text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+	const stripForPreview = (text: string) =>
+		(text ?? '')
+			.replace(/<details[\s\S]*?<\/details>/gi, '')
+			.replace(/```[\s\S]*?```/g, ' [代码] ')
+			.replace(/<[^>]*>/g, '')
+			.replace(/&[a-zA-Z0-9#]+;/g, '')
+			.replace(/\s+/g, ' ')
+			.trim();
+
+	const buildPreviewHtml = (chatData) => {
+		const chatContent = chatData?.chat;
+		if (!chatContent) {
+			return `<div class="text-xs text-gray-400">${$i18n.t('No content')}</div>`;
+		}
+
+		let msgs = [];
+		if (chatContent.history) {
+			msgs = createMessagesList(chatContent.history, chatContent.history.currentId);
+		} else if (chatContent.messages) {
+			msgs = chatContent.messages;
+		}
+
+		const cleaned = msgs
+			.map((m) => ({ role: m.role, text: stripForPreview(m.content) }))
+			.filter((m) => m.text);
+
+		const lastMessages = cleaned.slice(-2);
+		if (lastMessages.length === 0) {
+			return `<div class="text-xs text-gray-400">${$i18n.t('No content')}</div>`;
+		}
+
+		return lastMessages
+			.map((m) => {
+				const label = m.role === 'user' ? $i18n.t('You') : $i18n.t('Assistant');
+				const truncated = m.text.length > 120 ? `${m.text.slice(0, 120)}…` : m.text;
+				return `<div class="text-xs mb-1 last:mb-0"><span class="opacity-60">${escapeHtml(label)}:</span> ${escapeHtml(truncated)}</div>`;
+			})
+			.join('');
+	};
+
+	// Non-empty from the start so the underlying tippy instance (and its
+	// hover listeners) exists before the first mouseenter — otherwise the
+	// very first hover on a chat wouldn't show anything, since the instance
+	// is only (re)created reactively when `content` changes.
+	let previewContent = `<div class="text-xs text-gray-400">${$i18n.t('Loading...')}</div>`;
+	let previewLoading = false;
+	let previewHoverTimer;
+
+	const loadPreview = () => {
+		if (chat) {
+			previewContent = buildPreviewHtml(chat);
+			return;
+		}
+
+		// Debounce so quickly scrolling/skimming past many chats doesn't
+		// fire a fetch for every single one of them.
+		clearTimeout(previewHoverTimer);
+		previewHoverTimer = setTimeout(async () => {
+			if (chat || previewLoading || !mouseOver) return;
+
+			previewLoading = true;
+			try {
+				await loadChat();
+				previewContent = buildPreviewHtml(chat);
+			} catch (e) {
+				console.error(e);
+			} finally {
+				previewLoading = false;
+			}
+		}, 200);
 	};
 
 	let showShareChatModal = false;
@@ -241,6 +321,8 @@
 			itemElement.removeEventListener('drag', onDrag);
 			itemElement.removeEventListener('dragend', onDragEndHandler);
 		}
+
+		clearTimeout(previewHoverTimer);
 	});
 
 	let showDeleteConfirm = false;
@@ -343,62 +425,71 @@
 			/>
 		</div>
 	{:else}
-		<a
-			id="sidebar-chat-item"
+		<Tooltip
+			className="w-full flex"
+			content={previewContent}
+			placement="right"
+			tippyOptions={{ delay: [500, 0], maxWidth: 260 }}
+		>
+			<a
+				id="sidebar-chat-item"
 	class=" w-full flex justify-between rounded-lg px-[11px] py-[8px] {id === $chatId ||
 		confirmEdit
 			? 'bg-sidebar-hover dark:bg-gray-900 selected'
 			: selected
 				? 'bg-sidebar-100 dark:bg-gray-950 selected'
 				: ' group-hover:bg-sidebar-hover dark:group-hover:bg-gray-950'}  whitespace-nowrap text-ellipsis"
-			href="/c/{id}"
-			on:click={() => {
-				dispatch('select');
+				href="/c/{id}"
+				on:click={() => {
+					dispatch('select');
 
-				if ($selectedFolder) {
-					selectedFolder.set(null);
-				}
+					if ($selectedFolder) {
+						selectedFolder.set(null);
+					}
 
-				if ($mobile) {
-					showSidebar.set(false);
-				}
-			}}
-			on:dblclick={async (e) => {
-				e.preventDefault();
-				e.stopPropagation();
+					if ($mobile) {
+						showSidebar.set(false);
+					}
+				}}
+				on:dblclick={async (e) => {
+					e.preventDefault();
+					e.stopPropagation();
 
-				doubleClicked = true;
-				renameHandler();
-			}}
-			on:mouseenter={(e) => {
-				mouseOver = true;
-			}}
-			on:mouseleave={(e) => {
-				mouseOver = false;
-			}}
-			on:focus={(e) => {}}
-			draggable="false"
-		>
-			<!-- Loading spinner for active chat (left side) -->
-			{#if $activeChatIds.has(id)}
-				<div class="shrink-0 self-center pr-2">
-					<Spinner className="size-3" />
+					doubleClicked = true;
+					renameHandler();
+				}}
+				on:mouseenter={(e) => {
+					mouseOver = true;
+					loadPreview();
+				}}
+				on:mouseleave={(e) => {
+					mouseOver = false;
+					clearTimeout(previewHoverTimer);
+				}}
+				on:focus={(e) => {}}
+				draggable="false"
+			>
+				<!-- Loading spinner for active chat (left side) -->
+				{#if $activeChatIds.has(id)}
+					<div class="shrink-0 self-center pr-2">
+						<Spinner className="size-3" />
+					</div>
+				{/if}
+
+				<div class="flex self-center flex-1 w-full min-w-0">
+					<div dir="auto" class="text-left self-center overflow-hidden w-full h-[18px] text-[0.8rem] truncate">
+						{title}
+					</div>
 				</div>
-			{/if}
 
-			<div class="flex self-center flex-1 w-full min-w-0">
-				<div dir="auto" class="text-left self-center overflow-hidden w-full h-[18px] text-[0.8rem] truncate">
-					{title}
-				</div>
-			</div>
-
-			<!-- Time ago indicator -->
-			{#if updatedAt && !mouseOver}
-				<div class="shrink-0 self-center text-[10px] text-gray-400 dark:text-gray-500 pl-2">
-					{formatTimeAgo(updatedAt)}
-				</div>
-			{/if}
-		</a>
+				<!-- Time ago indicator -->
+				{#if updatedAt && !mouseOver}
+					<div class="shrink-0 self-center text-[10px] text-gray-400 dark:text-gray-500 pl-2">
+						{formatTimeAgo(updatedAt)}
+					</div>
+				{/if}
+			</a>
+		</Tooltip>
 	{/if}
 
 	<!-- svelte-ignore a11y-no-static-element-interactions -->

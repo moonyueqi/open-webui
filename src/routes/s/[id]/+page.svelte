@@ -65,13 +65,39 @@
 	//////////////////////////
 
 	const loadSharedChat = async () => {
-		const userSettings = await getUserSettings(localStorage.token).catch((error) => {
-			console.error(error);
-			return null;
-		});
+		// Anonymous viewers (open chat sharing, no account) can't call the
+		// authenticated settings/models endpoints — fall back to local
+		// defaults instead of letting those requests fail the whole page.
+		if (localStorage.token) {
+			const userSettings = await getUserSettings(localStorage.token).catch((error) => {
+				console.error(error);
+				return null;
+			});
 
-		if (userSettings) {
-			settings.set(userSettings.ui);
+			if (userSettings) {
+				settings.set(userSettings.ui);
+			} else {
+				let localStorageSettings = {} as Parameters<(typeof settings)['set']>[0];
+
+				try {
+					localStorageSettings = JSON.parse(localStorage.getItem('settings') ?? '{}');
+				} catch (e: unknown) {
+					console.error('Failed to parse settings from localStorage', e);
+				}
+
+				settings.set(localStorageSettings);
+			}
+
+			await models
+				.set(
+					await getModels(
+						localStorage.token,
+						$config?.features?.enable_direct_connections && ($settings?.directConnections ?? null)
+					)
+				)
+				.catch((error) => {
+					console.error(error);
+				});
 		} else {
 			let localStorageSettings = {} as Parameters<(typeof settings)['set']>[0];
 
@@ -84,12 +110,6 @@
 			settings.set(localStorageSettings);
 		}
 
-		await models.set(
-			await getModels(
-				localStorage.token,
-				$config?.features?.enable_direct_connections && ($settings?.directConnections ?? null)
-			)
-		);
 		await chatId.set($page.params.id);
 		chat = await getChatByShareId(localStorage.token, $chatId).catch(async (error) => {
 			return null;
@@ -134,6 +154,14 @@
 	const cloneSharedChat = async () => {
 		if (!chat) return;
 
+		if (!localStorage.token) {
+			// Anonymous viewer (open chat sharing) — send them to sign in first,
+			// then bring them right back here to continue the conversation.
+			const currentUrl = `${window.location.pathname}${window.location.search}`;
+			goto(`/auth?redirect=${encodeURIComponent(currentUrl)}`);
+			return;
+		}
+
 		const res = await cloneSharedChatById(localStorage.token, chat.id).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -153,6 +181,9 @@
 			? `${title.length > 30 ? `${title.slice(0, 30)}...` : title} • ${$WEBUI_NAME}`
 			: `${$WEBUI_NAME}`}
 	</title>
+	<!-- Shared chats are reachable by anyone with the link (when open sharing is
+	     enabled); ask search engines not to index or follow them. -->
+	<meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
 {#if expired}

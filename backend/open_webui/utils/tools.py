@@ -90,6 +90,10 @@ from open_webui.tools.builtin import (
     view_file,
     view_knowledge_file,
     view_skill,
+    list_chat_files,
+    query_chat_files,
+    grep_chat_files,
+    delegate_task,
     search_calendar_events,
     create_calendar_event,
     update_calendar_event,
@@ -580,9 +584,49 @@ def get_builtin_tools(
             ]
         )
 
+    # Chat attached files — let the model list/search/read attachments on demand
+    metadata = extra_params.get("__metadata__") or {}
+    chat_files = metadata.get("files") or extra_params.get("__files__") or []
+    has_chat_files = any(
+        isinstance(item, dict)
+        and item.get("type", "file") == "file"
+        and (item.get("id") or item.get("url"))
+        and not str(item.get("id") or item.get("url")).startswith(
+            ("http://", "https://", "data:")
+        )
+        for item in chat_files
+    )
+
+    if (
+        request.app.state.config.ENABLE_CHAT_FILES_TOOLS
+        and is_builtin_tool_enabled("files")
+        and has_chat_files
+    ):
+        for fn in (list_chat_files, query_chat_files, grep_chat_files, view_file):
+            if fn not in builtin_functions:
+                builtin_functions.append(fn)
+
+    # Sub-agents — delegate_task
+    if (
+        request.app.state.config.ENABLE_SUBAGENTS
+        and is_builtin_tool_enabled("subagents")
+        and getattr(request.state, "internal", False) is not True
+        and getattr(request.state, "direct", False) is not True
+    ):
+        builtin_functions.append(delegate_task)
+
     # Skills tools - view_skill allows model to load full skill instructions on demand
     if extra_params.get("__skill_ids__"):
         builtin_functions.append(view_skill)
+
+    if getattr(request.state, "internal", False) is True:
+        from open_webui.utils.subagents import MUTATING_MEMORY_TOOLS
+
+        builtin_functions = [
+            func
+            for func in builtin_functions
+            if func.__name__ not in MUTATING_MEMORY_TOOLS
+        ]
 
     for func in builtin_functions:
         callable = get_async_tool_function_and_apply_extra_params(
@@ -596,6 +640,7 @@ def get_builtin_tools(
                 "__chat_id__": extra_params.get("__chat_id__"),
                 "__message_id__": extra_params.get("__message_id__"),
                 "__model_knowledge__": model_knowledge,
+                "__files__": chat_files,
             },
         )
 
